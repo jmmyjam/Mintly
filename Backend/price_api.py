@@ -1,32 +1,48 @@
-import ssl
+import os
+import requests
 import certifi
-ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
+from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
 
-from fastapi import FastAPI
-from pokemontcgsdk import Card, Set, Type, Supertype, Subtype, Rarity
+load_dotenv()
+
+BASE_URL = "https://api.pokemontcg.io/v2"
+API_KEY = os.getenv("POKEMON_TCG_API_KEY")
+
+session = requests.Session()
+session.verify = certifi.where()
+session.headers.update({"X-Api-Key": API_KEY})
 
 app = FastAPI()
 
-# Get all acrds
+# Get all cards
 @app.get("/allcards")
 def get_allCards():
-    cards = Card.all()
-    return [{"id": c.id, "name": c.name, "set": c.set.name, "prices": c.tcgplayer} for c in cards]
+    response = session.get(f"{BASE_URL}/cards")
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
+    return response.json().get("data", [])
 
 # Search cards by name
 @app.get("/cards")
 def search_cards(name: str):
-    cards = Card.where(q=f"name:{name}")
-    return [{"id": c.id, "name": c.name, "set": c.set.name, "prices": c.tcgplayer} for c in cards]
+    response = session.get(f"{BASE_URL}/cards", params={"q": f"name:{name}"})
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
+    return response.json().get("data", [])
 
 # Get a single card by ID
 @app.get("/cards/{card_id}")
 def get_card(card_id: str):
-    card = Card.find(card_id)
-    return {"id": card.id, "name": card.name, "prices": card.tcgplayer}
+    response = session.get(f"{BASE_URL}/cards/{card_id}")
+    if response.status_code != 200:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return response.json().get("data", {})
 
 # List all sets
 @app.get("/sets")
 def get_sets():
-    sets = Set.all()
-    return [{"id": s.id, "name": s.name, "total": s.total} for s in sets]
+    response = session.get(f"{BASE_URL}/sets")
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch sets")
+    return response.json().get("data", [])
