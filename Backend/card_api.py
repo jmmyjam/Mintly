@@ -5,7 +5,14 @@ import certifi
 from fastapi import FastAPI, HTTPException
 from dotenv import load_dotenv
 
+from database import engine
+from models import Base
+from auth import router as auth_router
+from portfolio import router as portfolio_router
+
 load_dotenv()
+
+Base.metadata.create_all(bind=engine)
 
 BASE_URL = "https://api.pokemontcg.io/v2"
 API_KEY = os.getenv("POKEMON_TCG_API_KEY")
@@ -15,6 +22,8 @@ session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
 
 app = FastAPI()
+app.include_router(auth_router)
+app.include_router(portfolio_router)
 
 # Natural language search
 @app.get("/search")
