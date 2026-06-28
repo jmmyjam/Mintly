@@ -18,7 +18,6 @@ pwd_context = CryptContext(schemes=["bcrypt"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 router = APIRouter(prefix="/auth")
 
-
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -32,7 +31,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 @router.post("/register")
 def register(email: str, username: str, password: str, db=Depends(get_db)):
-    user = User(email=email, 
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=409, detail="Username already taken")
+    user = User(email=email,
                 username=username,
                 hashed_password=pwd_context.hash(password))
     db.add(user); db.commit()
