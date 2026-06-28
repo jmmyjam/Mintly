@@ -42,7 +42,9 @@ def register(email: str, username: str, password: str, db=Depends(get_db)):
 
 @router.post("/login")
 def login(form: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
-    user = db.query(User).filter(User.email == form.username).first()
+    user = db.query(User).filter(
+        (User.email == form.username) | (User.username == form.username)
+    ).first()
     if not user or not pwd_context.verify(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = jwt.encode({"sub": str(user.id), 
