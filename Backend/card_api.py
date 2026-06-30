@@ -3,6 +3,7 @@ import re
 import requests
 import certifi
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from database import engine
@@ -22,6 +23,13 @@ session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(auth_router)
 app.include_router(portfolio_router)
 
