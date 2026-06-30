@@ -70,8 +70,8 @@ export async function register(email: string, username: string, password: string
   }
 }
 
-export async function searchCards(name: string): Promise<Card[]> {
-  const res = await fetch(`${BASE}/cards?name=${encodeURIComponent(name)}`)
+export async function searchCards(query: string): Promise<Card[]> {
+  const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}`)
   if (!res.ok) throw new Error('Search failed')
   return res.json()
 }
