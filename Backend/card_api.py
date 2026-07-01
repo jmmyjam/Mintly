@@ -24,7 +24,7 @@ session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
 
 _cache: dict[str, tuple[float, list]] = {}
-_CACHE_TTL = 21600
+_CACHE_TTL = 21600 #6 hours until cache reset
 
 def _fetch_cards(q: str) -> list:
     if q in _cache:
