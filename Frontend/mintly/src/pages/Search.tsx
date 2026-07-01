@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { searchCards, addCard, getToken, getCardPrice, type Card } from '../api'
 
@@ -12,16 +12,16 @@ export default function Search() {
   const [quantity, setQuantity] = useState('1')
   const [addStatus, setAddStatus] = useState<{ id: string; msg: string; ok: boolean } | null>(null)
   const navigate = useNavigate()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (!query.trim()) return
+  async function runSearch(q: string) {
+    if (!q.trim()) return
     setLoading(true)
     setError('')
     setCards([])
     setAdding(null)
     try {
-      const results = await searchCards(query)
+      const results = await searchCards(q)
       setCards(results)
       if (results.length === 0) setError('No cards found.')
     } catch {
@@ -29,6 +29,19 @@ export default function Search() {
     } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!query.trim()) { setCards([]); setError(''); return }
+    debounceRef.current = setTimeout(() => runSearch(query), 400)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [query])
+
+  function handleSearch(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    runSearch(query)
   }
 
   async function handleAdd(card: Card) {
