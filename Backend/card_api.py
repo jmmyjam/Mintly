@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import requests
 import certifi
 from fastapi import FastAPI, HTTPException
@@ -21,6 +22,21 @@ API_KEY = os.getenv("POKEMON_TCG_API_KEY")
 session = requests.Session()
 session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
+
+_cache: dict[str, tuple[float, list]] = {}
+_CACHE_TTL = 21600
+
+def _fetch_cards(q: str) -> list:
+    if q in _cache:
+        ts, data = _cache[q]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    response = session.get(f"{BASE_URL}/cards", params={"q": q})
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
+    data = response.json().get("data", [])
+    _cache[q] = (time.time(), data)
+    return data
 
 app = FastAPI()
 app.add_middleware(
@@ -60,20 +76,10 @@ def smart_search(q: str):
     if not filters:
         raise HTTPException(status_code=400, detail="Invalid search query")
 
-    response = session.get(f"{BASE_URL}/cards", params={"q": " ".join(filters)})
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
-    return response.json().get("data", [])
+    return _fetch_cards(" ".join(filters))
 
 
 # Search cards — supports name, set code, card number, rarity, and type
-# Examples:
-#   /cards?name=charizard
-#   /cards?name=charizard&set_id=base1
-#   /cards?name=charizard&number=4
-#   /cards?set_id=base1&number=4
-#   /cards?name=charizard&rarity=Rare Holo
-#   /cards?type=Fire
 @app.get("/cards")
 def search_cards(
     name: str | None = None,
@@ -97,10 +103,7 @@ def search_cards(
     if not filters:
         raise HTTPException(status_code=400, detail="Provide at least one search parameter")
 
-    response = session.get(f"{BASE_URL}/cards", params={"q": " ".join(filters)})
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
-    return response.json().get("data", [])
+    return _fetch_cards(" ".join(filters))
 
 
 # Get a single card by its API ID (e.g. base1-4)
@@ -133,7 +136,4 @@ def get_set(set_id: str):
 # Get all cards in a set
 @app.get("/sets/{set_id}/cards")
 def get_set_cards(set_id: str):
-    response = session.get(f"{BASE_URL}/cards", params={"q": f"set.id:{set_id}"})
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards for set")
-    return response.json().get("data", [])
+    return _fetch_cards(f"set.id:{set_id}")
