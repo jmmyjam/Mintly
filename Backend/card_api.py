@@ -38,6 +38,19 @@ def _fetch_cards(q: str) -> list:
     _cache[q] = (time.time(), data)
     return data
 
+
+def _fetch_sets() -> list:
+    if "__sets__" in _cache:
+        ts, data = _cache["__sets__"]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    response = session.get(f"{BASE_URL}/sets")
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch sets")
+    data = response.json().get("data", [])
+    _cache["__sets__"] = (time.time(), data)
+    return data
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -52,7 +65,7 @@ app.include_router(portfolio_router)
 # Natural language search
 @app.get("/search")
 def smart_search(q: str):
-    parts = q.strip().split()
+    parts = q.strip().replace('"', "").split()
     number = None
     set_id = None
     name_parts = []
@@ -65,18 +78,45 @@ def smart_search(q: str):
         else:
             name_parts.append(part)
 
-    filters = []
-    if name_parts:
-        filters.append(f"name:{' '.join(name_parts)}")
-    if number:
-        filters.append(f"number:{number}")
-    if set_id:
-        filters.append(f"set.id:{set_id}")
+    # Recognize set names in the query, e.g. "pikachu lost origin" (longest match wins)
+    if set_id is None and name_parts:
+        set_names = {s["name"].lower(): s["id"] for s in _fetch_sets()}
+        n = len(name_parts)
+        for size in range(n, 0, -1):
+            match = None
+            for start in range(n - size + 1):
+                candidate = " ".join(name_parts[start:start + size]).lower()
+                if candidate in set_names:
+                    match = (start, size, set_names[candidate])
+                    break
+            if match:
+                start, size, set_id = match
+                name_parts = name_parts[:start] + name_parts[start + size:]
+                break
 
-    if not filters:
+    def build_query(name_words: list[str]) -> str:
+        filters = []
+        if name_words:
+            filters.append(f'name:"{" ".join(name_words)}"')
+        if number:
+            filters.append(f"number:{number}")
+        if set_id:
+            filters.append(f"set.id:{set_id}")
+        return " ".join(filters)
+
+    if not name_parts and not number and not set_id:
         raise HTTPException(status_code=400, detail="Invalid search query")
 
-    return _fetch_cards(" ".join(filters))
+    results = _fetch_cards(build_query(name_parts))
+
+    # Fallback for loose names like "sleepy pikachu": drop words until something matches
+    if not results and len(name_parts) > 1:
+        for i in range(1, len(name_parts)):
+            for candidate in (name_parts[i:], name_parts[:-i]):
+                results = _fetch_cards(build_query(candidate))
+                if results:
+                    return results
+    return results
 
 
 # Search cards — supports name, set code, card number, rarity, and type
@@ -90,7 +130,7 @@ def search_cards(
 ):
     filters = []
     if name:
-        filters.append(f"name:{name}")
+        filters.append(f'name:"{name.replace(chr(34), "")}"')
     if set_id:
         filters.append(f"set.id:{set_id}")
     if number:
@@ -118,10 +158,7 @@ def get_card(card_id: str):
 # List all sets
 @app.get("/sets")
 def get_sets():
-    response = session.get(f"{BASE_URL}/sets")
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch sets")
-    return response.json().get("data", [])
+    return _fetch_sets()
 
 
 # Get a single set by its ID (e.g. base1, swsh1)
