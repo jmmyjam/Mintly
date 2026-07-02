@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, date
 import requests
 import certifi
@@ -25,8 +25,13 @@ router = APIRouter()
 
 class AddCardRequest(BaseModel):
     card_id: str
-    purchase_price: float | None = None  # None = use current market price
-    quantity: int = 1
+    purchase_price: float | None = Field(None, ge=0)  # None = use current market price
+    quantity: int = Field(1, ge=1)
+
+
+class UpdateCardRequest(BaseModel):
+    purchase_price: float | None = Field(None, ge=0)
+    quantity: int | None = Field(None, ge=1)
 
 
 def extract_price(card_data: dict) -> float | None:
@@ -154,6 +159,22 @@ def get_portfolio_history(current_user=Depends(get_current_user), db: Session = 
         total = sum(price * quantities[card_id] for card_id, price in latest_prices.items())
         history.append({"date": day.isoformat(), "total_value": round(total, 2)})
     return history
+
+
+@router.patch("/portfolio/{portfolio_card_id}")
+def update_card(portfolio_card_id: int, body: UpdateCardRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    card = db.query(PortfolioCard).filter(
+        PortfolioCard.id == portfolio_card_id,
+        PortfolioCard.user_id == current_user.id,
+    ).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found in portfolio")
+    if body.purchase_price is not None:
+        card.purchase_price = body.purchase_price
+    if body.quantity is not None:
+        card.quantity = body.quantity
+    db.commit()
+    return {"message": "Card updated"}
 
 
 @router.delete("/portfolio/{portfolio_card_id}")

@@ -163,7 +163,47 @@
 .search-form {
   display: flex;
   gap: 10px;
+  margin-bottom: 12px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 8px;
   margin-bottom: 32px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text-h);
+  outline: none;
+  transition: border-color 0.2s;
+  max-width: 200px;
+}
+
+.filter-select:focus { border-color: var(--accent-border); }
+
+.filter-number {
+  width: 90px;
+}
+
+.filter-number::placeholder { color: var(--text); }
+
+.results-label {
+  font-size: 16px;
+  color: var(--text-h);
+  margin-bottom: 16px;
+}
+
+.prices-note {
+  color: var(--text);
+  font-size: 13px;
+  margin: -8px 0 16px;
 }
 
 .search-input {
@@ -299,6 +339,22 @@
   font-size: 16px;
   color: var(--text-h);
   margin-bottom: 16px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-actions .btn-outline {
+  flex: 1;
+  justify-content: center;
 }
 
 .chart-caption {

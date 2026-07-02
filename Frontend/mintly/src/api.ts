@@ -81,6 +81,37 @@ export async function searchCards(query: string): Promise<Card[]> {
   return res.json()
 }
 
+export interface CardSet {
+  id: string
+  name: string
+  series: string
+  releaseDate: string
+}
+
+export async function getSets(): Promise<CardSet[]> {
+  const res = await fetch(`${BASE}/sets`)
+  if (!res.ok) throw new Error('Failed to fetch sets')
+  return res.json()
+}
+
+export interface CardFilters {
+  name?: string
+  set_id?: string
+  number?: string
+  rarity?: string
+  type?: string
+}
+
+export async function filterCards(filters: CardFilters): Promise<Card[]> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value)
+  }
+  const res = await fetch(`${BASE}/cards?${params}`)
+  if (!res.ok) throw new Error('Search failed')
+  return res.json()
+}
+
 export async function getPortfolio(): Promise<PortfolioCard[]> {
   const res = await fetch(`${BASE}/portfolio`, {
     headers: { Authorization: `Bearer ${getToken()}` },
@@ -110,6 +141,21 @@ export async function addCard(card_id: string, purchase_price: number | null, qu
   if (!res.ok) {
     const data = await res.json()
     throw new Error(data.detail || 'Failed to add card')
+  }
+}
+
+export async function updateCard(id: number, updates: { purchase_price?: number; quantity?: number }): Promise<void> {
+  const res = await fetch(`${BASE}/portfolio/${id}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.detail || 'Failed to update card')
   }
 }
 

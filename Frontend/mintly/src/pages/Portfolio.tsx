@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { getPortfolio, getPortfolioHistory, removeCard, getToken, getCardImageUrl, type PortfolioCard, type HistoryPoint } from '../api'
+import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, type PortfolioCard, type HistoryPoint } from '../api'
 
 function formatChartDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -16,6 +16,9 @@ export default function Portfolio() {
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editPrice, setEditPrice] = useState('')
+  const [editQty, setEditQty] = useState('')
 
   useEffect(() => {
     if (!getToken()) {
@@ -39,6 +42,35 @@ export default function Portfolio() {
       setCards(prev => prev.filter(c => c.id !== id))
     } catch {
       alert('Failed to remove card.')
+    }
+  }
+
+  function startEdit(card: PortfolioCard) {
+    setEditingId(card.id)
+    setEditPrice(String(card.purchase_price))
+    setEditQty(String(card.quantity))
+  }
+
+  async function handleSaveEdit(card: PortfolioCard) {
+    const price = parseFloat(editPrice)
+    const qty = parseInt(editQty)
+    if (Number.isNaN(price) || price < 0 || Number.isNaN(qty) || qty < 1) {
+      alert('Enter a valid price and quantity.')
+      return
+    }
+    try {
+      await updateCard(card.id, { purchase_price: price, quantity: qty })
+      setCards(prev => prev.map(c => {
+        if (c.id !== card.id) return c
+        const gain_loss = c.current_price != null ? Math.round((c.current_price - price) * qty * 100) / 100 : null
+        const gain_loss_pct = c.current_price != null && price > 0
+          ? Math.round(((c.current_price - price) / price) * 10000) / 100
+          : null
+        return { ...c, purchase_price: price, quantity: qty, gain_loss, gain_loss_pct }
+      }))
+      setEditingId(null)
+    } catch {
+      alert('Failed to update card.')
     }
   }
 
@@ -166,33 +198,74 @@ export default function Portfolio() {
                 <div className="portfolio-card-body">
                   <p className="card-name">{card.card_name}</p>
                   <p className="card-set">Qty: {card.quantity}</p>
-                  <div className="price-rows">
-                    <div className="price-row">
-                      <span className="stat-label">Paid</span>
-                      <span>${card.purchase_price.toFixed(2)}</span>
-                    </div>
-                    <div className="price-row">
-                      <span className="stat-label">Now</span>
-                      <span>{card.current_price != null ? `$${card.current_price.toFixed(2)}` : '—'}</span>
-                    </div>
-                    {card.gain_loss != null && (
-                      <div className="price-row">
-                        <span className="stat-label">P&L</span>
-                        <span className={card.gain_loss >= 0 ? 'positive' : 'negative'}>
-                          {card.gain_loss >= 0 ? '+' : ''}${card.gain_loss.toFixed(2)}
-                          {card.gain_loss_pct != null && (
-                            <span className="pct"> ({card.gain_loss_pct > 0 ? '+' : ''}{card.gain_loss_pct}%)</span>
-                          )}
-                        </span>
+                  {editingId === card.id ? (
+                    <div className="add-form">
+                      <label className="edit-field">
+                        <span className="stat-label">Price paid ($)</span>
+                        <input
+                          type="number"
+                          value={editPrice}
+                          onChange={e => setEditPrice(e.target.value)}
+                          className="mini-input"
+                          min="0"
+                          step="0.01"
+                        />
+                      </label>
+                      <label className="edit-field">
+                        <span className="stat-label">Quantity</span>
+                        <input
+                          type="number"
+                          value={editQty}
+                          onChange={e => setEditQty(e.target.value)}
+                          className="mini-input mini-qty"
+                          min="1"
+                        />
+                      </label>
+                      <div className="add-form-buttons">
+                        <button className="btn-primary btn-sm" onClick={() => handleSaveEdit(card)}>
+                          Save
+                        </button>
+                        <button className="btn-outline btn-sm" onClick={() => setEditingId(null)}>
+                          Cancel
+                        </button>
                       </div>
-                    )}
-                  </div>
-                  <button
-                    className="btn-outline btn-sm btn-danger"
-                    onClick={() => handleRemove(card.id, card.card_name)}
-                  >
-                    Remove
-                  </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="price-rows">
+                        <div className="price-row">
+                          <span className="stat-label">Paid</span>
+                          <span>${card.purchase_price.toFixed(2)}</span>
+                        </div>
+                        <div className="price-row">
+                          <span className="stat-label">Now</span>
+                          <span>{card.current_price != null ? `$${card.current_price.toFixed(2)}` : '—'}</span>
+                        </div>
+                        {card.gain_loss != null && (
+                          <div className="price-row">
+                            <span className="stat-label">P&L</span>
+                            <span className={card.gain_loss >= 0 ? 'positive' : 'negative'}>
+                              {card.gain_loss >= 0 ? '+' : ''}${card.gain_loss.toFixed(2)}
+                              {card.gain_loss_pct != null && (
+                                <span className="pct"> ({card.gain_loss_pct > 0 ? '+' : ''}{card.gain_loss_pct}%)</span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="card-actions">
+                        <button className="btn-outline btn-sm" onClick={() => startEdit(card)}>
+                          Edit
+                        </button>
+                        <button
+                          className="btn-outline btn-sm btn-danger"
+                          onClick={() => handleRemove(card.id, card.card_name)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
