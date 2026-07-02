@@ -287,6 +287,26 @@
   color: var(--text-h);
 }
 
+.portfolio-chart {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 32px;
+}
+
+.portfolio-chart h2 {
+  font-size: 16px;
+  color: var(--text-h);
+  margin-bottom: 16px;
+}
+
+.chart-caption {
+  color: var(--text);
+  font-size: 13px;
+  margin: -8px 0 16px;
+}
+
 .positive { color: var(--positive); }
 .negative { color: var(--negative); }
 

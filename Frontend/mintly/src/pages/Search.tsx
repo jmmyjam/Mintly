@@ -66,9 +66,10 @@ export default function Search() {
       return;
     }
     try {
+      const price = parseFloat(purchasePrice);
       await addCard(
         card.id,
-        parseFloat(purchasePrice) || 0,
+        Number.isNaN(price) ? null : price,
         parseInt(quantity) || 1,
       );
       setAdding(null);
@@ -133,7 +134,7 @@ export default function Search() {
                   <div className="add-form">
                     <input
                       type="number"
-                      placeholder="Purchase price ($)"
+                      placeholder="Price paid($)"
                       value={purchasePrice}
                       onChange={(e) => setPurchasePrice(e.target.value)}
                       className="mini-input"

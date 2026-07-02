@@ -23,3 +23,10 @@ class PortfolioCard(Base):
     purchase_price = Column(Float)    # price paid per card
     purchase_date = Column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="portfolio")
+
+class PortfolioSnapshot(Base):
+    __tablename__ = "portfolio_snapshot"
+    id = Column(Integer, primary_key=True)
+    card_id = Column(String, index=True)  # shared across users, one row per card per day
+    price = Column(Float)
+    snapshot_date = Column(DateTime, default=datetime.utcnow)

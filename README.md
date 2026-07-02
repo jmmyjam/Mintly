@@ -12,6 +12,7 @@ A Pokemon TCG portfolio tracker. Search cards, monitor live market prices, and t
 - Search cards by name, set, or card number
 - Live prices pulled from TCGPlayer via the Pokemon TCG API
 - Portfolio tracking with gain/loss per card
+- Portfolio value history chart, built from daily price snapshots
 - User accounts with JWT authentication
 - Backend response cache (6-hour TTL) for fast repeated searches
 - Debounced search-as-you-type on the frontend

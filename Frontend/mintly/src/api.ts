@@ -10,6 +10,11 @@ export interface Card {
   }
 }
 
+export interface HistoryPoint {
+  date: string
+  total_value: number
+}
+
 export interface PortfolioCard {
   id: number
   card_id: string
@@ -84,7 +89,16 @@ export async function getPortfolio(): Promise<PortfolioCard[]> {
   return res.json()
 }
 
-export async function addCard(card_id: string, purchase_price: number, quantity: number): Promise<void> {
+export async function getPortfolioHistory(): Promise<HistoryPoint[]> {
+  const res = await fetch(`${BASE}/portfolio/history`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+  if (!res.ok) throw new Error('Failed to fetch portfolio history')
+  return res.json()
+}
+
+// purchase_price null = backend uses the current market price
+export async function addCard(card_id: string, purchase_price: number | null, quantity: number): Promise<void> {
   const res = await fetch(`${BASE}/portfolio/add`, {
     method: 'POST',
     headers: {
