@@ -58,6 +58,7 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
+  const [addBusy, setAddBusy] = useState(false);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [addStatus, setAddStatus] = useState<{
@@ -156,6 +157,8 @@ export default function Search() {
       navigate("/login");
       return;
     }
+    if (addBusy) return;
+    setAddBusy(true);
     try {
       const price = parseFloat(purchasePrice);
       const msg = await addCard(
@@ -171,7 +174,9 @@ export default function Search() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to add card";
       setAddStatus({ id: card.id, msg, ok: false });
-      setTimeout(() => setAddStatus(null), 3000);
+      setTimeout(() => setAddStatus(null), 4000);
+    } finally {
+      setAddBusy(false);
     }
   }
 
@@ -287,7 +292,13 @@ export default function Search() {
 
               {!status &&
                 (isAdding ? (
-                  <div className="add-form">
+                  <form
+                    className="add-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAdd(card);
+                    }}
+                  >
                     <input
                       type="number"
                       placeholder="Price paid($)"
@@ -307,13 +318,16 @@ export default function Search() {
                     />
                     <div className="add-form-buttons">
                       <button
+                        type="submit"
                         className="btn-primary btn-sm"
-                        onClick={() => handleAdd(card)}
+                        disabled={addBusy}
                       >
-                        Add
+                        {addBusy ? "Adding..." : "Add"}
                       </button>
                       <button
+                        type="button"
                         className="btn-outline btn-sm"
+                        disabled={addBusy}
                         onClick={() => {
                           setAdding(null);
                           setPurchasePrice("");
@@ -323,7 +337,7 @@ export default function Search() {
                         Cancel
                       </button>
                     </div>
-                  </div>
+                  </form>
                 ) : (
                   <button
                     className="btn-outline btn-sm"

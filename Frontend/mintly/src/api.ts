@@ -59,6 +59,19 @@ export function clearToken() {
   localStorage.removeItem('token')
 }
 
+// Adds the auth header; a 401 means the token is expired/invalid, so clear it
+async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { ...(init.headers || {}), Authorization: `Bearer ${getToken()}` },
+  })
+  if (res.status === 401) {
+    clearToken()
+    throw new Error('Session expired — please log in again.')
+  }
+  return res
+}
+
 export function getCardImageUrl(cardId: string): string {
   const [setId, number] = cardId.split('-')
   return `https://images.pokemontcg.io/${setId}/${number}.png`
@@ -139,17 +152,13 @@ export async function filterCards(filters: CardFilters): Promise<Card[]> {
 }
 
 export async function getPortfolio(): Promise<PortfolioCard[]> {
-  const res = await fetch(`${BASE}/portfolio`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  })
+  const res = await authedFetch('/portfolio')
   if (!res.ok) throw new Error('Failed to fetch portfolio')
   return res.json()
 }
 
 export async function getPortfolioHistory(): Promise<HistoryPoint[]> {
-  const res = await fetch(`${BASE}/portfolio/history`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  })
+  const res = await authedFetch('/portfolio/history')
   if (!res.ok) throw new Error('Failed to fetch portfolio history')
   return res.json()
 }
@@ -157,12 +166,9 @@ export async function getPortfolioHistory(): Promise<HistoryPoint[]> {
 // purchase_price null = backend uses the current market price
 // Returns the server message, e.g. "Card added" or "Merged — you now have 3"
 export async function addCard(card_id: string, purchase_price: number | null, quantity: number): Promise<string> {
-  const res = await fetch(`${BASE}/portfolio/add`, {
+  const res = await authedFetch('/portfolio/add', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ card_id, purchase_price, quantity }),
   })
   const data = await res.json()
@@ -171,12 +177,9 @@ export async function addCard(card_id: string, purchase_price: number | null, qu
 }
 
 export async function updateCard(id: number, updates: { purchase_price?: number; quantity?: number }): Promise<void> {
-  const res = await fetch(`${BASE}/portfolio/${id}`, {
+  const res = await authedFetch(`/portfolio/${id}`, {
     method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   })
   if (!res.ok) {
@@ -186,9 +189,6 @@ export async function updateCard(id: number, updates: { purchase_price?: number;
 }
 
 export async function removeCard(id: number): Promise<void> {
-  const res = await fetch(`${BASE}/portfolio/${id}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${getToken()}` },
-  })
+  const res = await authedFetch(`/portfolio/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to remove card')
 }

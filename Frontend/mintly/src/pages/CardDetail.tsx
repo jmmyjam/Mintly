@@ -27,6 +27,7 @@ export default function CardDetail() {
   const [purchasePrice, setPurchasePrice] = useState('')
   const [quantity, setQuantity] = useState('1')
   const [addStatus, setAddStatus] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [addBusy, setAddBusy] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -56,6 +57,8 @@ export default function CardDetail() {
       navigate('/login')
       return
     }
+    if (addBusy) return
+    setAddBusy(true)
     try {
       const price = parseFloat(purchasePrice)
       const msg = await addCard(card.id, Number.isNaN(price) ? null : price, parseInt(quantity) || 1)
@@ -64,7 +67,9 @@ export default function CardDetail() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to add card'
       setAddStatus({ msg, ok: false })
-      setTimeout(() => setAddStatus(null), 3000)
+      setTimeout(() => setAddStatus(null), 4000)
+    } finally {
+      setAddBusy(false)
     }
   }
 
@@ -163,7 +168,13 @@ export default function CardDetail() {
           {addStatus ? (
             <p className={addStatus.ok ? 'success-msg' : 'error'}>{addStatus.msg}</p>
           ) : (
-            <div className="detail-add-form">
+            <form
+              className="detail-add-form"
+              onSubmit={e => {
+                e.preventDefault()
+                handleAdd()
+              }}
+            >
               <label className="edit-field">
                 <span className="stat-label">Price paid ($)</span>
                 <input
@@ -185,8 +196,10 @@ export default function CardDetail() {
                   min="1"
                 />
               </label>
-              <button className="btn-primary" onClick={handleAdd}>+ Portfolio</button>
-            </div>
+              <button type="submit" className="btn-primary" disabled={addBusy}>
+                {addBusy ? 'Adding...' : '+ Portfolio'}
+              </button>
+            </form>
           )}
         </div>
       </div>
