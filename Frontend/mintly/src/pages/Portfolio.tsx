@@ -14,17 +14,14 @@ function localISODate(d: Date) {
 export default function Portfolio() {
   const [cards, setCards] = useState<PortfolioCard[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !!getToken())
   const [error, setError] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editQty, setEditQty] = useState('')
 
   useEffect(() => {
-    if (!getToken()) {
-      setLoading(false)
-      return
-    }
+    if (!getToken()) return
     getPortfolio()
       .then(loaded => {
         setCards(loaded)
@@ -188,15 +185,19 @@ export default function Portfolio() {
           <div className="portfolio-grid">
             {cards.map(card => (
               <div key={card.id} className="portfolio-card">
-                <img
-                  src={getCardImageUrl(card.card_id)}
-                  alt={card.card_name}
-                  className="card-image"
-                  loading="lazy"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
+                <Link to={`/card/${card.card_id}`} className="card-link">
+                  <img
+                    src={getCardImageUrl(card.card_id)}
+                    alt={card.card_name}
+                    className="card-image"
+                    loading="lazy"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                </Link>
                 <div className="portfolio-card-body">
-                  <p className="card-name">{card.card_name}</p>
+                  <Link to={`/card/${card.card_id}`} className="card-link">
+                    <p className="card-name">{card.card_name}</p>
+                  </Link>
                   <p className="card-set">Qty: {card.quantity}</p>
                   {editingId === card.id ? (
                     <div className="add-form">

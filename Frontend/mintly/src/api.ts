@@ -1,12 +1,32 @@
 const BASE = 'http://localhost:8000'
 
+export interface PriceVariant {
+  low?: number
+  mid?: number
+  high?: number
+  market?: number
+}
+
 export interface Card {
   id: string
   name: string
+  number?: string
+  rarity?: string
+  artist?: string
+  hp?: string
+  types?: string[]
   images: { small: string; large: string }
-  set: { name: string; id: string }
+  set: {
+    name: string
+    id: string
+    series?: string
+    printedTotal?: number
+    releaseDate?: string
+  }
   tcgplayer?: {
-    prices?: { [key: string]: { mid?: number } }
+    url?: string
+    updatedAt?: string
+    prices?: { [key: string]: PriceVariant }
   }
 }
 
@@ -94,6 +114,12 @@ export async function getSets(): Promise<CardSet[]> {
   return res.json()
 }
 
+export async function getCard(cardId: string): Promise<Card> {
+  const res = await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}`)
+  if (!res.ok) throw new Error('Card not found')
+  return res.json()
+}
+
 export interface CardFilters {
   name?: string
   set_id?: string
@@ -129,7 +155,8 @@ export async function getPortfolioHistory(): Promise<HistoryPoint[]> {
 }
 
 // purchase_price null = backend uses the current market price
-export async function addCard(card_id: string, purchase_price: number | null, quantity: number): Promise<void> {
+// Returns the server message, e.g. "Card added" or "Merged — you now have 3"
+export async function addCard(card_id: string, purchase_price: number | null, quantity: number): Promise<string> {
   const res = await fetch(`${BASE}/portfolio/add`, {
     method: 'POST',
     headers: {
@@ -138,10 +165,9 @@ export async function addCard(card_id: string, purchase_price: number | null, qu
     },
     body: JSON.stringify({ card_id, purchase_price, quantity }),
   })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.detail || 'Failed to add card')
-  }
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Failed to add card')
+  return data.message || 'Added to portfolio!'
 }
 
 export async function updateCard(id: number, updates: { purchase_price?: number; quantity?: number }): Promise<void> {

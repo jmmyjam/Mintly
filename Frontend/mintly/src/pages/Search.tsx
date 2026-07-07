@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   searchCards,
   filterCards,
@@ -158,7 +158,7 @@ export default function Search() {
     }
     try {
       const price = parseFloat(purchasePrice);
-      await addCard(
+      const msg = await addCard(
         card.id,
         Number.isNaN(price) ? null : price,
         parseInt(quantity) || 1,
@@ -166,7 +166,7 @@ export default function Search() {
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
-      setAddStatus({ id: card.id, msg: "Added to portfolio!", ok: true });
+      setAddStatus({ id: card.id, msg, ok: true });
       setTimeout(() => setAddStatus(null), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to add card";
@@ -263,19 +263,21 @@ export default function Search() {
 
           return (
             <div key={card.id} className="card-item">
-              <img
-                src={card.images.small}
-                alt={card.name}
-                className="card-image"
-                loading="lazy"
-              />
-              <div className="card-info">
-                <p className="card-name">{card.name}</p>
-                <p className="card-set">{card.set.name}</p>
-                {price != null && (
-                  <p className="card-price">${price.toFixed(2)}</p>
-                )}
-              </div>
+              <Link to={`/card/${card.id}`} className="card-link">
+                <img
+                  src={card.images.small}
+                  alt={card.name}
+                  className="card-image"
+                  loading="lazy"
+                />
+                <div className="card-info">
+                  <p className="card-name">{card.name}</p>
+                  <p className="card-set">{card.set.name}</p>
+                  {price != null && (
+                    <p className="card-price">${price.toFixed(2)}</p>
+                  )}
+                </div>
+              </Link>
 
               {status && (
                 <p className={status.ok ? "success-msg" : "error"}>

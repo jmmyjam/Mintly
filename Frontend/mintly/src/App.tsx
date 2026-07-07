@@ -3,6 +3,7 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
+import CardDetail from './pages/CardDetail'
 import Login from './pages/Login'
 import './App.css'
 
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
           <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/card/:cardId" element={<CardDetail />} />
           <Route path="/login" element={<Login />} />
         </Routes>
       </main>
