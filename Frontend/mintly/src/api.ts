@@ -99,8 +99,10 @@ export async function login(username: string, password: string): Promise<void> {
 }
 
 export async function register(email: string, username: string, password: string): Promise<void> {
-  const res = await fetch(`${BASE}/auth/register?${new URLSearchParams({ email, username, password })}`, {
+  const res = await fetch(`${BASE}/auth/register`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, username, password }),
   })
   if (!res.ok) {
     const data = await res.json()

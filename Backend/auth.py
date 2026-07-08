@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
@@ -29,15 +30,21 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+class RegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+
+
 @router.post("/register")
-def register(email: str, username: str, password: str, db=Depends(get_db)):
-    if db.query(User).filter(User.email == email).first():
+def register(body: RegisterRequest, db=Depends(get_db)):
+    if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
-    if db.query(User).filter(User.username == username).first():
+    if db.query(User).filter(User.username == body.username).first():
         raise HTTPException(status_code=409, detail="Username already taken")
-    user = User(email=email,
-                username=username,
-                hashed_password=pwd_context.hash(password))
+    user = User(email=body.email,
+                username=body.username,
+                hashed_password=pwd_context.hash(body.password))
     db.add(user); db.commit()
     return {
         "message": "Account created"
