@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, type PortfolioCard, type HistoryPoint } from '../api'
+import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint } from '../api'
 
 function formatChartDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -50,6 +50,12 @@ export default function Portfolio() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editQty, setEditQty] = useState('')
+  const navigate = useNavigate()
+
+  // The token is already cleared by authedFetch — send the user back to login
+  function redirectToLogin() {
+    navigate('/login', { state: { notice: 'Your session expired — please log in again.' } })
+  }
 
   useEffect(() => {
     if (!getToken()) return
@@ -62,9 +68,14 @@ export default function Portfolio() {
         return getPortfolioHistory().then(setHistory).catch(() => {})
       })
       .catch(err => {
+        if (err instanceof SessionExpiredError) {
+          redirectToLogin()
+          return
+        }
         setError(err instanceof Error ? err.message : 'Failed to load portfolio.')
         setLoading(false)
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleRemove(id: number, name: string) {
@@ -72,7 +83,11 @@ export default function Portfolio() {
     try {
       await removeCard(id)
       setCards(prev => prev.filter(c => c.id !== id))
-    } catch {
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        redirectToLogin()
+        return
+      }
       alert('Failed to remove card.')
     }
   }
@@ -101,7 +116,11 @@ export default function Portfolio() {
         return { ...c, purchase_price: price, quantity: qty, gain_loss, gain_loss_pct }
       }))
       setEditingId(null)
-    } catch {
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        redirectToLogin()
+        return
+      }
       alert('Failed to update card.')
     }
   }

@@ -59,6 +59,14 @@ export function clearToken() {
   localStorage.removeItem('token')
 }
 
+// Thrown on 401 so pages can redirect to /login instead of showing a generic error
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired — please log in again.')
+    this.name = 'SessionExpiredError'
+  }
+}
+
 // Adds the auth header; a 401 means the token is expired/invalid, so clear it
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(`${BASE}${path}`, {
@@ -67,7 +75,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   })
   if (res.status === 401) {
     clearToken()
-    throw new Error('Session expired — please log in again.')
+    throw new SessionExpiredError()
   }
   return res
 }

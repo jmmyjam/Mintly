@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getCard, getCardPrice, addCard, getToken, type Card } from '../api'
+import { getCard, getCardPrice, addCard, getToken, SessionExpiredError, type Card } from '../api'
 
 const VARIANT_LABELS: { [key: string]: string } = {
   normal: 'Normal',
@@ -65,6 +65,10 @@ export default function CardDetail() {
       setAddStatus({ msg, ok: true })
       setTimeout(() => setAddStatus(null), 3000)
     } catch (err: unknown) {
+      if (err instanceof SessionExpiredError) {
+        navigate('/login', { state: { notice: 'Your session expired — please log in again.' } })
+        return
+      }
       const msg = err instanceof Error ? err.message : 'Failed to add card'
       setAddStatus({ msg, ok: false })
       setTimeout(() => setAddStatus(null), 4000)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { login, register } from '../api'
 
 // Mirrors the backend rules in auth.py so users get instant feedback
@@ -18,6 +18,9 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
+  // e.g. "Your session expired — please log in again." when redirected here on a 401
+  const notice = (location.state as { notice?: string } | null)?.notice
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -62,6 +65,8 @@ export default function Login() {
             Register
           </button>
         </div>
+
+        {notice && !error && <p className="form-hint">{notice}</p>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           {mode === 'register' && (

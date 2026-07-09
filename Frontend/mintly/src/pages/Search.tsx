@@ -7,6 +7,7 @@ import {
   addCard,
   getToken,
   getCardPrice,
+  SessionExpiredError,
   type Card,
   type CardSet,
 } from "../api";
@@ -172,6 +173,12 @@ export default function Search() {
       setAddStatus({ id: card.id, msg, ok: true });
       setTimeout(() => setAddStatus(null), 3000);
     } catch (err: unknown) {
+      if (err instanceof SessionExpiredError) {
+        navigate("/login", {
+          state: { notice: "Your session expired — please log in again." },
+        });
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Failed to add card";
       setAddStatus({ id: card.id, msg, ok: false });
       setTimeout(() => setAddStatus(null), 4000);
