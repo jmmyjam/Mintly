@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -36,8 +37,21 @@ class RegisterRequest(BaseModel):
     password: str
 
 
+def password_error(password: str) -> str | None:
+    if len(password) < 8:
+        return "Password must be at least 8 characters"
+    if not re.search(r"[A-Za-z]", password):
+        return "Password must contain at least one letter"
+    if not re.search(r"\d", password):
+        return "Password must contain at least one number"
+    return None
+
+
 @router.post("/register")
 def register(body: RegisterRequest, db=Depends(get_db)):
+    error = password_error(body.password)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
     if db.query(User).filter(User.username == body.username).first():

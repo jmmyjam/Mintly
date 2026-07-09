@@ -550,6 +550,12 @@
 }
 
 .form-input:focus { border-color: var(--accent-border); }
+
+.form-hint {
+  color: var(--text);
+  font-size: 12px;
+  margin-top: -6px;
+}
 .form-input::placeholder { color: var(--text); }
 
 .auth-form .btn-primary {

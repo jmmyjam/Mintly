@@ -2,6 +2,14 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login, register } from '../api'
 
+// Mirrors the backend rules in auth.py so users get instant feedback
+function passwordError(password: string): string | null {
+  if (password.length < 8) return 'Password must be at least 8 characters'
+  if (!/[A-Za-z]/.test(password)) return 'Password must contain at least one letter'
+  if (!/\d/.test(password)) return 'Password must contain at least one number'
+  return null
+}
+
 export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -14,6 +22,13 @@ export default function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (mode === 'register') {
+      const pwError = passwordError(password)
+      if (pwError) {
+        setError(pwError)
+        return
+      }
+    }
     setLoading(true)
     try {
       if (mode === 'register') {
@@ -75,6 +90,9 @@ export default function Login() {
             required
             className="form-input"
           />
+          {mode === 'register' && (
+            <p className="form-hint">At least 8 characters, with a letter and a number.</p>
+          )}
           {error && <p className="error">{error}</p>}
           <button type="submit" className="btn-primary" disabled={loading}>
             {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}
