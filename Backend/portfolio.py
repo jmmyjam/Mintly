@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from datetime import datetime, date
@@ -84,20 +85,6 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         if purchase_price is None:
             raise HTTPException(status_code=400, detail="No market price available for this card — enter a purchase price")
 
-    # Merge with an existing entry for the same card: average the cost basis
-    existing = db.query(PortfolioCard).filter(
-        PortfolioCard.user_id == current_user.id,
-        PortfolioCard.card_id == body.card_id,
-    ).first()
-    if existing:
-        total_quantity = existing.quantity + body.quantity
-        existing.purchase_price = round(
-            (existing.purchase_price * existing.quantity + purchase_price * body.quantity) / total_quantity, 2
-        )
-        existing.quantity = total_quantity
-        db.commit()
-        return {"message": f"Merged — you now have {total_quantity}", "id": existing.id}
-
     card = PortfolioCard(
         user_id=current_user.id,
         card_id=body.card_id,
@@ -108,6 +95,12 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
     db.add(card)
     db.commit()
     db.refresh(card)
+    total = db.query(func.sum(PortfolioCard.quantity)).filter(
+        PortfolioCard.user_id == current_user.id,
+        PortfolioCard.card_id == body.card_id,
+    ).scalar()
+    if total > body.quantity:
+        return {"message": f"Added — you now have {total} total", "id": card.id}
     return {"message": "Card added", "id": card.id}
 
 

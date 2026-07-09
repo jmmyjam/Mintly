@@ -11,11 +11,42 @@ function localISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function formatLotDate(d: string) {
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// One card can have several lots — separate purchases at different prices
+interface CardGroup {
+  card_id: string
+  card_name: string
+  current_price: number | null
+  lots: PortfolioCard[]
+}
+
+function groupByCard(cards: PortfolioCard[]): CardGroup[] {
+  const map = new Map<string, CardGroup>()
+  for (const c of cards) {
+    const group = map.get(c.card_id)
+    if (group) {
+      group.lots.push(c)
+    } else {
+      map.set(c.card_id, {
+        card_id: c.card_id,
+        card_name: c.card_name,
+        current_price: c.current_price,
+        lots: [c],
+      })
+    }
+  }
+  return [...map.values()]
+}
+
 export default function Portfolio() {
   const [cards, setCards] = useState<PortfolioCard[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(() => !!getToken())
   const [error, setError] = useState('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editQty, setEditQty] = useState('')
@@ -28,7 +59,7 @@ export default function Portfolio() {
         // fetch after the portfolio loads so today's snapshot is included
         return getPortfolioHistory().then(setHistory).catch(() => {})
       })
-      .catch(() => setError('Failed to load portfolio.'))
+      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load portfolio.'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -42,13 +73,13 @@ export default function Portfolio() {
     }
   }
 
-  function startEdit(card: PortfolioCard) {
-    setEditingId(card.id)
-    setEditPrice(String(card.purchase_price))
-    setEditQty(String(card.quantity))
+  function startEdit(lot: PortfolioCard) {
+    setEditingId(lot.id)
+    setEditPrice(String(lot.purchase_price))
+    setEditQty(String(lot.quantity))
   }
 
-  async function handleSaveEdit(card: PortfolioCard) {
+  async function handleSaveEdit(lot: PortfolioCard) {
     const price = parseFloat(editPrice)
     const qty = parseInt(editQty)
     if (Number.isNaN(price) || price < 0 || Number.isNaN(qty) || qty < 1) {
@@ -56,9 +87,9 @@ export default function Portfolio() {
       return
     }
     try {
-      await updateCard(card.id, { purchase_price: price, quantity: qty })
+      await updateCard(lot.id, { purchase_price: price, quantity: qty })
       setCards(prev => prev.map(c => {
-        if (c.id !== card.id) return c
+        if (c.id !== lot.id) return c
         const gain_loss = c.current_price != null ? Math.round((c.current_price - price) * qty * 100) / 100 : null
         const gain_loss_pct = c.current_price != null && price > 0
           ? Math.round(((c.current_price - price) / price) * 10000) / 100
@@ -87,6 +118,7 @@ export default function Portfolio() {
   const totalValue = cards.reduce((sum, c) => sum + (c.current_price ?? c.purchase_price) * c.quantity, 0)
   const totalCost = cards.reduce((sum, c) => sum + c.purchase_price * c.quantity, 0)
   const totalGainLoss = cards.reduce((sum, c) => sum + (c.gain_loss ?? 0), 0)
+  const groups = groupByCard(cards)
 
   // With under two days of history, show a flat line at the current value
   const isPlaceholder = history.length < 2
@@ -145,6 +177,40 @@ export default function Portfolio() {
     </div>
   )
 
+  const editForm = (lot: PortfolioCard) => (
+    <div className="add-form">
+      <label className="edit-field">
+        <span className="stat-label">Price paid ($)</span>
+        <input
+          type="number"
+          value={editPrice}
+          onChange={e => setEditPrice(e.target.value)}
+          className="mini-input"
+          min="0"
+          step="0.01"
+        />
+      </label>
+      <label className="edit-field">
+        <span className="stat-label">Quantity</span>
+        <input
+          type="number"
+          value={editQty}
+          onChange={e => setEditQty(e.target.value)}
+          className="mini-input mini-qty"
+          min="1"
+        />
+      </label>
+      <div className="add-form-buttons">
+        <button className="btn-primary btn-sm" onClick={() => handleSaveEdit(lot)}>
+          Save
+        </button>
+        <button className="btn-outline btn-sm" onClick={() => setEditingId(null)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div className="page">
       <h1>My Portfolio</h1>
@@ -176,100 +242,128 @@ export default function Portfolio() {
             </div>
             <div className="summary-stat">
               <span className="stat-label">Cards</span>
-              <span className="stat-value">{cards.length}</span>
+              <span className="stat-value">{groups.length}</span>
             </div>
           </div>
 
           {chart}
 
           <div className="portfolio-grid">
-            {cards.map(card => (
-              <div key={card.id} className="portfolio-card">
-                <Link to={`/card/${card.card_id}`} className="card-link">
-                  <img
-                    src={getCardImageUrl(card.card_id)}
-                    alt={card.card_name}
-                    className="card-image"
-                    loading="lazy"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                </Link>
-                <div className="portfolio-card-body">
-                  <Link to={`/card/${card.card_id}`} className="card-link">
-                    <p className="card-name">{card.card_name}</p>
+            {groups.map(group => {
+              const single = group.lots.length === 1
+              const totalQty = group.lots.reduce((sum, l) => sum + l.quantity, 0)
+              const groupCost = group.lots.reduce((sum, l) => sum + l.purchase_price * l.quantity, 0)
+              const avgPaid = totalQty > 0 ? groupCost / totalQty : 0
+              const groupGain = group.current_price != null
+                ? group.lots.reduce((sum, l) => sum + (l.gain_loss ?? 0), 0)
+                : null
+              const groupGainPct = groupGain != null && groupCost > 0
+                ? Math.round((groupGain / groupCost) * 10000) / 100
+                : null
+              const isExpanded = expandedId === group.card_id
+              const lot = group.lots[0]
+
+              return (
+                <div key={group.card_id} className="portfolio-card">
+                  <Link to={`/card/${group.card_id}`} className="card-link">
+                    <img
+                      src={getCardImageUrl(group.card_id)}
+                      alt={group.card_name}
+                      className="card-image"
+                      loading="lazy"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
                   </Link>
-                  <p className="card-set">Qty: {card.quantity}</p>
-                  {editingId === card.id ? (
-                    <div className="add-form">
-                      <label className="edit-field">
-                        <span className="stat-label">Price paid ($)</span>
-                        <input
-                          type="number"
-                          value={editPrice}
-                          onChange={e => setEditPrice(e.target.value)}
-                          className="mini-input"
-                          min="0"
-                          step="0.01"
-                        />
-                      </label>
-                      <label className="edit-field">
-                        <span className="stat-label">Quantity</span>
-                        <input
-                          type="number"
-                          value={editQty}
-                          onChange={e => setEditQty(e.target.value)}
-                          className="mini-input mini-qty"
-                          min="1"
-                        />
-                      </label>
-                      <div className="add-form-buttons">
-                        <button className="btn-primary btn-sm" onClick={() => handleSaveEdit(card)}>
-                          Save
-                        </button>
-                        <button className="btn-outline btn-sm" onClick={() => setEditingId(null)}>
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="price-rows">
-                        <div className="price-row">
-                          <span className="stat-label">Paid</span>
-                          <span>${card.purchase_price.toFixed(2)}</span>
-                        </div>
-                        <div className="price-row">
-                          <span className="stat-label">Now</span>
-                          <span>{card.current_price != null ? `$${card.current_price.toFixed(2)}` : '—'}</span>
-                        </div>
-                        {card.gain_loss != null && (
+                  <div className="portfolio-card-body">
+                    <Link to={`/card/${group.card_id}`} className="card-link">
+                      <p className="card-name">{group.card_name}</p>
+                    </Link>
+                    <p className="card-set">Qty: {totalQty}{!single ? ` · ${group.lots.length} purchases` : ''}</p>
+
+                    {single && editingId === lot.id ? (
+                      editForm(lot)
+                    ) : (
+                      <>
+                        <div className="price-rows">
                           <div className="price-row">
-                            <span className="stat-label">P&L</span>
-                            <span className={card.gain_loss >= 0 ? 'positive' : 'negative'}>
-                              {card.gain_loss >= 0 ? '+' : ''}${card.gain_loss.toFixed(2)}
-                              {card.gain_loss_pct != null && (
-                                <span className="pct"> ({card.gain_loss_pct > 0 ? '+' : ''}{card.gain_loss_pct}%)</span>
-                              )}
-                            </span>
+                            <span className="stat-label">{single ? 'Paid' : 'Avg Paid'}</span>
+                            <span>${(single ? lot.purchase_price : avgPaid).toFixed(2)}</span>
                           </div>
+                          <div className="price-row">
+                            <span className="stat-label">Now</span>
+                            <span>{group.current_price != null ? `$${group.current_price.toFixed(2)}` : '—'}</span>
+                          </div>
+                          {groupGain != null && (
+                            <div className="price-row">
+                              <span className="stat-label">P&L</span>
+                              <span className={groupGain >= 0 ? 'positive' : 'negative'}>
+                                {groupGain >= 0 ? '+' : ''}${groupGain.toFixed(2)}
+                                {groupGainPct != null && (
+                                  <span className="pct"> ({groupGainPct > 0 ? '+' : ''}{groupGainPct}%)</span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {single ? (
+                          <div className="card-actions">
+                            <button className="btn-outline btn-sm" onClick={() => startEdit(lot)}>
+                              Edit
+                            </button>
+                            <button
+                              className="btn-outline btn-sm btn-danger"
+                              onClick={() => handleRemove(lot.id, group.card_name)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              className="btn-outline btn-sm"
+                              onClick={() => setExpandedId(isExpanded ? null : group.card_id)}
+                            >
+                              {isExpanded ? 'Hide purchases ▴' : `${group.lots.length} purchases ▾`}
+                            </button>
+                            {isExpanded && (
+                              <div className="lot-list">
+                                {group.lots.map(l =>
+                                  editingId === l.id ? (
+                                    <div key={l.id}>{editForm(l)}</div>
+                                  ) : (
+                                    <div key={l.id} className="lot-row">
+                                      <div className="lot-info">
+                                        <span className="lot-main">{l.quantity} @ ${l.purchase_price.toFixed(2)}</span>
+                                        <span className="lot-date">{formatLotDate(l.purchase_date)}</span>
+                                      </div>
+                                      {l.gain_loss != null && (
+                                        <span className={l.gain_loss >= 0 ? 'positive' : 'negative'}>
+                                          {l.gain_loss >= 0 ? '+' : ''}${l.gain_loss.toFixed(2)}
+                                        </span>
+                                      )}
+                                      <div className="lot-actions">
+                                        <button className="lot-btn" onClick={() => startEdit(l)}>Edit</button>
+                                        <button
+                                          className="lot-btn lot-btn-danger"
+                                          onClick={() => handleRemove(l.id, group.card_name)}
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
-                      </div>
-                      <div className="card-actions">
-                        <button className="btn-outline btn-sm" onClick={() => startEdit(card)}>
-                          Edit
-                        </button>
-                        <button
-                          className="btn-outline btn-sm btn-danger"
-                          onClick={() => handleRemove(card.id, card.card_name)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
       )}

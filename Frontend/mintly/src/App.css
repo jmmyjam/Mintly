@@ -442,6 +442,53 @@
   gap: 4px;
 }
 
+.lot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.lot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.lot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lot-main { color: var(--text-h); }
+
+.lot-date {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.lot-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lot-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.lot-btn:hover { color: var(--accent); }
+
+.lot-btn-danger:hover { color: var(--negative); }
+
 .card-actions .btn-outline {
   flex: 1;
   justify-content: center;
