@@ -23,19 +23,37 @@ session = requests.Session()
 session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
 
-_cache: dict[str, tuple[float, list]] = {}
+_cache: dict[str, tuple[float, list | dict]] = {}
 _CACHE_TTL = 21600 #6 hours until cache reset
+
+# Only the fields the frontend uses — full card objects (attacks, legalities, etc.)
+# are several times larger and slower for the upstream API to serve
+_CARD_FIELDS = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
 
 def _fetch_cards(q: str) -> list:
     if q in _cache:
         ts, data = _cache[q]
         if time.time() - ts < _CACHE_TTL:
             return data
-    response = session.get(f"{BASE_URL}/cards", params={"q": q})
+    response = session.get(f"{BASE_URL}/cards", params={"q": q, "select": _CARD_FIELDS})
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
     data = response.json().get("data", [])
     _cache[q] = (time.time(), data)
+    return data
+
+
+def _fetch_card(card_id: str) -> dict:
+    key = f"__card__{card_id}"
+    if key in _cache:
+        ts, data = _cache[key]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    response = session.get(f"{BASE_URL}/cards/{card_id}")
+    if response.status_code != 200:
+        raise HTTPException(status_code=404, detail="Card not found")
+    data = response.json().get("data", {})
+    _cache[key] = (time.time(), data)
     return data
 
 
@@ -149,10 +167,7 @@ def search_cards(
 # Get a single card by its API ID (e.g. base1-4)
 @app.get("/cards/{card_id}")
 def get_card(card_id: str):
-    response = session.get(f"{BASE_URL}/cards/{card_id}")
-    if response.status_code != 200:
-        raise HTTPException(status_code=404, detail="Card not found")
-    return response.json().get("data", {})
+    return _fetch_card(card_id)
 
 
 # List all sets
@@ -164,10 +179,11 @@ def get_sets():
 # Get a single set by its ID (e.g. base1, swsh1)
 @app.get("/sets/{set_id}")
 def get_set(set_id: str):
-    response = session.get(f"{BASE_URL}/sets/{set_id}")
-    if response.status_code != 200:
-        raise HTTPException(status_code=404, detail="Set not found")
-    return response.json().get("data", {})
+    # The cached sets list already has every set — no upstream call needed
+    for s in _fetch_sets():
+        if s.get("id") == set_id:
+            return s
+    raise HTTPException(status_code=404, detail="Set not found")
 
 
 # Get all cards in a set

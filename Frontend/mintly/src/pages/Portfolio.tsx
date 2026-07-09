@@ -55,12 +55,16 @@ export default function Portfolio() {
     if (!getToken()) return
     getPortfolio()
       .then(loaded => {
+        // show the portfolio immediately; the chart fills in when history arrives
         setCards(loaded)
+        setLoading(false)
         // fetch after the portfolio loads so today's snapshot is included
         return getPortfolioHistory().then(setHistory).catch(() => {})
       })
-      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load portfolio.'))
-      .finally(() => setLoading(false))
+      .catch(err => {
+        setError(err instanceof Error ? err.message : 'Failed to load portfolio.')
+        setLoading(false)
+      })
   }, [])
 
   async function handleRemove(id: number, name: string) {

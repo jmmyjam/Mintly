@@ -3,6 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from datetime import datetime, date
+import time
 import requests
 import certifi
 import os
@@ -44,11 +45,40 @@ def extract_price(card_data: dict) -> float | None:
     return None
 
 
-def fetch_price(card_id: str) -> float | None:
-    response = _session.get(f"{BASE_URL}/cards/{card_id}")
-    if response.status_code != 200:
-        return None
-    return extract_price(response.json().get("data", {}))
+# Prices are cached briefly (15 min) — fresher than the 6h search cache since P&L depends on them
+_price_cache: dict[str, tuple[float, float | None]] = {}
+_PRICE_TTL = 900
+
+
+def fetch_prices(card_ids: list[str]) -> dict[str, float]:
+    now = time.time()
+    prices: dict[str, float] = {}
+    missing: list[str] = []
+    for card_id in dict.fromkeys(card_ids):
+        cached = _price_cache.get(card_id)
+        if cached and now - cached[0] < _PRICE_TTL:
+            if cached[1] is not None:
+                prices[card_id] = cached[1]
+        else:
+            missing.append(card_id)
+
+    # One upstream call per 100 cards instead of one call per card
+    for i in range(0, len(missing), 100):
+        chunk = missing[i:i + 100]
+        q = " OR ".join(f'id:"{card_id}"' for card_id in chunk)
+        response = _session.get(
+            f"{BASE_URL}/cards",
+            params={"q": q, "select": "id,tcgplayer", "pageSize": 250},
+        )
+        if response.status_code != 200:
+            continue
+        found = {c["id"]: extract_price(c) for c in response.json().get("data", [])}
+        for card_id in chunk:
+            price = found.get(card_id)
+            _price_cache[card_id] = (now, price)
+            if price is not None:
+                prices[card_id] = price
+    return prices
 
 
 def record_snapshots(db: Session, prices: dict[str, float]):
@@ -78,6 +108,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         raise HTTPException(status_code=404, detail="Card not found")
     card_data = response.json().get("data", {})
     card_name = card_data.get("name", "Unknown")
+    _price_cache[body.card_id] = (time.time(), extract_price(card_data))
 
     purchase_price = body.purchase_price
     if purchase_price is None:
@@ -108,13 +139,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
 def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     cards = db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).all()
 
-    # Fetch each unique card's price once, then snapshot today's prices
-    prices: dict[str, float] = {}
-    for c in cards:
-        if c.card_id not in prices:
-            price = fetch_price(c.card_id)
-            if price is not None:
-                prices[c.card_id] = price
+    prices = fetch_prices([c.card_id for c in cards])
     record_snapshots(db, prices)
 
     result = []
