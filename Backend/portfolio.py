@@ -45,20 +45,25 @@ def extract_price(card_data: dict) -> float | None:
     return None
 
 
-# Prices are cached briefly (15 min) — fresher than the 6h search cache since P&L depends on them
-_price_cache: dict[str, tuple[float, float | None]] = {}
+# Prices are cached briefly (15 min) — fresher than the 6h search cache since P&L depends on them.
+# Image URLs ride along: card ids alone can't predict them (newer sets live on images.scrydex.com,
+# and images.pokemontcg.io serves a card-back PNG for unknown paths).
+_price_cache: dict[str, tuple[float, float | None, str | None]] = {}  # (fetched_at, price, image_url)
 _PRICE_TTL = 900
 
 
-def fetch_prices(card_ids: list[str]) -> dict[str, float]:
+def fetch_prices(card_ids: list[str]) -> tuple[dict[str, float], dict[str, str]]:
     now = time.time()
     prices: dict[str, float] = {}
+    images: dict[str, str] = {}
     missing: list[str] = []
     for card_id in dict.fromkeys(card_ids):
         cached = _price_cache.get(card_id)
         if cached and now - cached[0] < _PRICE_TTL:
             if cached[1] is not None:
                 prices[card_id] = cached[1]
+            if cached[2] is not None:
+                images[card_id] = cached[2]
         else:
             missing.append(card_id)
 
@@ -68,17 +73,22 @@ def fetch_prices(card_ids: list[str]) -> dict[str, float]:
         q = " OR ".join(f'id:"{card_id}"' for card_id in chunk)
         response = _session.get(
             f"{BASE_URL}/cards",
-            params={"q": q, "select": "id,tcgplayer", "pageSize": 250},
+            params={"q": q, "select": "id,tcgplayer,images", "pageSize": 250},
         )
         if response.status_code != 200:
             continue
-        found = {c["id"]: extract_price(c) for c in response.json().get("data", [])}
+        found = {
+            c["id"]: (extract_price(c), c.get("images", {}).get("small"))
+            for c in response.json().get("data", [])
+        }
         for card_id in chunk:
-            price = found.get(card_id)
-            _price_cache[card_id] = (now, price)
+            price, image = found.get(card_id, (None, None))
+            _price_cache[card_id] = (now, price, image)
             if price is not None:
                 prices[card_id] = price
-    return prices
+            if image is not None:
+                images[card_id] = image
+    return prices, images
 
 
 def record_snapshots(db: Session, prices: dict[str, float]):
@@ -108,7 +118,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         raise HTTPException(status_code=404, detail="Card not found")
     card_data = response.json().get("data", {})
     card_name = card_data.get("name", "Unknown")
-    _price_cache[body.card_id] = (time.time(), extract_price(card_data))
+    _price_cache[body.card_id] = (time.time(), extract_price(card_data), card_data.get("images", {}).get("small"))
 
     purchase_price = body.purchase_price
     if purchase_price is None:
@@ -139,7 +149,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
 def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     cards = db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).all()
 
-    prices = fetch_prices([c.card_id for c in cards])
+    prices, images = fetch_prices([c.card_id for c in cards])
     record_snapshots(db, prices)
 
     result = []
@@ -157,6 +167,7 @@ def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(
             "current_price": current_price,
             "gain_loss": gain_loss,
             "gain_loss_pct": gain_loss_pct,
+            "image_url": images.get(c.card_id),
         })
     return result
 

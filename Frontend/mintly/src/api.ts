@@ -45,6 +45,7 @@ export interface PortfolioCard {
   current_price: number | null
   gain_loss: number | null
   gain_loss_pct: number | null
+  image_url: string | null
 }
 
 export function getToken() {

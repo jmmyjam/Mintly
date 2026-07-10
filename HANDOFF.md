@@ -88,6 +88,7 @@ Tokenizes the query, then:
 - **Session expiry**: JWTs last 7 days. Any authed call after expiry gets a 401 → token cleared → redirect to `/login` with a "session expired" notice (see `SessionExpiredError` in `api.ts`).
 - **Upstream latency dominates cold requests**: a never-cached search can take the upstream API tens of seconds; caching + `select=` trimming make repeats fast but can't fix the first hit. Portfolio loads are one batched call regardless of collection size (measured ~0.8s cold, ~4ms warm for 5 cards).
 - **Historic merged rows**: before lots existed, duplicate adds were averaged into one row. Those can't be un-averaged; new purchases keep exact prices.
+- **Card image URLs can't be guessed from card ids**: newer sets (Mega Evolution era) are hosted on `images.scrydex.com`, and `images.pokemontcg.io` answers unknown paths with a 404 whose body is a *card-back PNG* that browsers render anyway (no `onerror`). `/portfolio` therefore returns each row's real `image_url` (fetched alongside prices, same cache); the frontend's `getCardImageUrl` guess is only a fallback.
 - **Rarity names are era-specific** exact strings (old: "Rare Holo"; Scarlet & Violet: "Double Rare") — a rarity filter + wrong-era set legitimately returns nothing.
 
 ## Suggested next steps

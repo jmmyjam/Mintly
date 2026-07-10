@@ -20,6 +20,7 @@ interface CardGroup {
   card_id: string
   card_name: string
   current_price: number | null
+  image_url: string | null
   lots: PortfolioCard[]
 }
 
@@ -34,6 +35,7 @@ function groupByCard(cards: PortfolioCard[]): CardGroup[] {
         card_id: c.card_id,
         card_name: c.card_name,
         current_price: c.current_price,
+        image_url: c.image_url,
         lots: [c],
       })
     }
@@ -290,7 +292,7 @@ export default function Portfolio() {
                 <div key={group.card_id} className="portfolio-card">
                   <Link to={`/card/${group.card_id}`} className="card-link">
                     <img
-                      src={getCardImageUrl(group.card_id)}
+                      src={group.image_url ?? getCardImageUrl(group.card_id)}
                       alt={group.card_name}
                       className="card-image"
                       loading="lazy"
