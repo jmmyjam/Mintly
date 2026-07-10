@@ -1,6 +1,6 @@
 # Mintly — Handoff Document
 
-*Last updated: July 8, 2026*
+*Last updated: July 10, 2026*
 
 A Pokemon TCG portfolio tracker: search cards, view live market prices, and track a collection's value over time.
 
@@ -37,9 +37,9 @@ npx eslint src/                      # lint (strict react-hooks rules enabled)
 ## Architecture
 
 ### Backend files
-- `card_api.py` — FastAPI app, CORS (allows `localhost:5173`), card/set proxy endpoints, smart search, in-memory response cache (6-hour TTL, per-process, cleared on every `--reload` restart).
+- `card_api.py` — FastAPI app, CORS (allows `localhost:5173`), card/set proxy endpoints, smart search, in-memory response cache (6-hour TTL, per-process, cleared on every `--reload` restart; covers searches and single-card lookups). Card searches pass `select=` upstream (`_CARD_FIELDS`) so responses carry only the fields the frontend uses — a full-set search is ~90KB instead of multiple MB. `/sets/{id}` is answered from the cached sets list with no upstream call.
 - `auth.py` — register/login, JWT creation/validation (`get_current_user` dependency), password rules.
-- `portfolio.py` — portfolio CRUD, price fetching, daily price snapshots, history endpoint.
+- `portfolio.py` — portfolio CRUD, batched price fetching, daily price snapshots, history endpoint. `fetch_prices` resolves all held cards in one upstream OR-query (`id:"a" OR id:"b" …`, chunks of 100) and caches per-card prices for 15 minutes (`_price_cache`); `/portfolio/add` seeds that cache from the card it already fetched.
 - `models.py` — SQLAlchemy models; tables auto-created at startup via `create_all`.
 - `database.py` — engine/session setup from `DATABASE_URL`.
 - Alembic is configured (`alembic.ini`, `alembic/`) but **has no migrations** — schema changes currently rely on `create_all`, which only adds new tables, never alters existing ones.
@@ -56,9 +56,9 @@ npx eslint src/                      # lint (strict react-hooks rules enabled)
 | `POST /auth/login` | OAuth2 form body; accepts email **or** username. Returns a 7-day JWT. |
 | `GET /search?q=` | Smart search — see below. |
 | `GET /cards?name=&set_id=&number=&rarity=&type=` | Filtered search; drives the frontend filter bar. |
-| `GET /cards/{card_id}` | Single card; drives the detail page. |
-| `GET /sets`, `GET /sets/{id}`, `GET /sets/{id}/cards` | Sets list is cached; drives filter dropdown + default view. |
-| `GET /portfolio` | Auth. Returns one row per lot with live price + P&L. Also records today's snapshots as a side effect. |
+| `GET /cards/{card_id}` | Single card; drives the detail page. Cached (6h). |
+| `GET /sets`, `GET /sets/{id}`, `GET /sets/{id}/cards` | Sets list is cached; single sets served from it; drives filter dropdown + default view. |
+| `GET /portfolio` | Auth. Returns one row per lot with live price + P&L (prices fetched in one batched upstream call, 15-min cache). Also records today's snapshots as a side effect. |
 | `GET /portfolio/history` | Auth. `[{date, total_value}]` from snapshots × current holdings; missing days carry the last known price forward. |
 | `POST /portfolio/add` | Auth. `purchase_price` optional → falls back to current market price (400 if the card has none). |
 | `PATCH /portfolio/{id}` | Auth. Update `purchase_price` and/or `quantity` on one lot. |
@@ -74,9 +74,9 @@ Tokenizes the query, then:
 ### Frontend pages (`src/pages/`)
 - `Search.tsx` — debounced (400ms) search-as-you-type; filter bar (set/rarity/type/number → `/cards`, otherwise `/search`); shows the newest set by default when empty; "add to portfolio" inline form.
 - `CardDetail.tsx` — route `/card/:cardId`; large image, set/rarity/type/HP/artist facts, full price-variant table (low/mid/high/market), add form with market price pre-filled. Linked from search results and portfolio tiles.
-- `Portfolio.tsx` — summary stats, value-over-time area chart, card grid grouped by card with expandable per-purchase (lot) breakdown; inline edit per lot.
-- `Login.tsx` — combined login/register with client-side password validation mirroring the backend.
-- `api.ts` — all fetch calls. `authedFetch` wraps authenticated requests: any 401 clears the stored token and throws "Session expired." Token lives in `localStorage`.
+- `Portfolio.tsx` — summary stats, value-over-time area chart, card grid grouped by card with expandable per-purchase (lot) breakdown; inline edit per lot. Renders as soon as the portfolio arrives; the history chart fills in when the (deliberately later) history call returns.
+- `Login.tsx` — combined login/register with client-side password validation mirroring the backend. Shows a notice (e.g. "Your session expired") when redirected here via router state.
+- `api.ts` — all fetch calls. `authedFetch` wraps authenticated requests: any 401 clears the stored token and throws `SessionExpiredError`; pages catch it and redirect to `/login` with that notice. Token lives in `localStorage`.
 
 ## Behaviors worth knowing
 
@@ -84,6 +84,8 @@ Tokenizes the query, then:
 - **History chart**: computed against *current* holdings, so editing a quantity retroactively changes past points. Snapshots only record on days someone loads their portfolio. With <2 days of data the chart shows a flat placeholder line at today's value.
 - **Newest sets have no prices**: the upstream API has zero TCGPlayer data for the 2026 "Mega Evolution" era sets (verified: me4, me3, me2pt5 all 0/N cards). The UI shows a "prices unavailable" note when a whole result set is priceless; blank-price adds for those cards are rejected with a clear message. Not a bug — upstream data lag.
 - **Add button** shows "Adding…" and blocks double-clicks (the add round-trips to the external API, 1–3s).
+- **Session expiry**: JWTs last 7 days. Any authed call after expiry gets a 401 → token cleared → redirect to `/login` with a "session expired" notice (see `SessionExpiredError` in `api.ts`).
+- **Upstream latency dominates cold requests**: a never-cached search can take the upstream API tens of seconds; caching + `select=` trimming make repeats fast but can't fix the first hit. Portfolio loads are one batched call regardless of collection size (measured ~0.8s cold, ~4ms warm for 5 cards).
 - **Historic merged rows**: before lots existed, duplicate adds were averaged into one row. Those can't be un-averaged; new purchases keep exact prices.
 - **Rarity names are era-specific** exact strings (old: "Rare Holo"; Scarlet & Violet: "Double Rare") — a rarity filter + wrong-era set legitimately returns nothing.
 
@@ -101,5 +103,6 @@ Tokenizes the query, then:
 
 - Run `npm`/`eslint` commands from `Frontend/mintly/`, not the repo root.
 - The eslint react-hooks rules are strict (v7): no synchronous `setState` inside `useEffect` — defer via promise callbacks or timeouts (see `Search.tsx`/`CardDetail.tsx` for the pattern).
-- Every backend file save restarts the dev server → wipes the response cache → first search/portfolio load after is slow.
+- Every backend file save restarts the dev server → wipes the response and price caches → first search/portfolio load after is slow.
+- Card searches only return the fields listed in `_CARD_FIELDS` (`card_api.py`). If the frontend `Card` type grows a field, add it there too or it will arrive undefined.
 - `Backend/.env` holds real secrets and is gitignored — never commit it or move its values into query strings/logs.

@@ -23,9 +23,9 @@ There are no tests yet.
 
 ## Structure
 
-- `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL)
+- `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL, covers searches + single cards; `/sets/{id}` is answered from the cached sets list)
 - `Backend/auth.py` — register/login, JWT, `get_current_user` dependency, password rules
-- `Backend/portfolio.py` — portfolio CRUD, price fetching, daily snapshots, history endpoint
+- `Backend/portfolio.py` — portfolio CRUD, batched price fetching (`fetch_prices`, one upstream call per 100 cards, 15-min `_price_cache`), daily snapshots, history endpoint
 - `Backend/models.py` — SQLAlchemy models; tables auto-created via `create_all` (Alembic is scaffolded but unused — no migrations exist)
 - `Frontend/mintly/src/api.ts` — ALL fetch calls live here; pages never call `fetch` directly
 - `Frontend/mintly/src/pages/` — Search, CardDetail, Portfolio, Login, Home
@@ -37,13 +37,14 @@ There are no tests yet.
 - Credentials/secrets never go in query strings (they end up in server logs). Register uses a JSON body; keep it that way.
 - Price-variant preference order (keep backend `extract_price` and frontend `getCardPrice` in sync): holofoil → normal → reverseHolofoil → 1stEditionHolofoil, using `mid`.
 - TCG API query syntax: multi-word `name:` filters MUST be quoted (`name:"pikachu vmax"`) — bare words after a filter return HTTP 400 upstream.
-- Authenticated frontend calls go through `authedFetch` in `api.ts` (clears token + throws "Session expired" on 401). New authed endpoints should use it.
+- Authenticated frontend calls go through `authedFetch` in `api.ts` (clears token + throws `SessionExpiredError` on 401). Pages catch that error and redirect to `/login` with a notice in router state — new authed flows must do the same.
+- Card searches request only the fields the frontend uses (`_CARD_FIELDS` in `card_api.py`, via the upstream `select=` param). If the frontend `Card` type grows a field, add it there too or it will arrive undefined.
 - Backend validation uses Pydantic models with `Field` constraints (price ≥ 0, quantity ≥ 1); mirror user-facing rules client-side for instant feedback, with identical messages.
 
 ## Gotchas
 
 - eslint react-hooks v7 is strict: no synchronous `setState` inside `useEffect` bodies — set state in promise callbacks, or defer via `setTimeout` (see the debounce effect in `Search.tsx`).
-- The backend cache is per-process and in-memory; every `--reload` restart clears it, so the first external-API call after a backend edit is slow (1–3s). Don't mistake that for a bug.
+- The backend caches (search/card `_cache` and portfolio `_price_cache`) are per-process and in-memory; every `--reload` restart clears them, so the first external-API call after a backend edit is slow. A never-cached search can take the upstream API tens of seconds — that latency is upstream, not a bug.
 - The newest card sets (2026 "Mega Evolution" era) have NO price data upstream — empty `tcgplayer.prices` is expected there, and the UI already handles it.
 - `Backend/.env` holds real secrets (DB URL, SECRET_KEY, API key) and is gitignored — don't read it into command output or commit it.
 - `create_all` only creates missing tables; it never alters existing ones. Column changes require manual SQL or finally adopting Alembic.
