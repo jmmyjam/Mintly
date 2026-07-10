@@ -7,14 +7,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from database import engine
-from models import Base
 from auth import router as auth_router
 from portfolio import router as portfolio_router
 
 load_dotenv()
 
-Base.metadata.create_all(bind=engine)
+# Schema is managed by Alembic — run `alembic upgrade head` after pulling
+# model changes (create_all is gone; it could only add tables, never alter).
 
 BASE_URL = "https://api.pokemontcg.io/v2"
 API_KEY = os.getenv("POKEMON_TCG_API_KEY")

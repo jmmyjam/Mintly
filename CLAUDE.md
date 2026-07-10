@@ -10,6 +10,8 @@ Backend (run from `Backend/`, uses `venv/`):
 ```bash
 venv/bin/uvicorn card_api:app --reload   # dev server on :8000, docs at /docs
 venv/bin/python -m py_compile <file>.py  # quick syntax check
+venv/bin/alembic upgrade head            # apply DB migrations
+venv/bin/alembic revision --autogenerate -m "..."  # new migration after model changes
 ```
 
 Frontend (run from `Frontend/mintly/` — NOT the repo root):
@@ -26,7 +28,7 @@ There are no tests yet.
 - `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL, covers searches + single cards; `/sets/{id}` is answered from the cached sets list)
 - `Backend/auth.py` — register/login, JWT, `get_current_user` dependency, password rules
 - `Backend/portfolio.py` — portfolio CRUD, batched price fetching (`fetch_prices`, one upstream call per 100 cards, 15-min `_price_cache`), daily snapshots, history endpoint
-- `Backend/models.py` — SQLAlchemy models; tables auto-created via `create_all` (Alembic is scaffolded but unused — no migrations exist)
+- `Backend/models.py` — SQLAlchemy models; schema is managed by Alembic (`alembic/versions/`), NOT `create_all` — model changes need a migration
 - `Frontend/mintly/src/api.ts` — ALL fetch calls live here; pages never call `fetch` directly
 - `Frontend/mintly/src/pages/` — Search, CardDetail, Portfolio, Login, Home
 - `Frontend/mintly/src/App.css` — single stylesheet; use the CSS variables from `index.css` (`--bg-card`, `--border`, `--text`, `--text-h`, `--accent`, `--positive`, `--negative`)
@@ -47,5 +49,5 @@ There are no tests yet.
 - The backend caches (search/card `_cache` and portfolio `_price_cache`) are per-process and in-memory; every `--reload` restart clears them, so the first external-API call after a backend edit is slow. A never-cached search can take the upstream API tens of seconds — that latency is upstream, not a bug.
 - The newest card sets (2026 "Mega Evolution" era) have NO price data upstream — empty `tcgplayer.prices` is expected there, and the UI already handles it.
 - `Backend/.env` holds real secrets (DB URL, SECRET_KEY, API key) and is gitignored — don't read it into command output or commit it.
-- `create_all` only creates missing tables; it never alters existing ones. Column changes require manual SQL or finally adopting Alembic.
+- Schema changes: edit `models.py`, then `alembic revision --autogenerate -m "..."`, review the generated file, and `alembic upgrade head`. The app no longer calls `create_all`, so an unapplied migration means missing tables/columns at runtime.
 - Always verify with `npm run build` (not just eslint) — the strict tsconfig catches things lint doesn't, e.g. recharts callback param types.

@@ -17,6 +17,7 @@ A Pokemon TCG portfolio tracker: search cards, view live market prices, and trac
 **Backend** (from `Backend/`):
 ```bash
 source venv/bin/activate
+alembic upgrade head                 # apply DB migrations (needed on first run / after pulling schema changes)
 uvicorn card_api:app --reload        # http://localhost:8000, docs at /docs
 ```
 Requires a `.env` in `Backend/` (not committed):
@@ -40,9 +41,9 @@ npx eslint src/                      # lint (strict react-hooks rules enabled)
 - `card_api.py` — FastAPI app, CORS (allows `localhost:5173`), card/set proxy endpoints, smart search, in-memory response cache (6-hour TTL, per-process, cleared on every `--reload` restart; covers searches and single-card lookups). Card searches pass `select=` upstream (`_CARD_FIELDS`) so responses carry only the fields the frontend uses — a full-set search is ~90KB instead of multiple MB. `/sets/{id}` is answered from the cached sets list with no upstream call.
 - `auth.py` — register/login, JWT creation/validation (`get_current_user` dependency), password rules.
 - `portfolio.py` — portfolio CRUD, batched price fetching, daily price snapshots, history endpoint. `fetch_prices` resolves all held cards in one upstream OR-query (`id:"a" OR id:"b" …`, chunks of 100) and caches per-card prices for 15 minutes (`_price_cache`); `/portfolio/add` seeds that cache from the card it already fetched.
-- `models.py` — SQLAlchemy models; tables auto-created at startup via `create_all`.
+- `models.py` — SQLAlchemy models.
 - `database.py` — engine/session setup from `DATABASE_URL`.
-- Alembic is configured (`alembic.ini`, `alembic/`) but **has no migrations** — schema changes currently rely on `create_all`, which only adds new tables, never alters existing ones.
+- Schema is managed by **Alembic** (`alembic/versions/`); `env.py` reads `DATABASE_URL` from `Backend/.env` and targets `models.Base.metadata`, so `alembic revision --autogenerate` works. The app no longer calls `create_all` at startup — after changing `models.py`, generate a migration, review it, and run `alembic upgrade head`. Databases created under the old `create_all` regime were stamped at the initial revision (`alembic stamp head` before the first real migration).
 
 ### Data model
 - `users` — id, email, username, hashed_password (bcrypt), created_at.
@@ -92,12 +93,11 @@ Tokenizes the query, then:
 ## Suggested next steps
 
 1. **Tests** — there are none. FastAPI's `TestClient` makes auth/portfolio endpoint tests cheap; those routers have the most logic.
-2. **Adopt Alembic properly** — generate an initial migration and stop relying on `create_all` before the schema grows further (it can't alter existing tables).
-3. **Search pagination** — the TCG API caps pages at 250; popular queries only ever show page 1.
-4. **Deployment prep** — `BASE` is hardcoded to `localhost:8000` in `api.ts`; CORS to `localhost:5173` in `card_api.py`. Move both to env vars. The cache is in-memory (single-process only).
-5. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
-6. **Portfolio sorting/filtering** — by gain/loss, value, date; can be done client-side.
-7. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
+2. **Search pagination** — the TCG API caps pages at 250; popular queries only ever show page 1.
+3. **Deployment prep** — `BASE` is hardcoded to `localhost:8000` in `api.ts`; CORS to `localhost:5173` in `card_api.py`. Move both to env vars. The cache is in-memory (single-process only).
+4. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
+5. **Portfolio sorting/filtering** — by gain/loss, value, date; can be done client-side.
+6. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
 
 ## Gotchas for developers
 
