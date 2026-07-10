@@ -12,6 +12,7 @@ venv/bin/uvicorn card_api:app --reload   # dev server on :8000, docs at /docs
 venv/bin/python -m py_compile <file>.py  # quick syntax check
 venv/bin/alembic upgrade head            # apply DB migrations
 venv/bin/alembic revision --autogenerate -m "..."  # new migration after model changes
+venv/bin/pytest tests/ -q                # run backend tests (offline: sqlite + fake upstream)
 ```
 
 Frontend (run from `Frontend/mintly/` — NOT the repo root):
@@ -21,7 +22,7 @@ npm run build      # tsc + vite build — use this to verify changes compile
 npx eslint src/    # lint
 ```
 
-There are no tests yet.
+Backend tests live in `Backend/tests/` (auth + portfolio routers). `conftest.py` swaps the DB for in-memory SQLite and replaces `portfolio._session` with a fake upstream — set env vars / fakes BEFORE importing app modules (they read config at import time). The frontend has no tests yet.
 
 ## Structure
 

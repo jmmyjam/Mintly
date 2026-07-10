@@ -19,6 +19,8 @@ A Pokemon TCG portfolio tracker: search cards, view live market prices, and trac
 source venv/bin/activate
 alembic upgrade head                 # apply DB migrations (needed on first run / after pulling schema changes)
 uvicorn card_api:app --reload        # http://localhost:8000, docs at /docs
+pip install -r requirements-dev.txt  # test deps (pytest, httpx)
+pytest tests/ -q                     # backend tests — offline (in-memory SQLite + fake upstream API)
 ```
 Requires a `.env` in `Backend/` (not committed):
 ```
@@ -43,6 +45,7 @@ npx eslint src/                      # lint (strict react-hooks rules enabled)
 - `portfolio.py` — portfolio CRUD, batched price fetching, daily price snapshots, history endpoint. `fetch_prices` resolves all held cards in one upstream OR-query (`id:"a" OR id:"b" …`, chunks of 100) and caches per-card prices for 15 minutes (`_price_cache`); `/portfolio/add` seeds that cache from the card it already fetched.
 - `models.py` — SQLAlchemy models.
 - `database.py` — engine/session setup from `DATABASE_URL`.
+- `tests/` — pytest suite for the auth and portfolio routers (31 tests, runs offline in ~9s). `conftest.py` sets `DATABASE_URL`/`SECRET_KEY` env vars **before** importing app modules (they read config at import time), overrides `get_db` with an in-memory SQLite session, and swaps `portfolio._session` for a `FakeUpstream` — no Postgres or network needed. Dev deps: `requirements-dev.txt`.
 - Schema is managed by **Alembic** (`alembic/versions/`); `env.py` reads `DATABASE_URL` from `Backend/.env` and targets `models.Base.metadata`, so `alembic revision --autogenerate` works. The app no longer calls `create_all` at startup — after changing `models.py`, generate a migration, review it, and run `alembic upgrade head`. Databases created under the old `create_all` regime were stamped at the initial revision (`alembic stamp head` before the first real migration).
 
 ### Data model
@@ -93,11 +96,11 @@ Tokenizes the query, then:
 
 ## Suggested next steps
 
-1. **Tests** — there are none. FastAPI's `TestClient` makes auth/portfolio endpoint tests cheap; those routers have the most logic.
-2. **Search pagination** — the TCG API caps pages at 250; popular queries only ever show page 1.
-3. **Deployment prep** — `BASE` is hardcoded to `localhost:8000` in `api.ts`; CORS to `localhost:5173` in `card_api.py`. Move both to env vars. The cache is in-memory (single-process only).
-4. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
-5. **Portfolio sorting/filtering** — by gain/loss, value, date; can be done client-side.
+1. **Search pagination** — the TCG API caps pages at 250; popular queries only ever show page 1.
+2. **Deployment prep** — `BASE` is hardcoded to `localhost:8000` in `api.ts`; CORS to `localhost:5173` in `card_api.py`. Move both to env vars. The cache is in-memory (single-process only).
+3. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
+4. **Portfolio sorting/filtering** — by gain/loss, value, date; can be done client-side.
+5. **Frontend tests** — the backend routers are covered (`Backend/tests/`); the React pages are not.
 6. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
 
 ## Gotchas for developers
