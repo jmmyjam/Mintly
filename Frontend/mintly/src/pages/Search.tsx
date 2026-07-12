@@ -55,6 +55,9 @@ export default function Search() {
   const [typeFilter, setTypeFilter] = useState("");
   const [number, setNumber] = useState("");
   const [cards, setCards] = useState<Card[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize, setPageSize] = useState(250);
   const [resultsLabel, setResultsLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -84,55 +87,60 @@ export default function Search() {
       .catch(() => {});
   }, []);
 
-  async function runSearch() {
+  const isDefaultView = !query.trim() && !hasFilters;
+
+  async function runSearch(p: number) {
     setLoading(true);
     setError("");
     setAdding(null);
     try {
-      const results = hasFilters
-        ? await filterCards({
+      let results;
+      if (hasFilters) {
+        results = await filterCards(
+          {
             name: query.trim() || undefined,
             set_id: setId || undefined,
             rarity: rarity || undefined,
             type: typeFilter || undefined,
             number: number.trim() || undefined,
-          })
-        : await searchCards(query);
-      setCards(results);
-      setResultsLabel("");
-      if (results.length === 0) setError("No cards found.");
+          },
+          p,
+        );
+        setResultsLabel("");
+      } else if (query.trim()) {
+        results = await searchCards(query, p);
+        setResultsLabel("");
+      } else {
+        // Nothing typed and no filters — show the newest set by default
+        const newest = sets[0];
+        results = await filterCards({ set_id: newest.id }, p);
+        setResultsLabel(`Newest set — ${newest.name}`);
+      }
+      setCards(results.data);
+      setPage(p);
+      setTotalCount(results.totalCount);
+      setPageSize(results.pageSize || 250);
+      if (results.totalCount === 0 && !isDefaultView) setError("No cards found.");
     } catch {
-      setError("Search failed. Make sure the server is running.");
+      setError(
+        isDefaultView
+          ? "Failed to load cards. Make sure the server is running."
+          : "Search failed. Make sure the server is running.",
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadNewestSet(newest: CardSet) {
-    setLoading(true);
-    setError("");
-    setAdding(null);
-    try {
-      const results = await filterCards({ set_id: newest.id });
-      setCards(results);
-      setResultsLabel(`Newest set — ${newest.name}`);
-    } catch {
-      setError("Failed to load cards. Make sure the server is running.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  // Query/filter changes always restart from page 1; only Prev/Next move it
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim() && !hasFilters) {
-      // Nothing typed and no filters — show the newest set by default
       if (sets.length > 0) {
-        const newest = sets[0];
-        debounceRef.current = setTimeout(() => loadNewestSet(newest), 0);
+        debounceRef.current = setTimeout(() => runSearch(1), 0);
       }
     } else {
-      debounceRef.current = setTimeout(() => runSearch(), 400); //400 ms debounce
+      debounceRef.current = setTimeout(() => runSearch(1), 400); //400 ms debounce
     }
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -143,7 +151,13 @@ export default function Search() {
   function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim() || hasFilters) runSearch();
+    if (query.trim() || hasFilters) runSearch(1);
+  }
+
+  function goToPage(p: number) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    runSearch(p);
+    window.scrollTo({ top: 0 });
   }
 
   function clearFilters() {
@@ -186,6 +200,29 @@ export default function Search() {
       setAddBusy(false);
     }
   }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const pager = totalPages > 1 && cards.length > 0 && !error && (
+    <div className="pagination">
+      <button
+        className="btn-outline btn-sm"
+        disabled={page <= 1 || loading}
+        onClick={() => goToPage(page - 1)}
+      >
+        ← Prev
+      </button>
+      <span className="page-info">
+        Page {page} of {totalPages} · {totalCount.toLocaleString()} cards
+      </span>
+      <button
+        className="btn-outline btn-sm"
+        disabled={page >= totalPages || loading}
+        onClick={() => goToPage(page + 1)}
+      >
+        Next →
+      </button>
+    </div>
+  );
 
   return (
     <div className="page">
@@ -266,6 +303,8 @@ export default function Search() {
             source hasn't been updated for this set.
           </p>
         )}
+
+      {pager}
 
       <div className="card-grid">
         {cards.map((card) => {
@@ -357,6 +396,8 @@ export default function Search() {
           );
         })}
       </div>
+
+      {pager}
     </div>
   );
 }

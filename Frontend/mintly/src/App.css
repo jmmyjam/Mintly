@@ -206,6 +206,19 @@
   margin: -8px 0 16px;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.page-info {
+  color: var(--text);
+  font-size: 13px;
+}
+
 /* Card detail */
 .card-link {
   color: inherit;

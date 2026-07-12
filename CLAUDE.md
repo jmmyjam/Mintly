@@ -22,13 +22,13 @@ npm run build      # tsc + vite build — use this to verify changes compile
 npx eslint src/    # lint
 ```
 
-Backend tests live in `Backend/tests/` (auth + portfolio routers). `conftest.py` swaps the DB for in-memory SQLite and replaces `portfolio._session` with a fake upstream — set env vars / fakes BEFORE importing app modules (they read config at import time). The frontend has no tests yet.
+Backend tests live in `Backend/tests/` (auth, portfolio + card-search routers). `conftest.py` swaps the DB for in-memory SQLite and replaces `portfolio._session` with a fake upstream (`test_search.py` does the same for `card_api.session`) — set env vars / fakes BEFORE importing app modules (they read config at import time). The frontend has no tests yet.
 
 ## Structure
 
-- `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL, covers searches + single cards; `/sets/{id}` is answered from the cached sets list)
+- `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL, covers searches + single cards, keyed per query+page; `/sets/{id}` is answered from the cached sets list)
 - `Backend/auth.py` — register/login, JWT, `get_current_user` dependency, password rules
-- `Backend/portfolio.py` — portfolio CRUD, batched price fetching (`fetch_prices`, one upstream call per 100 cards, 15-min `_price_cache`), daily snapshots, history endpoint
+- `Backend/portfolio.py` — portfolio CRUD, batched price fetching (`fetch_prices`, one upstream call per 100 cards, 15-min `_price_cache`; card image URLs ride along — never guess them from card ids, see HANDOFF), daily snapshots, history endpoint
 - `Backend/models.py` — SQLAlchemy models; schema is managed by Alembic (`alembic/versions/`), NOT `create_all` — model changes need a migration
 - `Frontend/mintly/src/api.ts` — ALL fetch calls live here; pages never call `fetch` directly
 - `Frontend/mintly/src/pages/` — Search, CardDetail, Portfolio, Login, Home
@@ -42,6 +42,7 @@ Backend tests live in `Backend/tests/` (auth + portfolio routers). `conftest.py`
 - TCG API query syntax: multi-word `name:` filters MUST be quoted (`name:"pikachu vmax"`) — bare words after a filter return HTTP 400 upstream.
 - Authenticated frontend calls go through `authedFetch` in `api.ts` (clears token + throws `SessionExpiredError` on 401). Pages catch that error and redirect to `/login` with a notice in router state — new authed flows must do the same.
 - Card searches request only the fields the frontend uses (`_CARD_FIELDS` in `card_api.py`, via the upstream `select=` param). If the frontend `Card` type grows a field, add it there too or it will arrive undefined.
+- Card-list endpoints (`/search`, `/cards`, `/sets/{id}/cards`) take `?page=` and return a paged envelope `{data, page, pageSize, totalCount}` (250/page — the upstream max), typed as `CardPage` in `api.ts`. Don't return bare card arrays from new list endpoints.
 - Backend validation uses Pydantic models with `Field` constraints (price ≥ 0, quantity ≥ 1); mirror user-facing rules client-side for instant feedback, with identical messages.
 
 ## Gotchas

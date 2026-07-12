@@ -119,8 +119,16 @@ export async function register(email: string, username: string, password: string
   }
 }
 
-export async function searchCards(query: string): Promise<Card[]> {
-  const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}`)
+// One page of search results (backend pages at 250 cards, the upstream max)
+export interface CardPage {
+  data: Card[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export async function searchCards(query: string, page = 1): Promise<CardPage> {
+  const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}&page=${page}`)
   if (!res.ok) throw new Error('Search failed')
   return res.json()
 }
@@ -152,11 +160,12 @@ export interface CardFilters {
   type?: string
 }
 
-export async function filterCards(filters: CardFilters): Promise<Card[]> {
+export async function filterCards(filters: CardFilters, page = 1): Promise<CardPage> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value)
   }
+  params.set('page', String(page))
   const res = await fetch(`${BASE}/cards?${params}`)
   if (!res.ok) throw new Error('Search failed')
   return res.json()

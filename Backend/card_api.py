@@ -3,7 +3,7 @@ import re
 import time
 import requests
 import certifi
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -29,16 +29,30 @@ _CACHE_TTL = 21600 #6 hours until cache reset
 # are several times larger and slower for the upstream API to serve
 _CARD_FIELDS = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
 
-def _fetch_cards(q: str) -> list:
-    if q in _cache:
-        ts, data = _cache[q]
+_PAGE_SIZE = 250  # upstream maximum
+
+
+def _fetch_cards(q: str, page: int = 1) -> dict:
+    key = f"{q}|page:{page}"
+    if key in _cache:
+        ts, data = _cache[key]
         if time.time() - ts < _CACHE_TTL:
             return data
-    response = session.get(f"{BASE_URL}/cards", params={"q": q, "select": _CARD_FIELDS})
+    response = session.get(
+        f"{BASE_URL}/cards",
+        params={"q": q, "select": _CARD_FIELDS, "page": page, "pageSize": _PAGE_SIZE},
+    )
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
-    data = response.json().get("data", [])
-    _cache[q] = (time.time(), data)
+    payload = response.json()
+    cards = payload.get("data", [])
+    data = {
+        "data": cards,
+        "page": page,
+        "pageSize": payload.get("pageSize", _PAGE_SIZE),
+        "totalCount": payload.get("totalCount", len(cards)),
+    }
+    _cache[key] = (time.time(), data)
     return data
 
 
@@ -81,7 +95,7 @@ app.include_router(portfolio_router)
 
 # Natural language search
 @app.get("/search")
-def smart_search(q: str):
+def smart_search(q: str, page: int = Query(1, ge=1)):
     parts = q.strip().replace('"', "").split()
     number = None
     set_id = None
@@ -124,14 +138,16 @@ def smart_search(q: str):
     if not name_parts and not number and not set_id:
         raise HTTPException(status_code=400, detail="Invalid search query")
 
-    results = _fetch_cards(build_query(name_parts))
+    results = _fetch_cards(build_query(name_parts), page)
 
-    # Fallback for loose names like "sleepy pikachu": drop words until something matches
-    if not results and len(name_parts) > 1:
+    # Fallback for loose names like "sleepy pikachu": drop words until something matches.
+    # Keyed on totalCount, not the page's data — an empty page 2 of a real query
+    # must not trigger the fallback.
+    if results["totalCount"] == 0 and len(name_parts) > 1:
         for i in range(1, len(name_parts)):
             for candidate in (name_parts[i:], name_parts[:-i]):
-                results = _fetch_cards(build_query(candidate))
-                if results:
+                results = _fetch_cards(build_query(candidate), page)
+                if results["totalCount"] > 0:
                     return results
     return results
 
@@ -144,6 +160,7 @@ def search_cards(
     number: str | None = None,
     rarity: str | None = None,
     type: str | None = None,
+    page: int = Query(1, ge=1),
 ):
     filters = []
     if name:
@@ -160,7 +177,7 @@ def search_cards(
     if not filters:
         raise HTTPException(status_code=400, detail="Provide at least one search parameter")
 
-    return _fetch_cards(" ".join(filters))
+    return _fetch_cards(" ".join(filters), page)
 
 
 # Get a single card by its API ID (e.g. base1-4)
@@ -187,5 +204,5 @@ def get_set(set_id: str):
 
 # Get all cards in a set
 @app.get("/sets/{set_id}/cards")
-def get_set_cards(set_id: str):
-    return _fetch_cards(f"set.id:{set_id}")
+def get_set_cards(set_id: str, page: int = Query(1, ge=1)):
+    return _fetch_cards(f"set.id:{set_id}", page)
