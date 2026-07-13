@@ -43,12 +43,35 @@ function groupByCard(cards: PortfolioCard[]): CardGroup[] {
   return [...map.values()]
 }
 
+type SortKey = 'recent' | 'value' | 'gain' | 'loss' | 'name'
+type PLFilter = 'all' | 'gainers' | 'losers'
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'recent', label: 'Recently added' },
+  { value: 'value', label: 'Highest value' },
+  { value: 'gain', label: 'Biggest gain' },
+  { value: 'loss', label: 'Biggest loss' },
+  { value: 'name', label: 'Name A–Z' },
+]
+
+// gain is null when the card has no market price (it can't be a gainer or loser)
+function groupMetrics(g: CardGroup) {
+  return {
+    value: g.lots.reduce((s, l) => s + (l.current_price ?? l.purchase_price) * l.quantity, 0),
+    gain: g.current_price != null ? g.lots.reduce((s, l) => s + (l.gain_loss ?? 0), 0) : null,
+    added: Math.max(...g.lots.map(l => Date.parse(l.purchase_date) || 0)),
+  }
+}
+
 export default function Portfolio() {
   const [cards, setCards] = useState<PortfolioCard[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(() => !!getToken())
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<SortKey>('recent')
+  const [nameFilter, setNameFilter] = useState('')
+  const [plFilter, setPlFilter] = useState<PLFilter>('all')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editQty, setEditQty] = useState('')
@@ -144,6 +167,30 @@ export default function Portfolio() {
   const totalCost = cards.reduce((sum, c) => sum + c.purchase_price * c.quantity, 0)
   const totalGainLoss = cards.reduce((sum, c) => sum + (c.gain_loss ?? 0), 0)
   const groups = groupByCard(cards)
+
+  const metrics = new Map(groups.map(g => [g.card_id, groupMetrics(g)]))
+  const nameQuery = nameFilter.trim().toLowerCase()
+  const visibleGroups = groups.filter(g => {
+    if (nameQuery && !g.card_name.toLowerCase().includes(nameQuery)) return false
+    if (plFilter !== 'all') {
+      const gain = metrics.get(g.card_id)!.gain
+      if (gain == null) return false
+      if (plFilter === 'gainers' ? gain < 0 : gain >= 0) return false
+    }
+    return true
+  })
+  visibleGroups.sort((a, b) => {
+    const ma = metrics.get(a.card_id)!
+    const mb = metrics.get(b.card_id)!
+    switch (sortKey) {
+      case 'value': return mb.value - ma.value
+      case 'gain': return (mb.gain ?? -Infinity) - (ma.gain ?? -Infinity) // priceless cards last
+      case 'loss': return (ma.gain ?? Infinity) - (mb.gain ?? Infinity)
+      case 'name': return a.card_name.localeCompare(b.card_name)
+      default: return mb.added - ma.added
+    }
+  })
+  const isFiltered = !!nameQuery || plFilter !== 'all'
 
   // With under two days of history, show a flat line at the current value
   const isPlaceholder = history.length < 2
@@ -273,8 +320,51 @@ export default function Portfolio() {
 
           {chart}
 
+          <div className="filter-row">
+            <input
+              value={nameFilter}
+              onChange={e => setNameFilter(e.target.value)}
+              placeholder="Filter by name"
+              className="filter-select filter-name"
+            />
+            <select
+              value={plFilter}
+              onChange={e => setPlFilter(e.target.value as PLFilter)}
+              className="filter-select"
+            >
+              <option value="all">All cards</option>
+              <option value="gainers">Gainers</option>
+              <option value="losers">Losers</option>
+            </select>
+            <select
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as SortKey)}
+              className="filter-select"
+            >
+              {SORT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>Sort: {o.label}</option>
+              ))}
+            </select>
+            {isFiltered && (
+              <>
+                <button
+                  className="btn-outline btn-sm"
+                  onClick={() => { setNameFilter(''); setPlFilter('all') }}
+                >
+                  Clear
+                </button>
+                <span className="toolbar-count">
+                  {visibleGroups.length} of {groups.length} cards
+                </span>
+              </>
+            )}
+          </div>
+
+          {visibleGroups.length === 0 ? (
+            <p className="no-match">No cards match your filters.</p>
+          ) : (
           <div className="portfolio-grid">
-            {groups.map(group => {
+            {visibleGroups.map(group => {
               const single = group.lots.length === 1
               const totalQty = group.lots.reduce((sum, l) => sum + l.quantity, 0)
               const groupCost = group.lots.reduce((sum, l) => sum + l.purchase_price * l.quantity, 0)
@@ -390,6 +480,7 @@ export default function Portfolio() {
               )
             })}
           </div>
+          )}
         </>
       )}
     </div>

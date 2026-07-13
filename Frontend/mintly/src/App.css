@@ -194,6 +194,23 @@
 
 .filter-number::placeholder { color: var(--text); }
 
+.filter-name {
+  width: 200px;
+}
+
+.filter-name::placeholder { color: var(--text); }
+
+.toolbar-count {
+  color: var(--text);
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.no-match {
+  color: var(--text);
+  padding: 24px 0;
+}
+
 .results-label {
   font-size: 16px;
   color: var(--text-h);

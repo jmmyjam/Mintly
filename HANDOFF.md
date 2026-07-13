@@ -78,7 +78,7 @@ Tokenizes the query, then:
 ### Frontend pages (`src/pages/`)
 - `Search.tsx` — debounced (400ms) search-as-you-type; filter bar (set/rarity/type/number → `/cards`, otherwise `/search`); shows the newest set by default when empty; "add to portfolio" inline form. Multi-page results get a Prev/Next pager (above and below the grid); any query/filter change resets to page 1, and page moves skip the debounce.
 - `CardDetail.tsx` — route `/card/:cardId`; large image, set/rarity/type/HP/artist facts, full price-variant table (low/mid/high/market), add form with market price pre-filled. Linked from search results and portfolio tiles.
-- `Portfolio.tsx` — summary stats, value-over-time area chart, card grid grouped by card with expandable per-purchase (lot) breakdown; inline edit per lot. Renders as soon as the portfolio arrives; the history chart fills in when the (deliberately later) history call returns.
+- `Portfolio.tsx` — summary stats, value-over-time area chart, card grid grouped by card with expandable per-purchase (lot) breakdown; inline edit per lot. Renders as soon as the portfolio arrives; the history chart fills in when the (deliberately later) history call returns. Client-side toolbar above the grid: name filter, gainers/losers filter, and sort (recently added [default] / highest value / biggest gain / biggest loss / name) — all computed per card *group*; cards without price data sort last and match neither gainers nor losers. Summary stats always reflect the full portfolio, not the filtered view.
 - `Login.tsx` — combined login/register with client-side password validation mirroring the backend. Shows a notice (e.g. "Your session expired") when redirected here via router state.
 - `api.ts` — all fetch calls. `authedFetch` wraps authenticated requests: any 401 clears the stored token and throws `SessionExpiredError`; pages catch it and redirect to `/login` with that notice. Token lives in `localStorage`.
 
@@ -99,9 +99,9 @@ Tokenizes the query, then:
 
 1. **Deployment prep** — `BASE` is hardcoded to `localhost:8000` in `api.ts`; CORS to `localhost:5173` in `card_api.py`. Move both to env vars. The cache is in-memory (single-process only).
 2. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
-3. **Portfolio sorting/filtering** — by gain/loss, value, date; can be done client-side.
-4. **Frontend tests** — the backend routers are covered (`Backend/tests/`); the React pages are not.
-5. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
+3. **Frontend tests** — the backend routers are covered (`Backend/tests/`); the React pages are not.
+4. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
+5. **Consistent snapshot timezone** — `PortfolioSnapshot.snapshot_date` defaults to `datetime.utcnow` but the daily dedupe compares against local `date.today()` (`portfolio.py`); late-evening visits (observed 23:47 PDT) record snapshots dated *tomorrow*, which then show as a future date on the history chart's axis.
 
 ## Gotchas for developers
 
