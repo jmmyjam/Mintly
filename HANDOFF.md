@@ -54,7 +54,7 @@ The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at bui
 - `users` — id, email, username, hashed_password (bcrypt), created_at.
 - `portfolio_cards` — one row per **purchase (lot)**: user_id, card_id (TCG API id like `base1-4`), card_name, quantity, purchase_price, purchase_date. The same card bought twice = two rows; the frontend groups them visually.
 - `portfolio_snapshot` — one row per card per UTC day: card_id, price, snapshot_date. Shared across users. Written whenever any user loads their portfolio (deduped per UTC day).
-- All `DateTime` columns store **naive UTC**, set via the shared `utcnow()` helper in `models.py`; anything compared against them (e.g. the snapshot dedupe in `portfolio.py`) must use `utcnow()` too, never local time.
+- All `DateTime` columns store **naive UTC**, set via the shared `utcnow()` helper in `models.py`; anything compared against them (e.g. the snapshot dedupe in `portfolio.py`) must use `utcnow()` too, never local time. They serialize without a zone suffix, so the frontend must anchor them with `Z` before parsing (`parseUTCDate` in `Portfolio.tsx`) — a bare `new Date(...)` reads them as local time and shows evening purchases dated tomorrow.
 
 ### API endpoints
 | Endpoint | Notes |

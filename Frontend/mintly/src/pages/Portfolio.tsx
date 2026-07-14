@@ -41,8 +41,14 @@ function localISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// purchase_date arrives as naive UTC with no zone suffix; anchor it with Z so
+// it converts to the local date instead of being read as local time
+function parseUTCDate(d: string) {
+  return new Date(d.endsWith('Z') ? d : d + 'Z')
+}
+
 function formatLotDate(d: string) {
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return parseUTCDate(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function groupByCard(cards: PortfolioCard[]): CardGroup[] {
@@ -69,7 +75,7 @@ function groupMetrics(g: CardGroup) {
   return {
     value: g.lots.reduce((s, l) => s + (l.current_price ?? l.purchase_price) * l.quantity, 0),
     gain: g.current_price != null ? g.lots.reduce((s, l) => s + (l.gain_loss ?? 0), 0) : null,
-    added: Math.max(...g.lots.map(l => Date.parse(l.purchase_date) || 0)),
+    added: Math.max(...g.lots.map(l => parseUTCDate(l.purchase_date).getTime() || 0)),
   }
 }
 
