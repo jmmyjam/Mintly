@@ -29,10 +29,10 @@ def _today_start() -> datetime:
     return datetime.combine(utcnow().date(), datetime.min.time())
 
 
-def record_snapshots(db: Session, prices: dict[str, float]):
-    # At most one snapshot per card per UTC day
+def record_snapshots(db: Session, prices: dict[str, float]) -> int:
+    # At most one snapshot per card per UTC day; returns how many rows were added
     if not prices:
-        return
+        return 0
     today_start = _today_start()
     already_recorded = {
         s.card_id
@@ -49,6 +49,7 @@ def record_snapshots(db: Session, prices: dict[str, float]):
     if new_snapshots:
         db.add_all(new_snapshots)
         db.commit()
+    return len(new_snapshots)
 
 
 def previous_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, date]]:
