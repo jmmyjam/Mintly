@@ -24,12 +24,16 @@ class FakePagedUpstream:
     def __init__(self):
         self.card_lists: dict[str, list] = {}  # q -> full result list
         self.sets: list = []
+        self.sets_status = 200          # set to e.g. 404 to simulate upstream flakes
+        self.sets_exc: Exception | None = None  # raised on /sets to simulate timeouts
         self.calls: list[tuple[str, dict | None]] = []
 
-    def get(self, url: str, params: dict | None = None):
+    def get(self, url: str, params: dict | None = None, timeout=None):
         self.calls.append((url, params))
         if url.endswith("/sets"):
-            return FakeResponse(200, {"data": self.sets})
+            if self.sets_exc:
+                raise self.sets_exc
+            return FakeResponse(self.sets_status, {"data": self.sets})
         if url.endswith("/cards") and params:
             full = self.card_lists.get(params["q"], [])
             page, size = params["page"], params["pageSize"]
@@ -122,3 +126,37 @@ def test_search_empty_page_does_not_trigger_fallback(client, cards_upstream):
     assert body["totalCount"] == 10
     assert body["data"] == []
     assert len(cards_upstream.card_calls()) == 1
+
+
+def _expire_sets_cache():
+    ts, data = card_api._cache["__sets__"]
+    card_api._cache["__sets__"] = (ts - card_api._CACHE_TTL - 1, data)
+
+
+def test_sets_stale_cache_served_when_upstream_errors(client, cards_upstream):
+    cards_upstream.sets = [{"id": "base1", "name": "Base"}]
+    assert client.get("/sets").status_code == 200  # primes the cache
+    _expire_sets_cache()
+    cards_upstream.sets_status = 404  # the observed transient upstream flake
+    res = client.get("/sets")
+    assert res.status_code == 200
+    assert res.json() == [{"id": "base1", "name": "Base"}]
+
+
+def test_sets_stale_cache_served_when_upstream_times_out(client, cards_upstream):
+    import requests
+
+    cards_upstream.sets = [{"id": "base1", "name": "Base"}]
+    client.get("/sets")
+    _expire_sets_cache()
+    cards_upstream.sets_exc = requests.ConnectTimeout("upstream hang")
+    res = client.get("/sets")
+    assert res.status_code == 200
+    assert res.json() == [{"id": "base1", "name": "Base"}]
+
+
+def test_sets_cold_cache_upstream_error_still_fails(client, cards_upstream):
+    cards_upstream.sets_status = 404
+    res = client.get("/sets")
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Failed to fetch sets"

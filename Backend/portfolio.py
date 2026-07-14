@@ -24,6 +24,9 @@ API_KEY = os.getenv("POKEMON_TCG_API_KEY")
 # Prices are cached briefly (15 min) — fresher than the 6h search cache since P&L depends on them.
 _PRICE_TTL = 900
 
+# 5s to connect, 60s per read — upstream can be slow but must not hang a worker
+_TIMEOUT = (5, 60)
+
 
 # ----- Global state ----------------------------------------------------------
 
@@ -82,10 +85,14 @@ def fetch_prices(card_ids: list[str]) -> tuple[dict[str, float], dict[str, str]]
     for i in range(0, len(missing), 100):
         chunk = missing[i:i + 100]
         q = " OR ".join(f'id:"{card_id}"' for card_id in chunk)
-        response = _session.get(
-            f"{BASE_URL}/cards",
-            params={"q": q, "select": "id,tcgplayer,images", "pageSize": 250},
-        )
+        try:
+            response = _session.get(
+                f"{BASE_URL}/cards",
+                params={"q": q, "select": "id,tcgplayer,images", "pageSize": 250},
+                timeout=_TIMEOUT,
+            )
+        except requests.RequestException:
+            continue  # portfolio still renders, just without prices for this chunk
         if response.status_code != 200:
             continue
         found = {
@@ -127,7 +134,10 @@ def record_snapshots(db: Session, prices: dict[str, float]):
 
 @router.post("/portfolio/add")
 def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    response = _session.get(f"{BASE_URL}/cards/{body.card_id}")
+    try:
+        response = _session.get(f"{BASE_URL}/cards/{body.card_id}", timeout=_TIMEOUT)
+    except requests.RequestException:
+        raise HTTPException(status_code=504, detail="Card lookup timed out — try again")
     if response.status_code != 200:
         raise HTTPException(status_code=404, detail="Card not found")
     card_data = response.json().get("data", {})

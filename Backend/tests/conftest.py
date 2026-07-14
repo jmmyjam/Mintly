@@ -81,7 +81,7 @@ class FakeUpstream:
     def add(self, card: dict):
         self.cards[card["id"]] = card
 
-    def get(self, url: str, params: dict | None = None):
+    def get(self, url: str, params: dict | None = None, timeout=None):
         self.calls.append(url)
         if url.endswith("/cards") and params:
             # batched OR-query: q='id:"a" OR id:"b"'

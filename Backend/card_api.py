@@ -33,6 +33,10 @@ _CACHE_TTL = 21600  # 6 hours until cache reset
 
 _PAGE_SIZE = 250  # upstream maximum
 
+# Upstream is legitimately slow on cold queries (tens of seconds) but must never
+# hang a worker forever: 5s to connect, 60s per read.
+_TIMEOUT = (5, 60)
+
 # Only the fields the frontend uses — full card objects (attacks, legalities, etc.)
 # are several times larger and slower for the upstream API to serve
 _CARD_FIELDS = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
@@ -69,10 +73,14 @@ def _fetch_cards(q: str, page: int = 1) -> dict:
         ts, data = _cache[key]
         if time.time() - ts < _CACHE_TTL:
             return data
-    response = session.get(
-        f"{BASE_URL}/cards",
-        params={"q": q, "select": _CARD_FIELDS, "page": page, "pageSize": _PAGE_SIZE},
-    )
+    try:
+        response = session.get(
+            f"{BASE_URL}/cards",
+            params={"q": q, "select": _CARD_FIELDS, "page": page, "pageSize": _PAGE_SIZE},
+            timeout=_TIMEOUT,
+        )
+    except requests.RequestException:
+        raise HTTPException(status_code=504, detail="Failed to fetch cards")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch cards")
     payload = response.json()
@@ -93,7 +101,10 @@ def _fetch_card(card_id: str) -> dict:
         ts, data = _cache[key]
         if time.time() - ts < _CACHE_TTL:
             return data
-    response = session.get(f"{BASE_URL}/cards/{card_id}")
+    try:
+        response = session.get(f"{BASE_URL}/cards/{card_id}", timeout=_TIMEOUT)
+    except requests.RequestException:
+        raise HTTPException(status_code=504, detail="Failed to fetch card")
     if response.status_code != 200:
         raise HTTPException(status_code=404, detail="Card not found")
     data = response.json().get("data", {})
@@ -102,13 +113,22 @@ def _fetch_card(card_id: str) -> dict:
 
 
 def _fetch_sets() -> list:
-    if "__sets__" in _cache:
-        ts, data = _cache["__sets__"]
-        if time.time() - ts < _CACHE_TTL:
-            return data
-    response = session.get(f"{BASE_URL}/sets")
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch sets")
+    cached = _cache.get("__sets__")
+    if cached and time.time() - cached[0] < _CACHE_TTL:
+        return cached[1]
+    try:
+        response = session.get(f"{BASE_URL}/sets", timeout=_TIMEOUT)
+    except requests.RequestException:
+        response = None
+    if response is None or response.status_code != 200:
+        # Upstream flakes (observed transient 404s / 50s hangs); an expired sets
+        # list barely changes, so serve it rather than break /search
+        if cached:
+            return cached[1]
+        raise HTTPException(
+            status_code=response.status_code if response is not None else 504,
+            detail="Failed to fetch sets",
+        )
     data = response.json().get("data", [])
     _cache["__sets__"] = (time.time(), data)
     return data

@@ -2,6 +2,8 @@
 
 Mintly — Pokemon TCG portfolio tracker. FastAPI + PostgreSQL backend, React 19 + TypeScript + Vite frontend. External data from the Pokemon TCG API (pokemontcg.io); prices via TCGPlayer fields in its responses.
 
+Start every chat message to the user with their name, Jimmy.
+
 Full architecture, endpoint reference, and known behaviors: @HANDOFF.md
 
 ## Commands
@@ -26,7 +28,7 @@ Backend tests live in `Backend/tests/` (auth, portfolio + card-search routers). 
 
 ## Structure
 
-- `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL, covers searches + single cards, keyed per query+page; `/sets/{id}` is answered from the cached sets list)
+- `Backend/card_api.py` — app entry, CORS, card/set proxy endpoints, smart search, in-memory cache (`_cache`, 6h TTL, covers searches + single cards, keyed per query+page; `/sets/{id}` is answered from the cached sets list). Upstream calls take `timeout=_TIMEOUT` (5s connect/60s read — keep it on any new call); the sets cache is served stale if a refresh fails.
 - `Backend/auth.py` — register/login, JWT, `get_current_user` dependency, password rules
 - `Backend/portfolio.py` — portfolio CRUD, batched price fetching (`fetch_prices`, one upstream call per 100 cards, 15-min `_price_cache`; card image URLs ride along — never guess them from card ids, see HANDOFF), daily snapshots, history endpoint
 - `Backend/models.py` — SQLAlchemy models; schema is managed by Alembic (`alembic/versions/`), NOT `create_all` — model changes need a migration
