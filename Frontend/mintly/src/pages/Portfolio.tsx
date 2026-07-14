@@ -6,6 +6,7 @@ import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
 import PriceQtyForm from '../components/PriceQtyForm'
 import StatRow from '../components/StatRow'
+import StatusMessage from '../components/StatusMessage'
 import { useSessionRedirect } from '../hooks'
 import { money } from '../format'
 
@@ -91,6 +92,8 @@ export default function Portfolio() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editQty, setEditQty] = useState('')
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null)
+  const [lotError, setLotError] = useState<{ id: number; text: string } | null>(null)
   // The token is already cleared by authedFetch — send the user back to login
   const redirectToLogin = useSessionRedirect()
 
@@ -115,8 +118,14 @@ export default function Portfolio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function handleRemove(id: number, name: string) {
-    if (!confirm(`Remove ${name} from your portfolio?`)) return
+  // Inline error line next to the affected lot; self-clears like useAddCard's errors
+  function showLotError(id: number, text: string) {
+    setLotError({ id, text })
+    setTimeout(() => setLotError(null), 4000)
+  }
+
+  async function handleRemove(id: number) {
+    setConfirmRemoveId(null)
     try {
       await removeCard(id)
       setCards(prev => prev.filter(c => c.id !== id))
@@ -125,11 +134,12 @@ export default function Portfolio() {
         redirectToLogin()
         return
       }
-      alert('Failed to remove card.')
+      showLotError(id, 'Failed to remove card.')
     }
   }
 
   function startEdit(lot: PortfolioCard) {
+    setConfirmRemoveId(null)
     setEditingId(lot.id)
     setEditPrice(String(lot.purchase_price))
     setEditQty(String(lot.quantity))
@@ -139,7 +149,7 @@ export default function Portfolio() {
     const price = parseFloat(editPrice)
     const qty = parseInt(editQty)
     if (Number.isNaN(price) || price < 0 || Number.isNaN(qty) || qty < 1) {
-      alert('Enter a valid price and quantity.')
+      showLotError(lot.id, 'Enter a valid price and quantity.')
       return
     }
     try {
@@ -158,7 +168,7 @@ export default function Portfolio() {
         redirectToLogin()
         return
       }
-      alert('Failed to update card.')
+      showLotError(lot.id, 'Failed to update card.')
     }
   }
 
@@ -401,17 +411,31 @@ export default function Portfolio() {
                         </div>
 
                         {single ? (
-                          <div className="card-actions">
-                            <button className="btn-outline btn-sm" onClick={() => startEdit(lot)}>
-                              Edit
-                            </button>
-                            <button
-                              className="btn-outline btn-sm btn-danger"
-                              onClick={() => handleRemove(lot.id, group.card_name)}
-                            >
-                              Remove
-                            </button>
-                          </div>
+                          confirmRemoveId === lot.id ? (
+                            <div className="card-actions">
+                              <button
+                                className="btn-outline btn-sm btn-danger"
+                                onClick={() => handleRemove(lot.id)}
+                              >
+                                Confirm remove
+                              </button>
+                              <button className="btn-outline btn-sm" onClick={() => setConfirmRemoveId(null)}>
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="card-actions">
+                              <button className="btn-outline btn-sm" onClick={() => startEdit(lot)}>
+                                Edit
+                              </button>
+                              <button
+                                className="btn-outline btn-sm btn-danger"
+                                onClick={() => setConfirmRemoveId(lot.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          )
                         ) : (
                           <>
                             <button
@@ -422,33 +446,55 @@ export default function Portfolio() {
                             </button>
                             {isExpanded && (
                               <div className="lot-list">
-                                {group.lots.map(l =>
-                                  editingId === l.id ? (
-                                    <div key={l.id}>{editForm(l)}</div>
-                                  ) : (
-                                    <div key={l.id} className="lot-row">
-                                      <div className="lot-info">
-                                        <span className="lot-main">{l.quantity} @ {money(l.purchase_price)}</span>
-                                        <span className="lot-date">{formatLotDate(l.purchase_date)}</span>
+                                {group.lots.map(l => (
+                                  <div key={l.id}>
+                                    {editingId === l.id ? (
+                                      editForm(l)
+                                    ) : (
+                                      <div className="lot-row">
+                                        <div className="lot-info">
+                                          <span className="lot-main">{l.quantity} @ {money(l.purchase_price)}</span>
+                                          <span className="lot-date">{formatLotDate(l.purchase_date)}</span>
+                                        </div>
+                                        {l.gain_loss != null && <GainLoss value={l.gain_loss} />}
+                                        {confirmRemoveId === l.id ? (
+                                          <div className="lot-actions">
+                                            <button
+                                              className="lot-btn lot-btn-danger negative"
+                                              onClick={() => handleRemove(l.id)}
+                                            >
+                                              Remove
+                                            </button>
+                                            <button className="lot-btn" onClick={() => setConfirmRemoveId(null)}>
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="lot-actions">
+                                            <button className="lot-btn" onClick={() => startEdit(l)}>Edit</button>
+                                            <button
+                                              className="lot-btn lot-btn-danger"
+                                              onClick={() => setConfirmRemoveId(l.id)}
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
-                                      {l.gain_loss != null && <GainLoss value={l.gain_loss} />}
-                                      <div className="lot-actions">
-                                        <button className="lot-btn" onClick={() => startEdit(l)}>Edit</button>
-                                        <button
-                                          className="lot-btn lot-btn-danger"
-                                          onClick={() => handleRemove(l.id, group.card_name)}
-                                        >
-                                          ✕
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )
-                                )}
+                                    )}
+                                    {lotError?.id === l.id && (
+                                      <StatusMessage ok={false}>{lotError.text}</StatusMessage>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </>
                         )}
                       </>
+                    )}
+                    {single && lotError?.id === lot.id && (
+                      <StatusMessage ok={false}>{lotError.text}</StatusMessage>
                     )}
                   </div>
                 </div>

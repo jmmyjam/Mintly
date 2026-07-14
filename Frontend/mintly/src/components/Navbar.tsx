@@ -22,7 +22,7 @@ export default function Navbar() {
 
   function handleLogout() {
     clearToken()
-    navigate('/')
+    navigate('/login', { state: { notice: "You've been logged out successfully." } })
   }
 
   return (
