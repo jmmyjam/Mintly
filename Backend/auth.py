@@ -13,12 +13,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+# ----- Configuration ---------------------------------------------------------
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
+
+
+# ----- Global state ----------------------------------------------------------
 
 pwd_context = CryptContext(schemes=["bcrypt"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 router = APIRouter(prefix="/auth")
+
+
+# ----- Request models --------------------------------------------------------
+
+class RegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+
+
+# ----- Helpers ----------------------------------------------------------------
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -31,11 +48,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
-class RegisterRequest(BaseModel):
-    email: str
-    username: str
-    password: str
-
 
 def password_error(password: str) -> str | None:
     if len(password) < 8:
@@ -46,6 +58,8 @@ def password_error(password: str) -> str | None:
         return "Password must contain at least one number"
     return None
 
+
+# ----- Routes ----------------------------------------------------------------
 
 @router.post("/register")
 def register(body: RegisterRequest, db=Depends(get_db)):

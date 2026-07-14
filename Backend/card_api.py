@@ -15,9 +15,11 @@ load_dotenv()
 # Schema is managed by Alembic — run `alembic upgrade head` after pulling
 # model changes (create_all is gone; it could only add tables, never alter).
 
+
+# ----- Configuration ---------------------------------------------------------
+
 BASE_URL = "https://api.pokemontcg.io/v2"
 API_KEY = os.getenv("POKEMON_TCG_API_KEY")
-
 
 # Comma-separated list of allowed frontend origins, e.g.
 # CORS_ORIGINS=https://mintly.example.com,http://localhost:5173
@@ -26,6 +28,26 @@ CORS_ORIGINS = [
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     if origin.strip()
 ]
+
+_CACHE_TTL = 21600  # 6 hours until cache reset
+
+_PAGE_SIZE = 250  # upstream maximum
+
+# Only the fields the frontend uses — full card objects (attacks, legalities, etc.)
+# are several times larger and slower for the upstream API to serve
+_CARD_FIELDS = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
+
+
+# ----- Global state ----------------------------------------------------------
+
+_cache: dict[str, tuple[float, list | dict]] = {}
+
+session = requests.Session()
+session.verify = certifi.where()
+session.headers.update({"X-Api-Key": API_KEY})
+
+
+# ----- App setup -------------------------------------------------------------
 
 app = FastAPI()
 app.add_middleware(
@@ -38,19 +60,8 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(portfolio_router)
 
-session = requests.Session()
-session.verify = certifi.where()
-session.headers.update({"X-Api-Key": API_KEY})
 
-_cache: dict[str, tuple[float, list | dict]] = {}
-_CACHE_TTL = 21600 #6 hours until cache reset
-
-# Only the fields the frontend uses — full card objects (attacks, legalities, etc.)
-# are several times larger and slower for the upstream API to serve
-_CARD_FIELDS = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
-
-_PAGE_SIZE = 250  # upstream maximum
-
+# ----- Upstream fetch helpers (cached) ----------------------------------------
 
 def _fetch_cards(q: str, page: int = 1) -> dict:
     key = f"{q}|page:{page}"
@@ -102,6 +113,8 @@ def _fetch_sets() -> list:
     _cache["__sets__"] = (time.time(), data)
     return data
 
+
+# ----- Routes ----------------------------------------------------------------
 
 # Natural language search
 @app.get("/search")

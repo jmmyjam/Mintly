@@ -15,8 +15,22 @@ from auth import get_current_user
 
 load_dotenv()
 
+
+# ----- Configuration ---------------------------------------------------------
+
 BASE_URL = "https://api.pokemontcg.io/v2"
 API_KEY = os.getenv("POKEMON_TCG_API_KEY")
+
+# Prices are cached briefly (15 min) — fresher than the 6h search cache since P&L depends on them.
+_PRICE_TTL = 900
+
+
+# ----- Global state ----------------------------------------------------------
+
+# Image URLs ride along with prices: card ids alone can't predict them (newer sets
+# live on images.scrydex.com, and images.pokemontcg.io serves a card-back PNG for
+# unknown paths).
+_price_cache: dict[str, tuple[float, float | None, str | None]] = {}  # (fetched_at, price, image_url)
 
 _session = requests.Session()
 _session.verify = certifi.where()
@@ -24,6 +38,8 @@ _session.headers.update({"X-Api-Key": API_KEY})
 
 router = APIRouter()
 
+
+# ----- Request models --------------------------------------------------------
 
 class AddCardRequest(BaseModel):
     card_id: str
@@ -36,6 +52,8 @@ class UpdateCardRequest(BaseModel):
     quantity: int | None = Field(None, ge=1)
 
 
+# ----- Helpers ----------------------------------------------------------------
+
 def extract_price(card_data: dict) -> float | None:
     prices = card_data.get("tcgplayer", {}).get("prices", {})
     for price_type in ("holofoil", "normal", "reverseHolofoil", "1stEditionHolofoil"):
@@ -43,13 +61,6 @@ def extract_price(card_data: dict) -> float | None:
         if mid is not None:
             return mid
     return None
-
-
-# Prices are cached briefly (15 min) — fresher than the 6h search cache since P&L depends on them.
-# Image URLs ride along: card ids alone can't predict them (newer sets live on images.scrydex.com,
-# and images.pokemontcg.io serves a card-back PNG for unknown paths).
-_price_cache: dict[str, tuple[float, float | None, str | None]] = {}  # (fetched_at, price, image_url)
-_PRICE_TTL = 900
 
 
 def fetch_prices(card_ids: list[str]) -> tuple[dict[str, float], dict[str, str]]:
@@ -110,6 +121,8 @@ def record_snapshots(db: Session, prices: dict[str, float]):
         db.add_all(new_snapshots)
         db.commit()
 
+
+# ----- Routes ----------------------------------------------------------------
 
 @router.post("/portfolio/add")
 def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):

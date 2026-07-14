@@ -1,6 +1,10 @@
+// ----- Configuration ---------------------------------------------------------
+
 // Set VITE_API_BASE at build time to point at a hosted backend
 // (an empty string makes calls relative to the page's own origin).
 const BASE: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+
+// ----- Types -------------------------------------------------------------------
 
 export interface PriceVariant {
   low?: number
@@ -32,6 +36,29 @@ export interface Card {
   }
 }
 
+// One page of search results (backend pages at 250 cards, the upstream max)
+export interface CardPage {
+  data: Card[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export interface CardSet {
+  id: string
+  name: string
+  series: string
+  releaseDate: string
+}
+
+export interface CardFilters {
+  name?: string
+  set_id?: string
+  number?: string
+  rarity?: string
+  type?: string
+}
+
 export interface HistoryPoint {
   date: string
   total_value: number
@@ -50,6 +77,16 @@ export interface PortfolioCard {
   image_url: string | null
 }
 
+// Thrown on 401 so pages can redirect to /login instead of showing a generic error
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired — please log in again.')
+    this.name = 'SessionExpiredError'
+  }
+}
+
+// ----- Token storage -----------------------------------------------------------
+
 export function getToken() {
   return localStorage.getItem('token')
 }
@@ -62,13 +99,7 @@ export function clearToken() {
   localStorage.removeItem('token')
 }
 
-// Thrown on 401 so pages can redirect to /login instead of showing a generic error
-export class SessionExpiredError extends Error {
-  constructor() {
-    super('Session expired — please log in again.')
-    this.name = 'SessionExpiredError'
-  }
-}
+// ----- Helpers -------------------------------------------------------------------
 
 // Adds the auth header; a 401 means the token is expired/invalid, so clear it
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -98,6 +129,8 @@ export function getCardPrice(card: Card): number | null {
   return null
 }
 
+// ----- Auth calls ----------------------------------------------------------------
+
 export async function login(username: string, password: string): Promise<void> {
   const res = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
@@ -121,25 +154,12 @@ export async function register(email: string, username: string, password: string
   }
 }
 
-// One page of search results (backend pages at 250 cards, the upstream max)
-export interface CardPage {
-  data: Card[]
-  page: number
-  pageSize: number
-  totalCount: number
-}
+// ----- Card calls ----------------------------------------------------------------
 
 export async function searchCards(query: string, page = 1): Promise<CardPage> {
   const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}&page=${page}`)
   if (!res.ok) throw new Error('Search failed')
   return res.json()
-}
-
-export interface CardSet {
-  id: string
-  name: string
-  series: string
-  releaseDate: string
 }
 
 export async function getSets(): Promise<CardSet[]> {
@@ -154,14 +174,6 @@ export async function getCard(cardId: string): Promise<Card> {
   return res.json()
 }
 
-export interface CardFilters {
-  name?: string
-  set_id?: string
-  number?: string
-  rarity?: string
-  type?: string
-}
-
 export async function filterCards(filters: CardFilters, page = 1): Promise<CardPage> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
@@ -172,6 +184,8 @@ export async function filterCards(filters: CardFilters, page = 1): Promise<CardP
   if (!res.ok) throw new Error('Search failed')
   return res.json()
 }
+
+// ----- Portfolio calls (authed) ---------------------------------------------------
 
 export async function getPortfolio(): Promise<PortfolioCard[]> {
   const res = await authedFetch('/portfolio')

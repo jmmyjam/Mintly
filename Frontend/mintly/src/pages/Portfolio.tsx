@@ -3,6 +3,30 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint } from '../api'
 
+// ----- Types & constants ---------------------------------------------------------
+
+// One card can have several lots — separate purchases at different prices
+interface CardGroup {
+  card_id: string
+  card_name: string
+  current_price: number | null
+  image_url: string | null
+  lots: PortfolioCard[]
+}
+
+type SortKey = 'recent' | 'value' | 'gain' | 'loss' | 'name'
+type PLFilter = 'all' | 'gainers' | 'losers'
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'recent', label: 'Recently added' },
+  { value: 'value', label: 'Highest value' },
+  { value: 'gain', label: 'Biggest gain' },
+  { value: 'loss', label: 'Biggest loss' },
+  { value: 'name', label: 'Name A–Z' },
+]
+
+// ----- Helpers ---------------------------------------------------------------------
+
 function formatChartDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
@@ -13,15 +37,6 @@ function localISODate(d: Date) {
 
 function formatLotDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-// One card can have several lots — separate purchases at different prices
-interface CardGroup {
-  card_id: string
-  card_name: string
-  current_price: number | null
-  image_url: string | null
-  lots: PortfolioCard[]
 }
 
 function groupByCard(cards: PortfolioCard[]): CardGroup[] {
@@ -42,17 +57,6 @@ function groupByCard(cards: PortfolioCard[]): CardGroup[] {
   }
   return [...map.values()]
 }
-
-type SortKey = 'recent' | 'value' | 'gain' | 'loss' | 'name'
-type PLFilter = 'all' | 'gainers' | 'losers'
-
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: 'recent', label: 'Recently added' },
-  { value: 'value', label: 'Highest value' },
-  { value: 'gain', label: 'Biggest gain' },
-  { value: 'loss', label: 'Biggest loss' },
-  { value: 'name', label: 'Name A–Z' },
-]
 
 // gain is null when the card has no market price (it can't be a gainer or loser)
 function groupMetrics(g: CardGroup) {
