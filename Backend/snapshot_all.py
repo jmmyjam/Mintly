@@ -40,6 +40,7 @@ _TIMEOUT = (5, 60)          # match the app: 5s connect, 60s read
 _PAGE_SIZE = 250            # upstream max
 _PAGE_PAUSE = 0.5          # be gentle on the upstream API between pages
 _DEDUPE_CHUNK = 1000       # keep the per-day dedupe IN() clause reasonable
+_MAX_RETRIES = 3           # upstream flakes with transient 404s/timeouts
 
 session = requests.Session()
 session.verify = certifi.where()
@@ -47,50 +48,60 @@ session.headers.update({"X-Api-Key": API_KEY})
 
 
 def _get_page(page: int) -> dict | None:
-    """One page of id+price, with a single retry on transient upstream failure."""
+    """One page of id+price, retried a few times — upstream flakes with transient
+    404s and timeouts. Returns None only after every attempt fails."""
     params = {"select": "id,tcgplayer", "page": page, "pageSize": _PAGE_SIZE}
-    for attempt in range(2):
+    for attempt in range(1, _MAX_RETRIES + 1):
         try:
             resp = session.get(f"{BASE_URL}/cards", params=params, timeout=_TIMEOUT)
         except requests.RequestException as exc:
-            log.warning("page %d request error (%s)%s", page, exc,
-                        " — retrying" if attempt == 0 else " — giving up")
-            time.sleep(3)
-            continue
-        if resp.status_code == 200:
-            return resp.json()
-        log.warning("page %d HTTP %d%s", page, resp.status_code,
-                    " — retrying" if attempt == 0 else " — giving up")
-        time.sleep(3)
+            log.warning("page %d request error (%s), attempt %d/%d",
+                        page, exc, attempt, _MAX_RETRIES)
+        else:
+            if resp.status_code == 200:
+                return resp.json()
+            log.warning("page %d HTTP %d, attempt %d/%d",
+                        page, resp.status_code, attempt, _MAX_RETRIES)
+        if attempt < _MAX_RETRIES:
+            time.sleep(2 * attempt)  # simple backoff
     return None
 
 
+def _collect(payload: dict, prices: dict[str, float]) -> None:
+    for card in payload.get("data", []):
+        price = extract_price(card)
+        if price is not None:
+            prices[card["id"]] = price
+
+
 def fetch_all_prices(max_pages: int = 0) -> tuple[dict[str, float], bool]:
-    """Every card's current price, keyed by card id. Returns (prices, complete)
-    where complete is False if any page failed (so we never treat a partial
-    crawl as authoritative)."""
+    """Every card's current price, keyed by card id. Returns (prices, complete);
+    complete is False if any page had to be skipped. A transient failure on one
+    page skips just that page — it never aborts the whole crawl (the upstream
+    flakes often enough that one bad page shouldn't cost the other ~80)."""
+    first = _get_page(1)
+    if first is None:
+        return {}, False  # couldn't even get page 1 — nothing to record
+
     prices: dict[str, float] = {}
+    _collect(first, prices)
+    total = first.get("totalCount", 0)
+    total_pages = max(1, -(-total // _PAGE_SIZE))  # ceil division
+    if max_pages:
+        total_pages = min(total_pages, max_pages)
+    log.info("page 1/%d: %d priced so far / %d total", total_pages, len(prices), total)
+
     complete = True
-    page = 1
-    while True:
+    for page in range(2, total_pages + 1):
+        time.sleep(_PAGE_PAUSE)
         payload = _get_page(page)
         if payload is None:
             complete = False
-            break
-        data = payload.get("data", [])
-        if not data:
-            break
-        for card in data:
-            price = extract_price(card)
-            if price is not None:
-                prices[card["id"]] = price
-        total = payload.get("totalCount", 0)
-        log.info("page %d: %d cards, %d priced so far / %d total",
-                 page, len(data), len(prices), total)
-        if page * _PAGE_SIZE >= total or (max_pages and page >= max_pages):
-            break
-        page += 1
-        time.sleep(_PAGE_PAUSE)
+            log.warning("page %d/%d skipped after %d attempts — continuing",
+                        page, total_pages, _MAX_RETRIES)
+            continue
+        _collect(payload, prices)
+        log.info("page %d/%d: %d priced so far", page, total_pages, len(prices))
     return prices, complete
 
 
