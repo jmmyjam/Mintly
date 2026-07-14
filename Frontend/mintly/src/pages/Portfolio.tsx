@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint } from '../api'
+import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint, type PriceChange } from '../api'
+import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
 import PriceQtyForm from '../components/PriceQtyForm'
@@ -17,6 +18,7 @@ interface CardGroup {
   card_id: string
   card_name: string
   current_price: number | null
+  price_change: PriceChange | null
   image_url: string | null
   lots: PortfolioCard[]
 }
@@ -63,6 +65,7 @@ function groupByCard(cards: PortfolioCard[]): CardGroup[] {
         card_id: c.card_id,
         card_name: c.card_name,
         current_price: c.current_price,
+        price_change: c.price_change,
         image_url: c.image_url,
         lots: [c],
       })
@@ -402,7 +405,12 @@ export default function Portfolio() {
                           <StatRow label={single ? 'Paid' : 'Avg Paid'}>
                             {money(single ? lot.purchase_price : avgPaid)}
                           </StatRow>
-                          <StatRow label="Now">{money(group.current_price)}</StatRow>
+                          <StatRow label="Now">
+                            {money(group.current_price)}
+                            {group.price_change && (
+                              <DayChange change={group.price_change} className="stat-day-change" />
+                            )}
+                          </StatRow>
                           {groupGain != null && (
                             <StatRow label="P&L">
                               <GainLoss value={groupGain} pct={groupGainPct} />

@@ -1,14 +1,21 @@
+import logging
 import os
 import re
 import time
 import requests
 import certifi
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
+import ebay_prices
 from auth import router as auth_router
+from database import get_db
 from portfolio import router as portfolio_router
+from price_history import annotate_price_changes, card_history
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -134,11 +141,22 @@ def _fetch_sets() -> list:
     return data
 
 
+def _with_price_changes(db: Session, results: dict) -> dict:
+    # Snapshot recording + daily-change annotation are best-effort: the card
+    # proxy must keep answering even if the database is down
+    try:
+        annotate_price_changes(db, results.get("data", []))
+    except Exception:
+        db.rollback()
+        logger.warning("price-change annotation failed", exc_info=True)
+    return results
+
+
 # ----- Routes ----------------------------------------------------------------
 
 # Natural language search
 @app.get("/search")
-def smart_search(q: str, page: int = Query(1, ge=1)):
+def smart_search(q: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
     parts = q.strip().replace('"', "").split()
     number = None
     set_id = None
@@ -191,8 +209,8 @@ def smart_search(q: str, page: int = Query(1, ge=1)):
             for candidate in (name_parts[i:], name_parts[:-i]):
                 results = _fetch_cards(build_query(candidate), page)
                 if results["totalCount"] > 0:
-                    return results
-    return results
+                    return _with_price_changes(db, results)
+    return _with_price_changes(db, results)
 
 
 # Search cards — supports name, set code, card number, rarity, and type
@@ -204,6 +222,7 @@ def search_cards(
     rarity: str | None = None,
     type: str | None = None,
     page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
 ):
     filters = []
     if name:
@@ -220,13 +239,34 @@ def search_cards(
     if not filters:
         raise HTTPException(status_code=400, detail="Provide at least one search parameter")
 
-    return _fetch_cards(" ".join(filters), page)
+    return _with_price_changes(db, _fetch_cards(" ".join(filters), page))
+
+
+# Daily price points for one card (built from Mintly's own snapshots — the
+# upstream API has no history endpoint). Default window: ~5 years.
+@app.get("/cards/{card_id}/history")
+def get_card_history(card_id: str, days: int = Query(1825, ge=1, le=3650), db: Session = Depends(get_db)):
+    return card_history(db, card_id, days)
+
+
+# Recent-sold-listings price estimate from eBay, for cards the TCGPlayer feed
+# can't price (newest sets). Best-effort — returns count:0 when nothing usable.
+@app.get("/cards/{card_id}/ebay-price")
+def get_ebay_price(card_id: str):
+    card = _fetch_card(card_id)
+    return ebay_prices.estimate(
+        card.get("name", ""),
+        card.get("number"),
+        card.get("set", {}).get("name"),
+    )
 
 
 # Get a single card by its API ID (e.g. base1-4)
 @app.get("/cards/{card_id}")
-def get_card(card_id: str):
-    return _fetch_card(card_id)
+def get_card(card_id: str, db: Session = Depends(get_db)):
+    card = _fetch_card(card_id)
+    _with_price_changes(db, {"data": [card]})
+    return card
 
 
 # List all sets
@@ -247,5 +287,5 @@ def get_set(set_id: str):
 
 # Get all cards in a set
 @app.get("/sets/{set_id}/cards")
-def get_set_cards(set_id: str, page: int = Query(1, ge=1)):
-    return _fetch_cards(f"set.id:{set_id}", page)
+def get_set_cards(set_id: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
+    return _with_price_changes(db, _fetch_cards(f"set.id:{set_id}", page))

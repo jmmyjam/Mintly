@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-from datetime import datetime, date
+from datetime import date
 import time
 import requests
 import certifi
@@ -10,8 +10,9 @@ import os
 from dotenv import load_dotenv
 
 from database import get_db
-from models import PortfolioCard, PortfolioSnapshot, utcnow
+from models import PortfolioCard, CardPriceSnapshot
 from auth import get_current_user
+from price_history import extract_price, record_snapshots, previous_prices, price_change
 
 load_dotenv()
 
@@ -57,15 +58,6 @@ class UpdateCardRequest(BaseModel):
 
 # ----- Helpers ----------------------------------------------------------------
 
-def extract_price(card_data: dict) -> float | None:
-    prices = card_data.get("tcgplayer", {}).get("prices", {})
-    for price_type in ("holofoil", "normal", "reverseHolofoil", "1stEditionHolofoil"):
-        mid = prices.get(price_type, {}).get("mid")
-        if mid is not None:
-            return mid
-    return None
-
-
 def fetch_prices(card_ids: list[str]) -> tuple[dict[str, float], dict[str, str]]:
     now = time.time()
     prices: dict[str, float] = {}
@@ -107,27 +99,6 @@ def fetch_prices(card_ids: list[str]) -> tuple[dict[str, float], dict[str, str]]
             if image is not None:
                 images[card_id] = image
     return prices, images
-
-
-def record_snapshots(db: Session, prices: dict[str, float]):
-    # Record at most one snapshot per card per UTC day (snapshot_date is naive UTC,
-    # so deduping by local date would double-record or skip days near midnight)
-    today_start = datetime.combine(utcnow().date(), datetime.min.time())
-    already_recorded = {
-        s.card_id
-        for s in db.query(PortfolioSnapshot).filter(
-            PortfolioSnapshot.card_id.in_(prices),
-            PortfolioSnapshot.snapshot_date >= today_start,
-        )
-    }
-    new_snapshots = [
-        PortfolioSnapshot(card_id=card_id, price=price)
-        for card_id, price in prices.items()
-        if card_id not in already_recorded
-    ]
-    if new_snapshots:
-        db.add_all(new_snapshots)
-        db.commit()
 
 
 # ----- Routes ----------------------------------------------------------------
@@ -175,12 +146,18 @@ def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(
 
     prices, images = fetch_prices([c.card_id for c in cards])
     record_snapshots(db, prices)
+    # Yesterday's (or the most recent prior) snapshot per card, for daily change
+    prev = previous_prices(db, [c.card_id for c in cards])
 
     result = []
     for c in cards:
         current_price = prices.get(c.card_id)
         gain_loss = round((current_price - c.purchase_price) * c.quantity, 2) if current_price is not None else None
         gain_loss_pct = round(((current_price - c.purchase_price) / c.purchase_price) * 100, 2) if current_price and c.purchase_price else None
+        change = None
+        if current_price is not None and c.card_id in prev:
+            prev_price, since = prev[c.card_id]
+            change = price_change(current_price, prev_price, since)
         result.append({
             "id": c.id,
             "card_id": c.card_id,
@@ -191,6 +168,7 @@ def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(
             "current_price": current_price,
             "gain_loss": gain_loss,
             "gain_loss_pct": gain_loss_pct,
+            "price_change": change,
             "image_url": images.get(c.card_id),
         })
     return result
@@ -206,10 +184,12 @@ def get_portfolio_history(current_user=Depends(get_current_user), db: Session = 
     for c in cards:
         quantities[c.card_id] = quantities.get(c.card_id, 0) + c.quantity
 
+    # Portfolio value history is derived from the shared card-price snapshots,
+    # scoped to the cards this user holds
     snapshots = (
-        db.query(PortfolioSnapshot)
-        .filter(PortfolioSnapshot.card_id.in_(quantities))
-        .order_by(PortfolioSnapshot.snapshot_date)
+        db.query(CardPriceSnapshot)
+        .filter(CardPriceSnapshot.card_id.in_(quantities))
+        .order_by(CardPriceSnapshot.snapshot_date)
         .all()
     )
 

@@ -13,6 +13,13 @@ export interface PriceVariant {
   market?: number
 }
 
+// Day-over-day change in a card's market price, vs its most recent prior snapshot
+export interface PriceChange {
+  amount: number
+  percent: number | null
+  since: string
+}
+
 export interface Card {
   id: string
   name: string
@@ -34,6 +41,29 @@ export interface Card {
     updatedAt?: string
     prices?: { [key: string]: PriceVariant }
   }
+  // Attached by the backend when a prior snapshot exists (see price_history.py)
+  priceChange?: PriceChange
+}
+
+// One daily point in a card's price history (from Mintly's own snapshots)
+export interface PricePoint {
+  date: string
+  price: number
+}
+
+// Estimated market value from recent eBay sold listings, for cards the
+// TCGPlayer feed can't price. count === 0 means no usable estimate.
+export interface EbayEstimate {
+  count: number
+  median: number | null
+  average: number | null
+  low: number | null
+  high: number | null
+  currency: string
+  since: string | null
+  until: string | null
+  source_url: string
+  sample: { date: string; price: number; title: string }[]
 }
 
 // One page of search results (backend pages at 250 cards, the upstream max)
@@ -74,6 +104,7 @@ export interface PortfolioCard {
   current_price: number | null
   gain_loss: number | null
   gain_loss_pct: number | null
+  price_change: PriceChange | null
   image_url: string | null
 }
 
@@ -171,6 +202,20 @@ export async function getSets(): Promise<CardSet[]> {
 export async function getCard(cardId: string): Promise<Card> {
   const res = await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}`)
   if (!res.ok) throw new Error('Card not found')
+  return res.json()
+}
+
+// Daily price history for one card (Mintly's own snapshots). Default ~5 years.
+export async function getCardHistory(cardId: string, days = 1825): Promise<PricePoint[]> {
+  const res = await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}/history?days=${days}`)
+  if (!res.ok) throw new Error('Failed to fetch price history')
+  return res.json()
+}
+
+// Recent-eBay-sold estimate for a card the TCGPlayer feed can't price
+export async function getEbayEstimate(cardId: string): Promise<EbayEstimate> {
+  const res = await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}/ebay-price`)
+  if (!res.ok) throw new Error('Failed to fetch eBay estimate')
   return res.json()
 }
 
