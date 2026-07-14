@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 
@@ -32,9 +32,14 @@ class PortfolioCard(Base):
     purchase_date = Column(DateTime, default=utcnow)
     owner = relationship("User", back_populates="portfolio")
 
-class PortfolioSnapshot(Base):
-    __tablename__ = "portfolio_snapshot"
+class CardPriceSnapshot(Base):
+    # The app-wide daily price history for ANY card (browsed or held), one row
+    # per card per UTC day. Portfolio value-over-time is derived from this by
+    # filtering to a user's holdings — there is no separate portfolio table.
+    __tablename__ = "card_price_snapshot"
     id = Column(Integer, primary_key=True)
-    card_id = Column(String, index=True)  # shared across users, one row per card per day
+    card_id = Column(String, index=True)
     price = Column(Float)
     snapshot_date = Column(DateTime, default=utcnow)
+    # (card_id, date) covers the history + previous-price + portfolio lookups
+    __table_args__ = (Index("ix_card_price_snapshot_card_date", "card_id", "snapshot_date"),)
