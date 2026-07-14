@@ -18,11 +18,12 @@ export default function Footer() {
         </div>
         <p className="footer-disclaimer">
           Mintly is an unofficial fan project and is not affiliated with,
-          endorsed, or sponsored by Nintendo, The Pokémon Company, or
-          TCGplayer. Pokémon names and card images are trademarks and
-          copyrights of their respective owners. Card data is provided by the
-          Pokémon TCG API; market prices are informational estimates only and
-          do not constitute financial advice.
+          endorsed, or sponsored by Nintendo, The Pokémon Company, TCGplayer,
+          or eBay. Pokémon names and card images are trademarks and copyrights
+          of their respective owners. Card data is provided by the Pokémon TCG
+          API, with some estimates drawn from recent eBay sold listings; all
+          prices are informational estimates only and do not constitute
+          financial advice.
         </p>
         <div className="footer-bottom">
           <span>© {new Date().getFullYear()} Mintly. All rights reserved.</span>

@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 14, 2026</p>
+      <p className="legal-updated">Last updated: July 15, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -30,15 +30,19 @@ export default function Privacy() {
       <h2>4. Third parties</h2>
       <p>
         Card searches and price lookups are served through the Pokémon TCG
-        API. Your account details are never sent to it — only the card
-        queries needed to show results and prices.
+        API. For cards it cannot price, Mintly also queries recent sold
+        listings on eBay to estimate a value. Your account details are never
+        sent to either service — only the card name, number, or set needed to
+        find results and prices.
       </p>
 
       <h2>5. Your data</h2>
       <p>
         You can remove cards from your portfolio at any time, which deletes
-        those records. Historical price snapshots are aggregate per-card data
-        and contain nothing personal.
+        those records. To build price history, Mintly records a daily market
+        price for cards that are searched or viewed; these snapshots are
+        aggregate per-card figures, are not tied to your account, and contain
+        nothing personal.
       </p>
 
       <h2>6. Changes</h2>

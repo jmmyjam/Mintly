@@ -8,6 +8,7 @@ import {
   type Card,
   type CardSet,
 } from "../api";
+import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard } from "../hooks";
@@ -297,7 +298,10 @@ export default function Search() {
                   <p className="card-name">{card.name}</p>
                   <p className="card-set">{card.set.name}</p>
                   {price != null && (
-                    <p className="card-price">{money(price)}</p>
+                    <p className="card-price">
+                      {money(price)}
+                      {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
+                    </p>
                   )}
                 </div>
               </Link>
