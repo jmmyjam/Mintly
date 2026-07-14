@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   searchCards,
   filterCards,
   getSets,
-  addCard,
-  getToken,
   getCardPrice,
-  SessionExpiredError,
   type Card,
   type CardSet,
 } from "../api";
+import PriceQtyForm from "../components/PriceQtyForm";
+import StatusMessage from "../components/StatusMessage";
+import { useAddCard } from "../hooks";
+import { money } from "../format";
 
 const RARITIES = [
   "Common",
@@ -62,15 +63,9 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
-  const [addBusy, setAddBusy] = useState(false);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [addStatus, setAddStatus] = useState<{
-    id: string;
-    msg: string;
-    ok: boolean;
-  } | null>(null);
-  const navigate = useNavigate();
+  const { add: addToPortfolio, busy: addBusy, status: addStatus } = useAddCard();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasFilters = !!(setId || rarity || typeFilter || number.trim());
@@ -167,38 +162,12 @@ export default function Search() {
     setNumber("");
   }
 
-  async function handleAdd(card: Card) {
-    if (!getToken()) {
-      navigate("/login");
-      return;
-    }
-    if (addBusy) return;
-    setAddBusy(true);
-    try {
-      const price = parseFloat(purchasePrice);
-      const msg = await addCard(
-        card.id,
-        Number.isNaN(price) ? null : price,
-        parseInt(quantity) || 1,
-      );
+  function handleAdd(card: Card) {
+    addToPortfolio(card.id, purchasePrice, quantity, () => {
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
-      setAddStatus({ id: card.id, msg, ok: true });
-      setTimeout(() => setAddStatus(null), 3000);
-    } catch (err: unknown) {
-      if (err instanceof SessionExpiredError) {
-        navigate("/login", {
-          state: { notice: "Your session expired — please log in again." },
-        });
-        return;
-      }
-      const msg = err instanceof Error ? err.message : "Failed to add card";
-      setAddStatus({ id: card.id, msg, ok: false });
-      setTimeout(() => setAddStatus(null), 4000);
-    } finally {
-      setAddBusy(false);
-    }
+    });
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -325,65 +294,31 @@ export default function Search() {
                   <p className="card-name">{card.name}</p>
                   <p className="card-set">{card.set.name}</p>
                   {price != null && (
-                    <p className="card-price">${price.toFixed(2)}</p>
+                    <p className="card-price">{money(price)}</p>
                   )}
                 </div>
               </Link>
 
-              {status && (
-                <p className={status.ok ? "success-msg" : "error"}>
-                  {status.msg}
-                </p>
-              )}
+              {status && <StatusMessage ok={status.ok}>{status.msg}</StatusMessage>}
 
               {!status &&
                 (isAdding ? (
-                  <form
-                    className="add-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handleAdd(card);
+                  <PriceQtyForm
+                    price={purchasePrice}
+                    quantity={quantity}
+                    onPriceChange={setPurchasePrice}
+                    onQuantityChange={setQuantity}
+                    onSubmit={() => handleAdd(card)}
+                    submitLabel="Add"
+                    busyLabel="Adding..."
+                    busy={addBusy}
+                    smallButtons
+                    onCancel={() => {
+                      setAdding(null);
+                      setPurchasePrice("");
+                      setQuantity("1");
                     }}
-                  >
-                    <input
-                      type="number"
-                      placeholder="Price paid($)"
-                      value={purchasePrice}
-                      onChange={(e) => setPurchasePrice(e.target.value)}
-                      className="mini-input"
-                      min="0"
-                      step="0.01"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Qty"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      className="mini-input mini-qty"
-                      min="1"
-                    />
-                    <div className="add-form-buttons">
-                      <button
-                        type="submit"
-                        className="btn-primary btn-sm"
-                        disabled={addBusy}
-                      >
-                        {addBusy ? "Adding..." : "Add"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        disabled={addBusy}
-                        onClick={() => {
-                          setAdding(null);
-                          setPurchasePrice("");
-                          setQuantity("1");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
+                  />
                 ) : (
                   <button
                     className="btn-outline btn-sm"

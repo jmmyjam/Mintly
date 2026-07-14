@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getCard, getCardPrice, addCard, getToken, SessionExpiredError, type Card } from '../api'
+import { Link, useParams } from 'react-router-dom'
+import { getCard, getCardPrice, type Card } from '../api'
+import PageMessage from '../components/PageMessage'
+import PriceQtyForm from '../components/PriceQtyForm'
+import StatRow from '../components/StatRow'
+import StatusMessage from '../components/StatusMessage'
+import { useAddCard } from '../hooks'
+import { money } from '../format'
 
 const VARIANT_LABELS: { [key: string]: string } = {
   normal: 'Normal',
@@ -15,10 +21,6 @@ function variantLabel(key: string) {
   return VARIANT_LABELS[key] || key
 }
 
-function money(value?: number) {
-  return value != null ? `$${value.toFixed(2)}` : '—'
-}
-
 export default function CardDetail() {
   const { cardId } = useParams<{ cardId: string }>()
   const [card, setCard] = useState<Card | null>(null)
@@ -26,9 +28,7 @@ export default function CardDetail() {
   const [error, setError] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [quantity, setQuantity] = useState('1')
-  const [addStatus, setAddStatus] = useState<{ msg: string; ok: boolean } | null>(null)
-  const [addBusy, setAddBusy] = useState(false)
-  const navigate = useNavigate()
+  const { add, busy: addBusy, status: addStatus } = useAddCard()
 
   useEffect(() => {
     if (!cardId) return
@@ -51,39 +51,12 @@ export default function CardDetail() {
     }
   }, [cardId])
 
-  async function handleAdd() {
-    if (!card) return
-    if (!getToken()) {
-      navigate('/login')
-      return
-    }
-    if (addBusy) return
-    setAddBusy(true)
-    try {
-      const price = parseFloat(purchasePrice)
-      const msg = await addCard(card.id, Number.isNaN(price) ? null : price, parseInt(quantity) || 1)
-      setAddStatus({ msg, ok: true })
-      setTimeout(() => setAddStatus(null), 3000)
-    } catch (err: unknown) {
-      if (err instanceof SessionExpiredError) {
-        navigate('/login', { state: { notice: 'Your session expired — please log in again.' } })
-        return
-      }
-      const msg = err instanceof Error ? err.message : 'Failed to add card'
-      setAddStatus({ msg, ok: false })
-      setTimeout(() => setAddStatus(null), 4000)
-    } finally {
-      setAddBusy(false)
-    }
-  }
-
-  if (loading) return <div className="page centered"><p>Loading card...</p></div>
+  if (loading) return <PageMessage><p>Loading card...</p></PageMessage>
   if (error || !card) {
     return (
-      <div className="page centered">
+      <PageMessage action={{ to: '/search', label: 'Back to Search' }}>
         <p className="error">{error || 'Card not found.'}</p>
-        <Link to="/search" className="btn-primary" style={{ marginTop: '16px' }}>Back to Search</Link>
-      </div>
+      </PageMessage>
     )
   }
 
@@ -105,35 +78,14 @@ export default function CardDetail() {
           </p>
 
           <div className="detail-facts">
-            {card.rarity && (
-              <div className="price-row">
-                <span className="stat-label">Rarity</span>
-                <span>{card.rarity}</span>
-              </div>
-            )}
+            {card.rarity && <StatRow label="Rarity">{card.rarity}</StatRow>}
             {card.types && card.types.length > 0 && (
-              <div className="price-row">
-                <span className="stat-label">Type</span>
-                <span>{card.types.join(', ')}</span>
-              </div>
+              <StatRow label="Type">{card.types.join(', ')}</StatRow>
             )}
-            {card.hp && (
-              <div className="price-row">
-                <span className="stat-label">HP</span>
-                <span>{card.hp}</span>
-              </div>
-            )}
-            {card.artist && (
-              <div className="price-row">
-                <span className="stat-label">Artist</span>
-                <span>{card.artist}</span>
-              </div>
-            )}
+            {card.hp && <StatRow label="HP">{card.hp}</StatRow>}
+            {card.artist && <StatRow label="Artist">{card.artist}</StatRow>}
             {card.set.releaseDate && (
-              <div className="price-row">
-                <span className="stat-label">Released</span>
-                <span>{card.set.releaseDate}</span>
-              </div>
+              <StatRow label="Released">{card.set.releaseDate}</StatRow>
             )}
           </div>
 
@@ -170,40 +122,20 @@ export default function CardDetail() {
 
           <h2>Add to Portfolio</h2>
           {addStatus ? (
-            <p className={addStatus.ok ? 'success-msg' : 'error'}>{addStatus.msg}</p>
+            <StatusMessage ok={addStatus.ok}>{addStatus.msg}</StatusMessage>
           ) : (
-            <form
+            <PriceQtyForm
               className="detail-add-form"
-              onSubmit={e => {
-                e.preventDefault()
-                handleAdd()
-              }}
-            >
-              <label className="edit-field">
-                <span className="stat-label">Price paid ($)</span>
-                <input
-                  type="number"
-                  value={purchasePrice}
-                  onChange={e => setPurchasePrice(e.target.value)}
-                  className="mini-input"
-                  min="0"
-                  step="0.01"
-                />
-              </label>
-              <label className="edit-field">
-                <span className="stat-label">Quantity</span>
-                <input
-                  type="number"
-                  value={quantity}
-                  onChange={e => setQuantity(e.target.value)}
-                  className="mini-input mini-qty"
-                  min="1"
-                />
-              </label>
-              <button type="submit" className="btn-primary" disabled={addBusy}>
-                {addBusy ? 'Adding...' : '+ Portfolio'}
-              </button>
-            </form>
+              labeled
+              price={purchasePrice}
+              quantity={quantity}
+              onPriceChange={setPurchasePrice}
+              onQuantityChange={setQuantity}
+              onSubmit={() => add(card.id, purchasePrice, quantity)}
+              submitLabel="+ Portfolio"
+              busyLabel="Adding..."
+              busy={addBusy}
+            />
           )}
         </div>
       </div>

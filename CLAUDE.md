@@ -32,6 +32,8 @@ Backend tests live in `Backend/tests/` (auth, portfolio + card-search routers). 
 - `Backend/models.py` — SQLAlchemy models; schema is managed by Alembic (`alembic/versions/`), NOT `create_all` — model changes need a migration
 - `Frontend/mintly/src/api.ts` — ALL fetch calls live here; pages never call `fetch` directly
 - `Frontend/mintly/src/pages/` — Search, CardDetail, Portfolio, Login, Home
+- `Frontend/mintly/src/components/` — shared UI: Navbar, PriceQtyForm (price+qty add/edit form), StatRow (label/value line), GainLoss (signed colored amount), PageMessage (centered page state), StatusMessage (add success/error line). Reuse these instead of re-inlining their markup in pages.
+- `Frontend/mintly/src/hooks.ts` — `useAddCard` (full add-to-portfolio flow: token check, parsing, timed status) and `useSessionRedirect` (the 401 → `/login` redirect + notice). `format.ts` — `money()` dollar formatting.
 - `Frontend/mintly/src/App.css` — single stylesheet; use the CSS variables from `index.css` (`--bg-card`, `--border`, `--text`, `--text-h`, `--accent`, `--positive`, `--negative`)
 
 ## Conventions & invariants
@@ -40,7 +42,8 @@ Backend tests live in `Backend/tests/` (auth, portfolio + card-search routers). 
 - Credentials/secrets never go in query strings (they end up in server logs). Register uses a JSON body; keep it that way.
 - Price-variant preference order (keep backend `extract_price` and frontend `getCardPrice` in sync): holofoil → normal → reverseHolofoil → 1stEditionHolofoil, using `mid`.
 - TCG API query syntax: multi-word `name:` filters MUST be quoted (`name:"pikachu vmax"`) — bare words after a filter return HTTP 400 upstream.
-- Authenticated frontend calls go through `authedFetch` in `api.ts` (clears token + throws `SessionExpiredError` on 401). Pages catch that error and redirect to `/login` with a notice in router state — new authed flows must do the same.
+- New React components go in `Frontend/mintly/src/components/`, one file per component — don't define reusable components inline in page files. Pages under `src/pages/` are route entries only; if a piece of UI is (or is about to be) used by more than one page, extract it to `components/` first.
+- Authenticated frontend calls go through `authedFetch` in `api.ts` (clears token + throws `SessionExpiredError` on 401). Pages catch that error and redirect to `/login` with a notice in router state — new authed flows must do the same, via `useSessionRedirect` from `hooks.ts` (don't hand-roll the redirect/notice).
 - Card searches request only the fields the frontend uses (`_CARD_FIELDS` in `card_api.py`, via the upstream `select=` param). If the frontend `Card` type grows a field, add it there too or it will arrive undefined.
 - Card-list endpoints (`/search`, `/cards`, `/sets/{id}/cards`) take `?page=` and return a paged envelope `{data, page, pageSize, totalCount}` (250/page — the upstream max), typed as `CardPage` in `api.ts`. Don't return bare card arrays from new list endpoints.
 - Backend validation uses Pydantic models with `Field` constraints (price ≥ 0, quantity ≥ 1); mirror user-facing rules client-side for instant feedback, with identical messages.

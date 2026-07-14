@@ -1,0 +1,54 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { addCard, getToken, SessionExpiredError } from './api'
+
+// The one notice Login.tsx displays when an authed call 401s — every redirect must
+// use this exact flow, so new authed features should reuse this hook.
+export function useSessionRedirect() {
+  const navigate = useNavigate()
+  return () =>
+    navigate('/login', { state: { notice: 'Your session expired — please log in again.' } })
+}
+
+export interface AddCardStatus {
+  id: string
+  msg: string
+  ok: boolean
+}
+
+// Add-to-portfolio flow shared by Search and CardDetail: token check, price/qty
+// parsing, and a status message that clears itself (3s on success, 4s on error).
+export function useAddCard() {
+  const navigate = useNavigate()
+  const redirectToLogin = useSessionRedirect()
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<AddCardStatus | null>(null)
+
+  async function add(cardId: string, priceInput: string, qtyInput: string, onSuccess?: () => void) {
+    if (!getToken()) {
+      navigate('/login')
+      return
+    }
+    if (busy) return
+    setBusy(true)
+    try {
+      const price = parseFloat(priceInput)
+      const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1)
+      onSuccess?.()
+      setStatus({ id: cardId, msg, ok: true })
+      setTimeout(() => setStatus(null), 3000)
+    } catch (err: unknown) {
+      if (err instanceof SessionExpiredError) {
+        redirectToLogin()
+        return
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to add card'
+      setStatus({ id: cardId, msg, ok: false })
+      setTimeout(() => setStatus(null), 4000)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { add, busy, status }
+}

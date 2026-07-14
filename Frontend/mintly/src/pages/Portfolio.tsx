@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint } from '../api'
+import GainLoss from '../components/GainLoss'
+import PageMessage from '../components/PageMessage'
+import PriceQtyForm from '../components/PriceQtyForm'
+import StatRow from '../components/StatRow'
+import { useSessionRedirect } from '../hooks'
+import { money } from '../format'
 
 // ----- Types & constants ---------------------------------------------------------
 
@@ -79,12 +85,8 @@ export default function Portfolio() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editQty, setEditQty] = useState('')
-  const navigate = useNavigate()
-
   // The token is already cleared by authedFetch — send the user back to login
-  function redirectToLogin() {
-    navigate('/login', { state: { notice: 'Your session expired — please log in again.' } })
-  }
+  const redirectToLogin = useSessionRedirect()
 
   useEffect(() => {
     if (!getToken()) return
@@ -156,16 +158,15 @@ export default function Portfolio() {
 
   if (!getToken()) {
     return (
-      <div className="page centered">
+      <PageMessage action={{ to: '/login', label: 'Login', className: 'btn-primary btn-lg' }}>
         <h2>Log in to view your portfolio</h2>
         <p>Track your cards and monitor their value over time.</p>
-        <Link to="/login" className="btn-primary btn-lg" style={{ marginTop: '16px' }}>Login</Link>
-      </div>
+      </PageMessage>
     )
   }
 
-  if (loading) return <div className="page centered"><p>Loading portfolio...</p></div>
-  if (error) return <div className="page centered"><p className="error">{error}</p></div>
+  if (loading) return <PageMessage><p>Loading portfolio...</p></PageMessage>
+  if (error) return <PageMessage><p className="error">{error}</p></PageMessage>
 
   const totalValue = cards.reduce((sum, c) => sum + (c.current_price ?? c.purchase_price) * c.quantity, 0)
   const totalCost = cards.reduce((sum, c) => sum + c.purchase_price * c.quantity, 0)
@@ -242,7 +243,7 @@ export default function Portfolio() {
             domain={['auto', 'auto']}
           />
           <Tooltip
-            formatter={value => [`$${Number(value).toFixed(2)}`, 'Value']}
+            formatter={value => [money(Number(value)), 'Value']}
             labelFormatter={label => formatChartDate(String(label))}
             contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
             labelStyle={{ color: 'var(--text)' }}
@@ -254,37 +255,17 @@ export default function Portfolio() {
   )
 
   const editForm = (lot: PortfolioCard) => (
-    <div className="add-form">
-      <label className="edit-field">
-        <span className="stat-label">Price paid ($)</span>
-        <input
-          type="number"
-          value={editPrice}
-          onChange={e => setEditPrice(e.target.value)}
-          className="mini-input"
-          min="0"
-          step="0.01"
-        />
-      </label>
-      <label className="edit-field">
-        <span className="stat-label">Quantity</span>
-        <input
-          type="number"
-          value={editQty}
-          onChange={e => setEditQty(e.target.value)}
-          className="mini-input mini-qty"
-          min="1"
-        />
-      </label>
-      <div className="add-form-buttons">
-        <button className="btn-primary btn-sm" onClick={() => handleSaveEdit(lot)}>
-          Save
-        </button>
-        <button className="btn-outline btn-sm" onClick={() => setEditingId(null)}>
-          Cancel
-        </button>
-      </div>
-    </div>
+    <PriceQtyForm
+      labeled
+      price={editPrice}
+      quantity={editQty}
+      onPriceChange={setEditPrice}
+      onQuantityChange={setEditQty}
+      onSubmit={() => handleSaveEdit(lot)}
+      submitLabel="Save"
+      smallButtons
+      onCancel={() => setEditingId(null)}
+    />
   )
 
   return (
@@ -304,17 +285,15 @@ export default function Portfolio() {
           <div className="portfolio-summary">
             <div className="summary-stat">
               <span className="stat-label">Total Value</span>
-              <span className="stat-value">${totalValue.toFixed(2)}</span>
+              <span className="stat-value">{money(totalValue)}</span>
             </div>
             <div className="summary-stat">
               <span className="stat-label">Total Cost</span>
-              <span className="stat-value">${totalCost.toFixed(2)}</span>
+              <span className="stat-value">{money(totalCost)}</span>
             </div>
             <div className="summary-stat">
               <span className="stat-label">Gain / Loss</span>
-              <span className={`stat-value ${totalGainLoss >= 0 ? 'positive' : 'negative'}`}>
-                {totalGainLoss >= 0 ? '+' : ''}${totalGainLoss.toFixed(2)}
-              </span>
+              <GainLoss value={totalGainLoss} className="stat-value" />
             </div>
             <div className="summary-stat">
               <span className="stat-label">Cards</span>
@@ -404,24 +383,14 @@ export default function Portfolio() {
                     ) : (
                       <>
                         <div className="price-rows">
-                          <div className="price-row">
-                            <span className="stat-label">{single ? 'Paid' : 'Avg Paid'}</span>
-                            <span>${(single ? lot.purchase_price : avgPaid).toFixed(2)}</span>
-                          </div>
-                          <div className="price-row">
-                            <span className="stat-label">Now</span>
-                            <span>{group.current_price != null ? `$${group.current_price.toFixed(2)}` : '—'}</span>
-                          </div>
+                          <StatRow label={single ? 'Paid' : 'Avg Paid'}>
+                            {money(single ? lot.purchase_price : avgPaid)}
+                          </StatRow>
+                          <StatRow label="Now">{money(group.current_price)}</StatRow>
                           {groupGain != null && (
-                            <div className="price-row">
-                              <span className="stat-label">P&L</span>
-                              <span className={groupGain >= 0 ? 'positive' : 'negative'}>
-                                {groupGain >= 0 ? '+' : ''}${groupGain.toFixed(2)}
-                                {groupGainPct != null && (
-                                  <span className="pct"> ({groupGainPct > 0 ? '+' : ''}{groupGainPct}%)</span>
-                                )}
-                              </span>
-                            </div>
+                            <StatRow label="P&L">
+                              <GainLoss value={groupGain} pct={groupGainPct} />
+                            </StatRow>
                           )}
                         </div>
 
@@ -453,14 +422,10 @@ export default function Portfolio() {
                                   ) : (
                                     <div key={l.id} className="lot-row">
                                       <div className="lot-info">
-                                        <span className="lot-main">{l.quantity} @ ${l.purchase_price.toFixed(2)}</span>
+                                        <span className="lot-main">{l.quantity} @ {money(l.purchase_price)}</span>
                                         <span className="lot-date">{formatLotDate(l.purchase_date)}</span>
                                       </div>
-                                      {l.gain_loss != null && (
-                                        <span className={l.gain_loss >= 0 ? 'positive' : 'negative'}>
-                                          {l.gain_loss >= 0 ? '+' : ''}${l.gain_loss.toFixed(2)}
-                                        </span>
-                                      )}
+                                      {l.gain_loss != null && <GainLoss value={l.gain_loss} />}
                                       <div className="lot-actions">
                                         <button className="lot-btn" onClick={() => startEdit(l)}>Edit</button>
                                         <button
