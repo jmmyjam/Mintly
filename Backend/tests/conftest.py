@@ -113,6 +113,7 @@ def auth_headers(client):
     """Register + log in a default user, return Authorization headers."""
     client.post("/auth/register", json={
         "email": "ash@example.com", "username": "ash", "password": "pikachu1",
+        "accepted_terms": True,
     })
     res = client.post("/auth/login", data={"username": "ash", "password": "pikachu1"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
@@ -122,6 +123,7 @@ def auth_headers(client):
 def second_auth_headers(client):
     client.post("/auth/register", json={
         "email": "gary@example.com", "username": "gary", "password": "eevee123",
+        "accepted_terms": True,
     })
     res = client.post("/auth/login", data={"username": "gary", "password": "eevee123"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}

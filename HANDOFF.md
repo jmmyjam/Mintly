@@ -47,11 +47,11 @@ The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at bui
 - `portfolio.py` — portfolio CRUD, batched price fetching, daily price snapshots, history endpoint. `fetch_prices` resolves all held cards in one upstream OR-query (`id:"a" OR id:"b" …`, chunks of 100) and caches per-card prices for 15 minutes (`_price_cache`); `/portfolio/add` seeds that cache from the card it already fetched.
 - `models.py` — SQLAlchemy models.
 - `database.py` — engine/session setup from `DATABASE_URL`.
-- `tests/` — pytest suite for the auth, portfolio, and card-search routers (41 tests, runs offline in ~9s). `conftest.py` sets `DATABASE_URL`/`SECRET_KEY` env vars **before** importing app modules (they read config at import time), overrides `get_db` with an in-memory SQLite session, and swaps `portfolio._session` for a `FakeUpstream` — no Postgres or network needed. `test_search.py` likewise swaps `card_api.session` for a paged fake. Dev deps: `requirements-dev.txt`.
+- `tests/` — pytest suite for the auth, portfolio, and card-search routers (43 tests, runs offline in ~9s). `conftest.py` sets `DATABASE_URL`/`SECRET_KEY` env vars **before** importing app modules (they read config at import time), overrides `get_db` with an in-memory SQLite session, and swaps `portfolio._session` for a `FakeUpstream` — no Postgres or network needed. `test_search.py` likewise swaps `card_api.session` for a paged fake. Dev deps: `requirements-dev.txt`.
 - Schema is managed by **Alembic** (`alembic/versions/`); `env.py` reads `DATABASE_URL` from `Backend/.env` and targets `models.Base.metadata`, so `alembic revision --autogenerate` works. The app no longer calls `create_all` at startup — after changing `models.py`, generate a migration, review it, and run `alembic upgrade head`. Databases created under the old `create_all` regime were stamped at the initial revision (`alembic stamp head` before the first real migration).
 
 ### Data model
-- `users` — id, email, username, hashed_password (bcrypt), created_at.
+- `users` — id, email, username, hashed_password (bcrypt), created_at, accepted_terms_at (when the user accepted the ToS at registration; NULL for accounts predating the requirement).
 - `portfolio_cards` — one row per **purchase (lot)**: user_id, card_id (TCG API id like `base1-4`), card_name, quantity, purchase_price, purchase_date. The same card bought twice = two rows; the frontend groups them visually.
 - `portfolio_snapshot` — one row per card per UTC day: card_id, price, snapshot_date. Shared across users. Written whenever any user loads their portfolio (deduped per UTC day).
 - All `DateTime` columns store **naive UTC**, set via the shared `utcnow()` helper in `models.py`; anything compared against them (e.g. the snapshot dedupe in `portfolio.py`) must use `utcnow()` too, never local time. They serialize without a zone suffix, so the frontend must anchor them with `Z` before parsing (`parseUTCDate` in `Portfolio.tsx`) — a bare `new Date(...)` reads them as local time and shows evening purchases dated tomorrow.
@@ -59,7 +59,7 @@ The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at bui
 ### API endpoints
 | Endpoint | Notes |
 |---|---|
-| `POST /auth/register` | JSON body (never query params — passwords would hit logs). Password rules: ≥8 chars, ≥1 letter, ≥1 number. |
+| `POST /auth/register` | JSON body (never query params — passwords would hit logs). Password rules: ≥8 chars, ≥1 letter, ≥1 number. Requires `accepted_terms: true` (400 "You must agree to the Terms of Service" otherwise — message mirrored by the register form's checkbox); acceptance time stored on the user. |
 | `POST /auth/login` | OAuth2 form body; accepts email **or** username. Returns a 7-day JWT. |
 | `GET /search?q=&page=` | Smart search — see below. Returns `{data, page, pageSize, totalCount}` (250/page). |
 | `GET /cards?name=&set_id=&number=&rarity=&type=&page=` | Filtered search; drives the frontend filter bar. Same paged envelope. |

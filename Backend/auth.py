@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User
+from models import User, utcnow
 import os
 import re
 from dotenv import load_dotenv
@@ -33,6 +33,7 @@ class RegisterRequest(BaseModel):
     email: str
     username: str
     password: str
+    accepted_terms: bool = False
 
 
 # ----- Helpers ----------------------------------------------------------------
@@ -63,6 +64,8 @@ def password_error(password: str) -> str | None:
 
 @router.post("/register")
 def register(body: RegisterRequest, db=Depends(get_db)):
+    if not body.accepted_terms:
+        raise HTTPException(status_code=400, detail="You must agree to the Terms of Service")
     error = password_error(body.password)
     if error:
         raise HTTPException(status_code=400, detail=error)
@@ -72,7 +75,8 @@ def register(body: RegisterRequest, db=Depends(get_db)):
         raise HTTPException(status_code=409, detail="Username already taken")
     user = User(email=body.email,
                 username=body.username,
-                hashed_password=pwd_context.hash(body.password))
+                hashed_password=pwd_context.hash(body.password),
+                accepted_terms_at=utcnow())
     db.add(user); db.commit()
     return {
         "message": "Account created"

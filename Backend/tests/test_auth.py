@@ -1,4 +1,5 @@
-REGISTER = {"email": "ash@example.com", "username": "ash", "password": "pikachu1"}
+REGISTER = {"email": "ash@example.com", "username": "ash", "password": "pikachu1",
+            "accepted_terms": True}
 
 
 def register(client, **overrides):
@@ -10,6 +11,16 @@ class TestRegister:
         res = register(client)
         assert res.status_code == 200
         assert res.json() == {"message": "Account created"}
+
+    def test_terms_must_be_accepted(self, client):
+        res = register(client, accepted_terms=False)
+        assert res.status_code == 400
+        assert res.json()["detail"] == "You must agree to the Terms of Service"
+
+    def test_terms_default_is_not_accepted(self, client):
+        payload = {k: v for k, v in REGISTER.items() if k != "accepted_terms"}
+        res = client.post("/auth/register", json=payload)
+        assert res.status_code == 400
 
     def test_password_too_short(self, client):
         res = register(client, password="ab1")

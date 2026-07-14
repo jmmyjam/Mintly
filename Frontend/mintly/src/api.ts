@@ -142,11 +142,11 @@ export async function login(username: string, password: string): Promise<void> {
   setToken(data.access_token)
 }
 
-export async function register(email: string, username: string, password: string): Promise<void> {
+export async function register(email: string, username: string, password: string, acceptedTerms: boolean): Promise<void> {
   const res = await fetch(`${BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, username, password }),
+    body: JSON.stringify({ email, username, password, accepted_terms: acceptedTerms }),
   })
   if (!res.ok) {
     const data = await res.json()

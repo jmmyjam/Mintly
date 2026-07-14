@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { login, register } from '../api'
 
 // Mirrors the backend rules in auth.py so users get instant feedback
@@ -15,6 +15,7 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [agreedToTerms, setAgreedToTerms] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -31,11 +32,16 @@ export default function Login() {
         setError(pwError)
         return
       }
+      // Mirrors the backend rule in auth.py, with the identical message
+      if (!agreedToTerms) {
+        setError('You must agree to the Terms of Service')
+        return
+      }
     }
     setLoading(true)
     try {
       if (mode === 'register') {
-        await register(email, username, password)
+        await register(email, username, password, agreedToTerms)
       }
       await login(username, password)
       navigate('/portfolio')
@@ -52,6 +58,7 @@ export default function Login() {
     setEmail('')
     setUsername('')
     setPassword('')
+    setAgreedToTerms(false)
   }
 
   return (
@@ -97,6 +104,19 @@ export default function Login() {
           />
           {mode === 'register' && (
             <p className="form-hint">At least 8 characters, with a letter and a number.</p>
+          )}
+          {mode === 'register' && (
+            <label className="terms-row">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={e => setAgreedToTerms(e.target.checked)}
+              />
+              <span>
+                I agree to the <Link to="/terms">Terms of Service</Link> and{' '}
+                <Link to="/privacy">Privacy Policy</Link>
+              </span>
+            </label>
           )}
           {error && <p className="error">{error}</p>}
           <button type="submit" className="btn-primary" disabled={loading}>

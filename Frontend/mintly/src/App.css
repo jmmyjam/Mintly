@@ -792,6 +792,22 @@
   font-size: 12px;
   margin-top: -6px;
 }
+
+.terms-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 150%;
+}
+
+.terms-row input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 .form-input::placeholder { color: var(--text); }
 
 .auth-form .btn-primary {

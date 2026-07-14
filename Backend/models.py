@@ -16,6 +16,9 @@ class User(Base):
     username = Column(String, unique=True)
     hashed_password = Column(String)
     created_at = Column(DateTime, default=utcnow)
+    # When the user accepted the Terms of Service at registration;
+    # nullable because accounts created before the requirement have no record
+    accepted_terms_at = Column(DateTime, nullable=True)
     portfolio = relationship("PortfolioCard", back_populates="owner")
 
 class PortfolioCard(Base):

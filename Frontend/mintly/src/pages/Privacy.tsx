@@ -6,10 +6,11 @@ export default function Privacy() {
 
       <h2>1. What we collect</h2>
       <p>
-        When you register we store your email address, username, and a hashed
-        version of your password (never the password itself). When you use the
-        portfolio we store the cards you add: card id, name, quantity,
-        purchase price, and purchase date.
+        When you register we store your email address, username, a hashed
+        version of your password (never the password itself), and the time
+        you accepted the Terms of Service. When you use the portfolio we
+        store the cards you add: card id, name, quantity, purchase price, and
+        purchase date.
       </p>
 
       <h2>2. How it's used</h2>
