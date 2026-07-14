@@ -1,10 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Navbar from './components/Navbar'
+import Footer from './components/Footer'
 import Home from './pages/Home'
 import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
 import CardDetail from './pages/CardDetail'
 import Login from './pages/Login'
+import Terms from './pages/Terms'
+import Privacy from './pages/Privacy'
 import './App.css'
 
 export default function App() {
@@ -18,8 +21,11 @@ export default function App() {
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/card/:cardId" element={<CardDetail />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
         </Routes>
       </main>
+      <Footer />
     </BrowserRouter>
   )
 }

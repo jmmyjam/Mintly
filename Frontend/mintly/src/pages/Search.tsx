@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   searchCards,
   filterCards,
@@ -49,7 +49,10 @@ const TYPES = [
 ];
 
 export default function Search() {
-  const [query, setQuery] = useState("");
+  // Seed the query from ?q= (the home page's hero search links here);
+  // the debounce effect below then runs it like any typed query
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [sets, setSets] = useState<CardSet[]>([]);
   const [setId, setSetId] = useState("");
   const [rarity, setRarity] = useState("");
