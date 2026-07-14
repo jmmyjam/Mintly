@@ -36,7 +36,7 @@ Backend tests live in `Backend/tests/` (auth, portfolio + card-search routers). 
 - `Frontend/mintly/src/pages/` — Search, CardDetail, Portfolio, Login, Home
 - `Frontend/mintly/src/components/` — shared UI: Navbar, PriceQtyForm (price+qty add/edit form), StatRow (label/value line), GainLoss (signed colored amount), PageMessage (centered page state), StatusMessage (add success/error line). Reuse these instead of re-inlining their markup in pages.
 - `Frontend/mintly/src/hooks.ts` — `useAddCard` (full add-to-portfolio flow: token check, parsing, timed status) and `useSessionRedirect` (the 401 → `/login` redirect + notice). `format.ts` — `money()` dollar formatting.
-- `Frontend/mintly/src/App.css` — single stylesheet; use the CSS variables from `index.css` (`--bg-card`, `--border`, `--text`, `--text-h`, `--accent`, `--positive`, `--negative`)
+- `Frontend/mintly/src/App.css` — single stylesheet; use the CSS variables from `index.css` (`--bg-card`, `--border`, `--text`, `--text-h`, `--accent`, `--positive`, `--negative`, `--ink`). Theme is light/minimal: warm cream canvas, ink-black surfaces/buttons (pill-shaped), deep-mint accent — keep new UI inside this palette.
 
 ## Conventions & invariants
 

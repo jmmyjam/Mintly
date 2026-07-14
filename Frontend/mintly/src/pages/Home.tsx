@@ -16,17 +16,17 @@ export default function Home() {
 
       <div className="home-features">
         <div className="feature">
-          <div className="feature-icon">🔍</div>
+          <div className="feature-num">01</div>
           <h3>Search</h3>
           <p>Find any card by name, set, or number from the full Pokemon TCG catalog.</p>
         </div>
         <div className="feature">
-          <div className="feature-icon">📈</div>
+          <div className="feature-num">02</div>
           <h3>Live Prices</h3>
           <p>See current market prices pulled from TCGPlayer for every card.</p>
         </div>
         <div className="feature">
-          <div className="feature-icon">💼</div>
+          <div className="feature-num">03</div>
           <h3>Portfolio</h3>
           <p>Track what you paid vs. what your cards are worth today.</p>
         </div>
