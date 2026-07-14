@@ -1,8 +1,13 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship, declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 
 Base = declarative_base()
+
+def utcnow() -> datetime:
+    # All DateTime columns store naive UTC; anything comparing against them
+    # (e.g. the snapshot daily dedupe) must use this, never local time.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 class User(Base):
     __tablename__ = "users"
@@ -10,7 +15,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     username = Column(String, unique=True)
     hashed_password = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     portfolio = relationship("PortfolioCard", back_populates="owner")
 
 class PortfolioCard(Base):
@@ -21,7 +26,7 @@ class PortfolioCard(Base):
     card_name = Column(String)
     quantity = Column(Integer, default=1)
     purchase_price = Column(Float)    # price paid per card
-    purchase_date = Column(DateTime, default=datetime.utcnow)
+    purchase_date = Column(DateTime, default=utcnow)
     owner = relationship("User", back_populates="portfolio")
 
 class PortfolioSnapshot(Base):
@@ -29,4 +34,4 @@ class PortfolioSnapshot(Base):
     id = Column(Integer, primary_key=True)
     card_id = Column(String, index=True)  # shared across users, one row per card per day
     price = Column(Float)
-    snapshot_date = Column(DateTime, default=datetime.utcnow)
+    snapshot_date = Column(DateTime, default=utcnow)

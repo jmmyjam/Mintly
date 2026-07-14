@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from database import get_db
 from models import User
@@ -85,8 +85,8 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
     ).first()
     if not user or not pwd_context.verify(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = jwt.encode({"sub": str(user.id), 
-                        "exp": datetime.utcnow() + timedelta(days=7)},
+    token = jwt.encode({"sub": str(user.id),
+                        "exp": datetime.now(timezone.utc) + timedelta(days=7)},
                        SECRET_KEY, algorithm=ALGORITHM)
     return {
         "access_token": token, 

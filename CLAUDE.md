@@ -47,6 +47,7 @@ Backend tests live in `Backend/tests/` (auth, portfolio + card-search routers). 
 - Card searches request only the fields the frontend uses (`_CARD_FIELDS` in `card_api.py`, via the upstream `select=` param). If the frontend `Card` type grows a field, add it there too or it will arrive undefined.
 - Card-list endpoints (`/search`, `/cards`, `/sets/{id}/cards`) take `?page=` and return a paged envelope `{data, page, pageSize, totalCount}` (250/page — the upstream max), typed as `CardPage` in `api.ts`. Don't return bare card arrays from new list endpoints.
 - Backend validation uses Pydantic models with `Field` constraints (price ≥ 0, quantity ≥ 1); mirror user-facing rules client-side for instant feedback, with identical messages.
+- Backend datetimes are naive UTC: use `utcnow()` from `models.py` for anything stored in or compared against a `DateTime` column (snapshot dedupe is per UTC day) — never `datetime.utcnow()` (deprecated) or local `date.today()`.
 
 ## Gotchas
 

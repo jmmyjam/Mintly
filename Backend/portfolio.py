@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 
 from database import get_db
-from models import PortfolioCard, PortfolioSnapshot
+from models import PortfolioCard, PortfolioSnapshot, utcnow
 from auth import get_current_user
 
 load_dotenv()
@@ -103,8 +103,9 @@ def fetch_prices(card_ids: list[str]) -> tuple[dict[str, float], dict[str, str]]
 
 
 def record_snapshots(db: Session, prices: dict[str, float]):
-    # Record at most one snapshot per card per day
-    today_start = datetime.combine(date.today(), datetime.min.time())
+    # Record at most one snapshot per card per UTC day (snapshot_date is naive UTC,
+    # so deduping by local date would double-record or skip days near midnight)
+    today_start = datetime.combine(utcnow().date(), datetime.min.time())
     already_recorded = {
         s.card_id
         for s in db.query(PortfolioSnapshot).filter(

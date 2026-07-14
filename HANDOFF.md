@@ -53,7 +53,8 @@ The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at bui
 ### Data model
 - `users` — id, email, username, hashed_password (bcrypt), created_at.
 - `portfolio_cards` — one row per **purchase (lot)**: user_id, card_id (TCG API id like `base1-4`), card_name, quantity, purchase_price, purchase_date. The same card bought twice = two rows; the frontend groups them visually.
-- `portfolio_snapshot` — one row per card per day: card_id, price, snapshot_date. Shared across users. Written whenever any user loads their portfolio (deduped per day).
+- `portfolio_snapshot` — one row per card per UTC day: card_id, price, snapshot_date. Shared across users. Written whenever any user loads their portfolio (deduped per UTC day).
+- All `DateTime` columns store **naive UTC**, set via the shared `utcnow()` helper in `models.py`; anything compared against them (e.g. the snapshot dedupe in `portfolio.py`) must use `utcnow()` too, never local time.
 
 ### API endpoints
 | Endpoint | Notes |
@@ -92,7 +93,7 @@ Tokenizes the query, then:
 ## Behaviors worth knowing
 
 - **Price picking**: first available `mid` among holofoil → normal → reverseHolofoil → 1stEditionHolofoil (`extract_price` backend, `getCardPrice` frontend — keep in sync).
-- **History chart**: computed against *current* holdings, so editing a quantity retroactively changes past points. Snapshots only record on days someone loads their portfolio. With <2 days of data the chart shows a flat placeholder line at today's value.
+- **History chart**: computed against *current* holdings, so editing a quantity retroactively changes past points. Snapshots only record on days someone loads their portfolio. With <2 days of data the chart shows a flat placeholder line at today's value. Snapshot days are UTC, so a late-evening US visit records under the next calendar day's UTC date — the chart's newest point can read one day ahead of local; dedupe and chart bucketing use the same UTC day, so points stay one-per-day.
 - **Newest sets have no prices**: the upstream API has zero TCGPlayer data for the 2026 "Mega Evolution" era sets (verified: me4, me3, me2pt5 all 0/N cards). The UI shows a "prices unavailable" note when a whole result set is priceless; blank-price adds for those cards are rejected with a clear message. Not a bug — upstream data lag.
 - **Add button** shows "Adding…" and blocks double-clicks (the add round-trips to the external API, 1–3s).
 - **Session expiry**: JWTs last 7 days. Any authed call after expiry gets a 401 → token cleared → redirect to `/login` with a "session expired" notice (`SessionExpiredError` in `api.ts`, redirect via `useSessionRedirect` in `hooks.ts`).
@@ -108,7 +109,6 @@ Tokenizes the query, then:
 2. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
 3. **Frontend tests** — the backend routers are covered (`Backend/tests/`); the React pages are not.
 4. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
-5. **Consistent snapshot timezone** — `PortfolioSnapshot.snapshot_date` defaults to `datetime.utcnow` but the daily dedupe compares against local `date.today()` (`portfolio.py`); late-evening visits (observed 23:47 PDT) record snapshots dated *tomorrow*, which then show as a future date on the history chart's axis.
 
 ## Gotchas for developers
 
