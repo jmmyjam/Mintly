@@ -18,6 +18,26 @@ load_dotenv()
 BASE_URL = "https://api.pokemontcg.io/v2"
 API_KEY = os.getenv("POKEMON_TCG_API_KEY")
 
+
+# Comma-separated list of allowed frontend origins, e.g.
+# CORS_ORIGINS=https://mintly.example.com,http://localhost:5173
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(auth_router)
+app.include_router(portfolio_router)
+
 session = requests.Session()
 session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
@@ -82,16 +102,6 @@ def _fetch_sets() -> list:
     _cache["__sets__"] = (time.time(), data)
     return data
 
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.include_router(auth_router)
-app.include_router(portfolio_router)
 
 # Natural language search
 @app.get("/search")

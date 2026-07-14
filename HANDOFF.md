@@ -27,6 +27,7 @@ Requires a `.env` in `Backend/` (not committed):
 DATABASE_URL=postgresql://username@localhost:5432/mintly
 SECRET_KEY=...
 POKEMON_TCG_API_KEY=...
+CORS_ORIGINS=http://localhost:5173   # optional — comma-separated allowed frontend origins (this is the default)
 ```
 
 **Frontend** (from `Frontend/mintly/`):
@@ -36,11 +37,12 @@ npm run dev                          # http://localhost:5173
 npm run build                        # type-check + production build
 npx eslint src/                      # lint (strict react-hooks rules enabled)
 ```
+The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at build time). Unset it for local dev — it defaults to `http://localhost:8000`.
 
 ## Architecture
 
 ### Backend files
-- `card_api.py` — FastAPI app, CORS (allows `localhost:5173`), card/set proxy endpoints, smart search, in-memory response cache (6-hour TTL, per-process, cleared on every `--reload` restart; covers searches and single-card lookups, keyed per query+page). Card-list endpoints are paginated: they take `?page=` and return an envelope `{data, page, pageSize, totalCount}` (250 cards/page — the upstream max). Card searches pass `select=` upstream (`_CARD_FIELDS`) so responses carry only the fields the frontend uses — a full-set search is ~90KB instead of multiple MB. `/sets/{id}` is answered from the cached sets list with no upstream call.
+- `card_api.py` — FastAPI app, CORS (origins from `CORS_ORIGINS` env var, comma-separated; defaults to `http://localhost:5173`), card/set proxy endpoints, smart search, in-memory response cache (6-hour TTL, per-process, cleared on every `--reload` restart; covers searches and single-card lookups, keyed per query+page). Card-list endpoints are paginated: they take `?page=` and return an envelope `{data, page, pageSize, totalCount}` (250 cards/page — the upstream max). Card searches pass `select=` upstream (`_CARD_FIELDS`) so responses carry only the fields the frontend uses — a full-set search is ~90KB instead of multiple MB. `/sets/{id}` is answered from the cached sets list with no upstream call.
 - `auth.py` — register/login, JWT creation/validation (`get_current_user` dependency), password rules.
 - `portfolio.py` — portfolio CRUD, batched price fetching, daily price snapshots, history endpoint. `fetch_prices` resolves all held cards in one upstream OR-query (`id:"a" OR id:"b" …`, chunks of 100) and caches per-card prices for 15 minutes (`_price_cache`); `/portfolio/add` seeds that cache from the card it already fetched.
 - `models.py` — SQLAlchemy models.
@@ -97,7 +99,7 @@ Tokenizes the query, then:
 
 ## Suggested next steps
 
-1. **Deployment prep** — `BASE` is hardcoded to `localhost:8000` in `api.ts`; CORS to `localhost:5173` in `card_api.py`. Move both to env vars. The cache is in-memory (single-process only).
+1. **Deployment prep** — API base URL (`VITE_API_BASE`) and CORS origins (`CORS_ORIGINS`) are env-configurable now; remaining concern: the caches are in-memory (single-process only).
 2. **Scheduled snapshots** — a daily cron/job would make the history chart gap-free instead of depending on visits.
 3. **Frontend tests** — the backend routers are covered (`Backend/tests/`); the React pages are not.
 4. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.

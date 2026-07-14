@@ -1,4 +1,6 @@
-const BASE = 'http://localhost:8000'
+// Set VITE_API_BASE at build time to point at a hosted backend
+// (an empty string makes calls relative to the page's own origin).
+const BASE: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 
 export interface PriceVariant {
   low?: number
