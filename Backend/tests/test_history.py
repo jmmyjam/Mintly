@@ -13,6 +13,7 @@ import pytest
 import card_api
 from conftest import TestingSessionLocal, make_card
 from models import CardPriceSnapshot, utcnow
+from price_history import extract_price
 
 
 class FakeResponse:
@@ -159,3 +160,25 @@ class TestPortfolioDailyChange:
                     headers=auth_headers)
         [row] = client.get("/portfolio", headers=auth_headers).json()
         assert row["price_change"] is None
+
+
+class TestExtractPrice:
+    def test_market_preferred_over_mid(self):
+        card = {"tcgplayer": {"prices": {"holofoil": {"market": 12.5, "mid": 15.0}}}}
+        assert extract_price(card) == 12.5
+
+    def test_falls_back_to_mid_without_market(self):
+        card = {"tcgplayer": {"prices": {"holofoil": {"mid": 15.0}}}}
+        assert extract_price(card) == 15.0
+
+    def test_variant_order_beats_price_field(self):
+        # holofoil wins over normal even when only holofoil's mid is available
+        card = {"tcgplayer": {"prices": {
+            "normal": {"market": 3.0, "mid": 4.0},
+            "holofoil": {"mid": 15.0},
+        }}}
+        assert extract_price(card) == 15.0
+
+    def test_no_prices_returns_none(self):
+        assert extract_price({"tcgplayer": {"prices": {}}}) is None
+        assert extract_price({}) is None

@@ -15,11 +15,16 @@ from models import CardPriceSnapshot, utcnow
 
 
 def extract_price(card_data: dict) -> float | None:
+    # TCGPlayer's market price tracks actual sales; mid is only a listing
+    # midpoint, so it's just the fallback when market is missing
     prices = card_data.get("tcgplayer", {}).get("prices", {})
     for price_type in ("holofoil", "normal", "reverseHolofoil", "1stEditionHolofoil"):
-        mid = prices.get(price_type, {}).get("mid")
-        if mid is not None:
-            return mid
+        variant = prices.get(price_type, {})
+        price = variant.get("market")
+        if price is None:
+            price = variant.get("mid")
+        if price is not None:
+            return price
     return None
 
 

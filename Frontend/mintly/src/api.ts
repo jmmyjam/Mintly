@@ -150,12 +150,13 @@ export function getCardImageUrl(cardId: string): string {
   return `https://images.pokemontcg.io/${setId}/${number}.png`
 }
 
+// Keep in sync with extract_price in Backend/price_history.py: market, then mid
 export function getCardPrice(card: Card): number | null {
   const prices = card.tcgplayer?.prices
   if (!prices) return null
   for (const type of ['holofoil', 'normal', 'reverseHolofoil', '1stEditionHolofoil']) {
-    const mid = prices[type]?.mid
-    if (mid != null) return mid
+    const price = prices[type]?.market ?? prices[type]?.mid
+    if (price != null) return price
   }
   return null
 }

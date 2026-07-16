@@ -60,7 +60,8 @@ def make_card(card_id: str, name: str = "Test Card", price: float | None = 10.0,
                    "large": image or f"https://img.example/{card_id}/large"},
     }
     if price is not None:
-        card["tcgplayer"] = {"prices": {"holofoil": {"mid": price}}}
+        # real upstream cards carry both; market is what extract_price prefers
+        card["tcgplayer"] = {"prices": {"holofoil": {"market": price, "mid": price}}}
     return card
 
 
