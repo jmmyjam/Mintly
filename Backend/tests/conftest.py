@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -9,6 +10,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("POKEMON_TCG_API_KEY", "test-api-key")
+# card_api mirrors its response cache to disk — keep each test run in its own
+# throwaway dir instead of Backend/.cache
+os.environ.setdefault("CARD_CACHE_DIR", tempfile.mkdtemp(prefix="mintly-test-cache-"))
 
 import pytest
 from fastapi.testclient import TestClient

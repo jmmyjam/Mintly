@@ -4,6 +4,7 @@ card_api talks to the upstream API through its own module-level `session`
 (separate from portfolio._session); these tests swap it for a fake that
 serves paged card data, so they run offline like the rest of the suite.
 """
+import json
 import time
 
 import pytest
@@ -169,6 +170,41 @@ def test_too_stale_cache_is_refetched_synchronously(client, cards_upstream):
 
     body = client.get("/cards", params={"name": "pikachu"}).json()
     assert len(body["data"]) == 2  # dead entry: fetched fresh, not served stale
+
+
+def test_cache_persists_across_restart(client, cards_upstream):
+    cards_upstream.card_lists['name:"pikachu"'] = make_cards(3)
+    client.get("/cards", params={"name": "pikachu"})
+    assert len(cards_upstream.card_calls()) == 1
+
+    card_api._cache.clear()  # simulate a --reload restart wiping process memory
+    assert card_api._load_persisted_cache() >= 1
+
+    body = client.get("/cards", params={"name": "pikachu"}).json()
+    assert len(body["data"]) == 3
+    assert len(cards_upstream.card_calls()) == 1  # served from the restored cache
+
+
+def test_dead_cache_file_not_restored(cards_upstream):
+    key = 'name:"ancient"|page:1'
+    card_api._cache_put(key, {"data": [], "page": 1, "pageSize": 50, "totalCount": 0})
+    path = card_api._cache_path(key)
+    entry = json.loads(path.read_text())
+    entry["ts"] -= card_api._STALE_TTL + 1  # age the disk copy past the limit
+    path.write_text(json.dumps(entry))
+    card_api._cache.clear()
+
+    card_api._load_persisted_cache()
+    assert key not in card_api._cache
+    assert not path.exists()  # pruned, not just skipped
+
+
+def test_corrupt_cache_file_is_pruned(cards_upstream):
+    card_api._CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    bad = card_api._CACHE_DIR / "corrupt.json"
+    bad.write_text("{not json")
+    card_api._load_persisted_cache()  # must not raise
+    assert not bad.exists()
 
 
 def _expire_sets_cache():

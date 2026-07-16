@@ -1,8 +1,13 @@
+import hashlib
+import json
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
+from pathlib import Path
+
 import requests
 import certifi
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -39,6 +44,10 @@ CORS_ORIGINS = [
 
 _CACHE_TTL = 21600  # fresh for 6 hours...
 _STALE_TTL = 86400  # ...then served stale (with a background refresh) up to 24h
+
+# Cache entries are mirrored to disk and reloaded at startup, so the many
+# --reload restarts of a dev session don't each start cold
+_CACHE_DIR = Path(os.getenv("CARD_CACHE_DIR", Path(__file__).parent / ".cache" / "cards"))
 
 # Upstream latency scales with the *requested* page size, not the payload:
 # pageSize=250 (the upstream max) benchmarks at 20-60s and drops connections,
@@ -99,6 +108,53 @@ def _cache_get(key: str) -> tuple[list | dict, bool] | None:
     return entry[1], age < _CACHE_TTL
 
 
+def _cache_path(key: str) -> Path:
+    # keys hold query syntax (quotes, |, :) — hash them into safe filenames
+    return _CACHE_DIR / (hashlib.sha1(key.encode()).hexdigest() + ".json")
+
+
+def _cache_put(key: str, data: list | dict) -> None:
+    ts = time.time()
+    _cache[key] = (ts, data)
+    # Mirror to disk best-effort: a failed write only costs persistence.
+    # Written before annotate_price_changes runs, so files never carry
+    # priceChange — it's recomputed per request.
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        blob = json.dumps({"key": key, "ts": ts, "data": data})
+        with tempfile.NamedTemporaryFile("w", dir=_CACHE_DIR, suffix=".tmp",
+                                         delete=False) as tmp:
+            tmp.write(blob)
+        os.replace(tmp.name, _cache_path(key))  # atomic — no partial reads
+    except OSError:
+        logger.warning("could not persist cache entry %r", key)
+
+
+def _load_persisted_cache() -> int:
+    """Restore disk-mirrored entries younger than _STALE_TTL; prune the rest."""
+    loaded = 0
+    try:
+        files = list(_CACHE_DIR.glob("*.json"))
+        for leftover in _CACHE_DIR.glob("*.tmp"):  # interrupted writes
+            leftover.unlink(missing_ok=True)
+    except OSError:
+        return 0
+    for f in files:
+        try:
+            entry = json.loads(f.read_text())
+            if time.time() - entry["ts"] < _STALE_TTL:
+                _cache[entry["key"]] = (entry["ts"], entry["data"])
+                loaded += 1
+            else:
+                f.unlink(missing_ok=True)
+        except (OSError, ValueError, KeyError):
+            try:
+                f.unlink(missing_ok=True)  # corrupt file — drop it
+            except OSError:
+                pass
+    return loaded
+
+
 def _refresh_in_background(key: str, fetch) -> None:
     # fetch() re-fetches upstream and overwrites _cache[key]; on failure the
     # stale entry stays and the next request triggers another attempt
@@ -117,6 +173,11 @@ def _refresh_in_background(key: str, fetch) -> None:
                 _refreshing.discard(key)
 
     threading.Thread(target=run, daemon=True).start()
+
+
+_restored = _load_persisted_cache()
+if _restored:
+    logger.info("restored %d cached upstream responses from disk", _restored)
 
 
 def _fetch_cards(q: str, page: int = 1) -> dict:
@@ -149,7 +210,7 @@ def _fetch_cards_upstream(key: str, q: str, page: int) -> dict:
         "pageSize": payload.get("pageSize", _PAGE_SIZE),
         "totalCount": payload.get("totalCount", len(cards)),
     }
-    _cache[key] = (time.time(), data)
+    _cache_put(key, data)
     return data
 
 
@@ -172,7 +233,7 @@ def _fetch_card_upstream(key: str, card_id: str) -> dict:
     if response.status_code != 200:
         raise HTTPException(status_code=404, detail="Card not found")
     data = response.json().get("data", {})
-    _cache[key] = (time.time(), data)
+    _cache_put(key, data)
     return data
 
 
@@ -194,7 +255,7 @@ def _fetch_sets() -> list:
             detail="Failed to fetch sets",
         )
     data = response.json().get("data", [])
-    _cache["__sets__"] = (time.time(), data)
+    _cache_put("__sets__", data)
     return data
 
 
