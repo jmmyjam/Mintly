@@ -62,7 +62,7 @@ export default function Search() {
   const [cards, setCards] = useState<Card[]>([]);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [pageSize, setPageSize] = useState(250);
+  const [pageSize, setPageSize] = useState(50);
   const [resultsLabel, setResultsLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -118,7 +118,7 @@ export default function Search() {
       setCards(results.data);
       setPage(p);
       setTotalCount(results.totalCount);
-      setPageSize(results.pageSize || 250);
+      setPageSize(results.pageSize || 50);
       if (results.totalCount === 0 && !isDefaultView) setError("No cards found.");
     } catch {
       setError(

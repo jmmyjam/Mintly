@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import threading
 import time
 import requests
 import certifi
@@ -36,9 +37,13 @@ CORS_ORIGINS = [
     if origin.strip()
 ]
 
-_CACHE_TTL = 21600  # 6 hours until cache reset
+_CACHE_TTL = 21600  # fresh for 6 hours...
+_STALE_TTL = 86400  # ...then served stale (with a background refresh) up to 24h
 
-_PAGE_SIZE = 250  # upstream maximum
+# Upstream latency scales with the *requested* page size, not the payload:
+# pageSize=250 (the upstream max) benchmarks at 20-60s and drops connections,
+# pageSize=50 at 2-5s — don't raise this without re-measuring
+_PAGE_SIZE = 50
 
 # Upstream is legitimately slow on cold queries (tens of seconds) but must never
 # hang a worker forever: 5s to connect, 60s per read.
@@ -52,6 +57,11 @@ _CARD_FIELDS = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
 # ----- Global state ----------------------------------------------------------
 
 _cache: dict[str, tuple[float, list | dict]] = {}
+
+# Keys with a background refresh in flight, so a popular stale entry doesn't
+# spawn one upstream call per request
+_refreshing: set[str] = set()
+_refreshing_lock = threading.Lock()
 
 session = requests.Session()
 session.verify = certifi.where()
@@ -73,13 +83,54 @@ app.include_router(portfolio_router)
 
 
 # ----- Upstream fetch helpers (cached) ----------------------------------------
+# Entries are fresh for _CACHE_TTL; after that they're served stale immediately
+# while one background thread re-fetches (a user should never wait out a slow
+# upstream call for data we already have). Past _STALE_TTL the entry is dead
+# and the fetch happens synchronously again.
+
+def _cache_get(key: str) -> tuple[list | dict, bool] | None:
+    """Return (data, is_fresh), or None if absent or too stale to serve."""
+    entry = _cache.get(key)
+    if not entry:
+        return None
+    age = time.time() - entry[0]
+    if age >= _STALE_TTL:
+        return None
+    return entry[1], age < _CACHE_TTL
+
+
+def _refresh_in_background(key: str, fetch) -> None:
+    # fetch() re-fetches upstream and overwrites _cache[key]; on failure the
+    # stale entry stays and the next request triggers another attempt
+    with _refreshing_lock:
+        if key in _refreshing:
+            return
+        _refreshing.add(key)
+
+    def run():
+        try:
+            fetch()
+        except Exception:
+            pass
+        finally:
+            with _refreshing_lock:
+                _refreshing.discard(key)
+
+    threading.Thread(target=run, daemon=True).start()
+
 
 def _fetch_cards(q: str, page: int = 1) -> dict:
     key = f"{q}|page:{page}"
-    if key in _cache:
-        ts, data = _cache[key]
-        if time.time() - ts < _CACHE_TTL:
-            return data
+    cached = _cache_get(key)
+    if cached is not None:
+        data, fresh = cached
+        if not fresh:
+            _refresh_in_background(key, lambda: _fetch_cards_upstream(key, q, page))
+        return data
+    return _fetch_cards_upstream(key, q, page)
+
+
+def _fetch_cards_upstream(key: str, q: str, page: int) -> dict:
     try:
         response = session.get(
             f"{BASE_URL}/cards",
@@ -104,10 +155,16 @@ def _fetch_cards(q: str, page: int = 1) -> dict:
 
 def _fetch_card(card_id: str) -> dict:
     key = f"__card__{card_id}"
-    if key in _cache:
-        ts, data = _cache[key]
-        if time.time() - ts < _CACHE_TTL:
-            return data
+    cached = _cache_get(key)
+    if cached is not None:
+        data, fresh = cached
+        if not fresh:
+            _refresh_in_background(key, lambda: _fetch_card_upstream(key, card_id))
+        return data
+    return _fetch_card_upstream(key, card_id)
+
+
+def _fetch_card_upstream(key: str, card_id: str) -> dict:
     try:
         response = session.get(f"{BASE_URL}/cards/{card_id}", timeout=_TIMEOUT)
     except requests.RequestException:

@@ -66,7 +66,7 @@ export interface EbayEstimate {
   sample: { date: string; price: number; title: string }[]
 }
 
-// One page of search results (backend pages at 250 cards, the upstream max)
+// One page of search results (backend pages at 50 cards — larger upstream pages are drastically slower)
 export interface CardPage {
   data: Card[]
   page: number

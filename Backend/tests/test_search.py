@@ -4,6 +4,8 @@ card_api talks to the upstream API through its own module-level `session`
 (separate from portfolio._session); these tests swap it for a fake that
 serves paged card data, so they run offline like the rest of the suite.
 """
+import time
+
 import pytest
 
 import card_api
@@ -60,8 +62,10 @@ def cards_upstream(monkeypatch):
     fake = FakePagedUpstream()
     monkeypatch.setattr(card_api, "session", fake)
     card_api._cache.clear()
+    card_api._refreshing.clear()
     yield fake
     card_api._cache.clear()
+    card_api._refreshing.clear()
 
 
 def test_cards_returns_page_envelope(client, cards_upstream):
@@ -71,7 +75,7 @@ def test_cards_returns_page_envelope(client, cards_upstream):
     body = res.json()
     assert len(body["data"]) == 3
     assert body["page"] == 1
-    assert body["pageSize"] == 250
+    assert body["pageSize"] == 50
     assert body["totalCount"] == 3
 
 
@@ -81,8 +85,8 @@ def test_cards_second_page(client, cards_upstream):
     body = res.json()
     assert body["page"] == 2
     assert body["totalCount"] == 600
-    assert len(body["data"]) == 250
-    assert body["data"][0]["id"] == "test-250"
+    assert len(body["data"]) == 50
+    assert body["data"][0]["id"] == "test-50"
 
 
 def test_cards_page_must_be_positive(client, cards_upstream):
@@ -126,6 +130,45 @@ def test_search_empty_page_does_not_trigger_fallback(client, cards_upstream):
     assert body["totalCount"] == 10
     assert body["data"] == []
     assert len(cards_upstream.card_calls()) == 1
+
+
+def _age_cache_entry(key: str, by: float):
+    ts, data = card_api._cache[key]
+    card_api._cache[key] = (ts - by, data)
+
+
+def _wait_for_refresh(key: str, want_len: int, timeout: float = 2.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if len(card_api._cache[key][1]["data"]) == want_len:
+            return
+        time.sleep(0.01)
+    raise AssertionError("background refresh never updated the cache")
+
+
+def test_stale_cache_served_immediately_then_refreshed(client, cards_upstream):
+    cards_upstream.card_lists['name:"pikachu"'] = make_cards(1)
+    client.get("/cards", params={"name": "pikachu"})  # primes the cache
+    key = 'name:"pikachu"|page:1'
+    _age_cache_entry(key, card_api._CACHE_TTL + 1)
+    cards_upstream.card_lists['name:"pikachu"'] = make_cards(2)  # upstream moved on
+
+    body = client.get("/cards", params={"name": "pikachu"}).json()
+    assert len(body["data"]) == 1  # stale data served without waiting on upstream
+
+    _wait_for_refresh(key, 2)
+    body = client.get("/cards", params={"name": "pikachu"}).json()
+    assert len(body["data"]) == 2  # next request sees the refreshed entry
+
+
+def test_too_stale_cache_is_refetched_synchronously(client, cards_upstream):
+    cards_upstream.card_lists['name:"pikachu"'] = make_cards(1)
+    client.get("/cards", params={"name": "pikachu"})
+    _age_cache_entry('name:"pikachu"|page:1', card_api._STALE_TTL + 1)
+    cards_upstream.card_lists['name:"pikachu"'] = make_cards(2)
+
+    body = client.get("/cards", params={"name": "pikachu"}).json()
+    assert len(body["data"]) == 2  # dead entry: fetched fresh, not served stale
 
 
 def _expire_sets_cache():

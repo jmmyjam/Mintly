@@ -6,6 +6,7 @@ card_api talks upstream through its own module-level `session`; these tests swap
 it for a fake serving priced cards, and insert prior-day snapshots straight into
 the shared in-memory DB.
 """
+import time
 from datetime import timedelta
 
 import pytest
@@ -58,8 +59,10 @@ def cards_upstream(monkeypatch):
     fake = FakeCardsUpstream()
     monkeypatch.setattr(card_api, "session", fake)
     card_api._cache.clear()
+    card_api._refreshing.clear()
     yield fake
     card_api._cache.clear()
+    card_api._refreshing.clear()
 
 
 def seed_prior_snapshot(card_id: str, price: float, days_ago: int = 1):
@@ -160,6 +163,26 @@ class TestPortfolioDailyChange:
                     headers=auth_headers)
         [row] = client.get("/portfolio", headers=auth_headers).json()
         assert row["price_change"] is None
+
+
+class TestStaleSingleCardCache:
+    def test_stale_card_served_then_refreshed(self, client, cards_upstream):
+        def market(card):
+            return card["tcgplayer"]["prices"]["holofoil"]["market"]
+
+        cards_upstream.add(make_card("sv1-9", price=10.0))
+        client.get("/cards/sv1-9")  # primes the cache
+        key = "__card__sv1-9"
+        ts, data = card_api._cache[key]
+        card_api._cache[key] = (ts - card_api._CACHE_TTL - 1, data)
+        cards_upstream.add(make_card("sv1-9", price=20.0))  # upstream moved on
+
+        assert market(client.get("/cards/sv1-9").json()) == 10.0  # stale, instant
+
+        deadline = time.time() + 2
+        while time.time() < deadline and market(card_api._cache[key][1]) != 20.0:
+            time.sleep(0.01)
+        assert market(client.get("/cards/sv1-9").json()) == 20.0  # refresh landed
 
 
 class TestExtractPrice:
