@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
-from models import Base  # noqa: E402
+from app.models import Base  # noqa: E402
 
 target_metadata = Base.metadata
 

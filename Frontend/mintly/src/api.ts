@@ -41,7 +41,7 @@ export interface Card {
     updatedAt?: string
     prices?: { [key: string]: PriceVariant }
   }
-  // Attached by the backend when a prior snapshot exists (see price_history.py)
+  // Attached by the backend when a prior snapshot exists (see app/services/price_history.py)
   priceChange?: PriceChange
 }
 
@@ -150,7 +150,7 @@ export function getCardImageUrl(cardId: string): string {
   return `https://images.pokemontcg.io/${setId}/${number}.png`
 }
 
-// Keep in sync with extract_price in Backend/price_history.py: market, then mid
+// Keep in sync with extract_price in Backend/app/services/price_history.py: market, then mid
 export function getCardPrice(card: Card): number | null {
   const prices = card.tcgplayer?.prices
   if (!prices) return null

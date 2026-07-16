@@ -36,14 +36,15 @@ A Pokemon TCG portfolio tracker. Search cards, monitor live market prices, and t
    POKEMON_TCG_API_KEY=your-api-key
    ```
 
-3. Create the database:
+3. Create the database and apply migrations:
    ```bash
    psql postgres -c "CREATE DATABASE mintly;"
+   alembic upgrade head
    ```
 
 4. Start the server:
    ```bash
-   uvicorn card_api:app --reload
+   uvicorn app.main:app --reload
    ```
 
    API runs at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.

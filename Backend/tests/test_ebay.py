@@ -2,8 +2,8 @@
 median/average, and the /cards/{id}/ebay-price endpoint (network faked)."""
 import pytest
 
-import card_api
-import ebay_prices
+from app.routers import cards
+from app.services import ebay_prices
 
 
 def card_html(title: str, sold: str, price: str) -> str:
@@ -137,13 +137,13 @@ class TestEndpoint:
     @pytest.fixture(autouse=True)
     def clear_cache(self):
         ebay_prices._cache.clear()
-        card_api._cache.clear()
+        cards._cache.clear()
         yield
 
     def test_endpoint_returns_estimate(self, client, monkeypatch):
         card = {"id": "me1-188", "name": "Mega Lucario ex", "number": "188/132",
                 "set": {"name": "Mega Evolution"}}
-        monkeypatch.setattr(card_api, "session", FakeCardUpstream(card))
+        monkeypatch.setattr(cards, "session", FakeCardUpstream(card))
         html = page(
             card_html("Mega Lucario ex 188", "Jul 14, 2026", "$250.00"),
             card_html("Mega Lucario ex 188", "Jul 13, 2026", "$260.00"),
@@ -158,7 +158,7 @@ class TestEndpoint:
 
     def test_endpoint_empty_when_fetch_blocked(self, client, monkeypatch):
         card = {"id": "me1-1", "name": "Test", "number": "1/1", "set": {"name": "X"}}
-        monkeypatch.setattr(card_api, "session", FakeCardUpstream(card))
+        monkeypatch.setattr(cards, "session", FakeCardUpstream(card))
         monkeypatch.setattr(ebay_prices, "_fetch_sold_html", lambda q: None)
         body = client.get("/cards/me1-1/ebay-price").json()
         assert body["count"] == 0

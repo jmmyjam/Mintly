@@ -22,8 +22,12 @@ import certifi
 import requests
 from dotenv import load_dotenv
 
-from database import SessionLocal
-from price_history import extract_price, record_snapshots
+# Run as a plain script (python scripts/snapshot_all.py), so put Backend/ on the
+# path to make the `app` package importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.database import SessionLocal  # noqa: E402
+from app.services.price_history import extract_price, record_snapshots  # noqa: E402
 
 load_dotenv()
 

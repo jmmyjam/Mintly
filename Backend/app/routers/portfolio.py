@@ -9,10 +9,10 @@ import certifi
 import os
 from dotenv import load_dotenv
 
-from database import get_db
-from models import PortfolioCard, CardPriceSnapshot
-from auth import get_current_user
-from price_history import extract_price, record_snapshots, previous_prices, price_change
+from app.database import get_db
+from app.models import PortfolioCard, CardPriceSnapshot
+from app.routers.auth import get_current_user
+from app.services.price_history import extract_price, record_snapshots, previous_prices, price_change
 
 load_dotenv()
 

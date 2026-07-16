@@ -5,8 +5,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from database import get_db
-from models import User, utcnow
+from app.database import get_db
+from app.models import User, utcnow
 import os
 import re
 from dotenv import load_dotenv

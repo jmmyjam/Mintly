@@ -10,23 +10,17 @@ from pathlib import Path
 
 import requests
 import certifi
-from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
-import ebay_prices
-from auth import router as auth_router
-from database import get_db
-from portfolio import router as portfolio_router
-from price_history import annotate_price_changes, card_history
+from app.database import get_db
+from app.services import ebay_prices
+from app.services.price_history import annotate_price_changes, card_history
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-
-# Schema is managed by Alembic — run `alembic upgrade head` after pulling
-# model changes (create_all is gone; it could only add tables, never alter).
 
 
 # ----- Configuration ---------------------------------------------------------
@@ -34,20 +28,15 @@ load_dotenv()
 BASE_URL = "https://api.pokemontcg.io/v2"
 API_KEY = os.getenv("POKEMON_TCG_API_KEY")
 
-# Comma-separated list of allowed frontend origins, e.g.
-# CORS_ORIGINS=https://mintly.example.com,http://localhost:5173
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
-    if origin.strip()
-]
-
 _CACHE_TTL = 21600  # fresh for 6 hours...
 _STALE_TTL = 86400  # ...then served stale (with a background refresh) up to 24h
 
 # Cache entries are mirrored to disk and reloaded at startup, so the many
-# --reload restarts of a dev session don't each start cold
-_CACHE_DIR = Path(os.getenv("CARD_CACHE_DIR", Path(__file__).parent / ".cache" / "cards"))
+# --reload restarts of a dev session don't each start cold; the default dir
+# sits at the Backend root (two levels up from app/routers/)
+_CACHE_DIR = Path(os.getenv(
+    "CARD_CACHE_DIR", Path(__file__).resolve().parents[2] / ".cache" / "cards"
+))
 
 # Upstream latency scales with the *requested* page size, not the payload:
 # pageSize=250 (the upstream max) benchmarks at 20-60s and drops connections,
@@ -76,19 +65,7 @@ session = requests.Session()
 session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
 
-
-# ----- App setup -------------------------------------------------------------
-
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.include_router(auth_router)
-app.include_router(portfolio_router)
+router = APIRouter()
 
 
 # ----- Upstream fetch helpers (cached) ----------------------------------------
@@ -273,7 +250,7 @@ def _with_price_changes(db: Session, results: dict) -> dict:
 # ----- Routes ----------------------------------------------------------------
 
 # Natural language search
-@app.get("/search")
+@router.get("/search")
 def smart_search(q: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
     # Lowercase up front: upstream matching is case-insensitive, so "Charizard"
     # and "charizard" must build the same query and share one cache entry
@@ -334,7 +311,7 @@ def smart_search(q: str, page: int = Query(1, ge=1), db: Session = Depends(get_d
 
 
 # Search cards — supports name, set code, card number, rarity, and type
-@app.get("/cards")
+@router.get("/cards")
 def search_cards(
     name: str | None = None,
     set_id: str | None = None,
@@ -367,14 +344,14 @@ def search_cards(
 
 # Daily price points for one card (built from Mintly's own snapshots — the
 # upstream API has no history endpoint). Default window: ~5 years.
-@app.get("/cards/{card_id}/history")
+@router.get("/cards/{card_id}/history")
 def get_card_history(card_id: str, days: int = Query(1825, ge=1, le=3650), db: Session = Depends(get_db)):
     return card_history(db, card_id, days)
 
 
 # Recent-sold-listings price estimate from eBay, for cards the TCGPlayer feed
 # can't price (newest sets). Best-effort — returns count:0 when nothing usable.
-@app.get("/cards/{card_id}/ebay-price")
+@router.get("/cards/{card_id}/ebay-price")
 def get_ebay_price(card_id: str):
     card = _fetch_card(card_id)
     return ebay_prices.estimate(
@@ -385,7 +362,7 @@ def get_ebay_price(card_id: str):
 
 
 # Get a single card by its API ID (e.g. base1-4)
-@app.get("/cards/{card_id}")
+@router.get("/cards/{card_id}")
 def get_card(card_id: str, db: Session = Depends(get_db)):
     card = _fetch_card(card_id)
     _with_price_changes(db, {"data": [card]})
@@ -393,13 +370,13 @@ def get_card(card_id: str, db: Session = Depends(get_db)):
 
 
 # List all sets
-@app.get("/sets")
+@router.get("/sets")
 def get_sets():
     return _fetch_sets()
 
 
 # Get a single set by its ID (e.g. base1, swsh1)
-@app.get("/sets/{set_id}")
+@router.get("/sets/{set_id}")
 def get_set(set_id: str):
     # The cached sets list already has every set — no upstream call needed
     for s in _fetch_sets():
@@ -409,6 +386,6 @@ def get_set(set_id: str):
 
 
 # Get all cards in a set
-@app.get("/sets/{set_id}/cards")
+@router.get("/sets/{set_id}/cards")
 def get_set_cards(set_id: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
     return _with_price_changes(db, _fetch_cards(f"set.id:{set_id.lower()}", page))

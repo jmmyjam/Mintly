@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from models import CardPriceSnapshot, utcnow
+from app.models import CardPriceSnapshot, utcnow
 
 
 def extract_price(card_data: dict) -> float | None:

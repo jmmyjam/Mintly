@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("POKEMON_TCG_API_KEY", "test-api-key")
-# card_api mirrors its response cache to disk — keep each test run in its own
-# throwaway dir instead of Backend/.cache
+# the cards router mirrors its response cache to disk — keep each test run in
+# its own throwaway dir instead of Backend/.cache
 os.environ.setdefault("CARD_CACHE_DIR", tempfile.mkdtemp(prefix="mintly-test-cache-"))
 
 import pytest
@@ -20,10 +20,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from card_api import app
-from database import get_db
-from models import Base
-import portfolio as portfolio_module
+from app.main import app
+from app.database import get_db
+from app.models import Base
+from app.routers import portfolio as portfolio_module
 
 engine = create_engine(
     "sqlite://",
