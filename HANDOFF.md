@@ -50,7 +50,7 @@ The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at bui
 - `ebay_prices.py` — recent-eBay-sold price estimate for cards TCGPlayer can't price. `estimate(name, number, set_name)` builds a keyword query (`"<name> <number> -psa -bgs -cgc"`), fetches the completed-and-sold search page, parses it, and summarizes; results cached 12h (`_cache`). `_fetch_sold_html` seeds cookies from the eBay homepage then requests the search with a Referer, retrying once if it gets the bot-challenge page (`_looks_blocked`: the block page is a tiny "Error Page | eBay", a real page is ~1MB+). `parse_sold` walks `.su-card-container` tiles (BeautifulSoup + html.parser), reads the title from the image `alt`, the date from the "Sold <date>" caption, and the price *after* that caption (a leading price would be shipping/a range low), and drops graded/lots/proxies by title. `summarize` takes the most recent 25 sales, trims comps outside [0.35×, 3×] the median, and returns median/average/low/high/count/date-range/`source_url`/sample. Every failure path returns `count:0` — never raises.
 - `models.py` — SQLAlchemy models.
 - `database.py` — engine/session setup from `DATABASE_URL`.
-- `tests/` — pytest suite for the auth, portfolio, card-search, price-history, and eBay routers (81 tests, runs offline in ~10s). `conftest.py` sets `DATABASE_URL`/`SECRET_KEY`/`CARD_CACHE_DIR` env vars **before** importing app modules (they read config at import time), overrides `get_db` with an in-memory SQLite session, and swaps `portfolio._session` for a `FakeUpstream` — no Postgres or network needed. `test_search.py`/`test_history.py` likewise swap `card_api.session` for a paged/priced fake; `test_ebay.py` monkeypatches `ebay_prices._fetch_sold_html` and parses fixture HTML. Dev deps: `requirements-dev.txt`.
+- `tests/` — pytest suite for the auth, portfolio, card-search, price-history, and eBay routers (83 tests, runs offline in ~10s). `conftest.py` sets `DATABASE_URL`/`SECRET_KEY`/`CARD_CACHE_DIR` env vars **before** importing app modules (they read config at import time), overrides `get_db` with an in-memory SQLite session, and swaps `portfolio._session` for a `FakeUpstream` — no Postgres or network needed. `test_search.py`/`test_history.py` likewise swap `card_api.session` for a paged/priced fake; `test_ebay.py` monkeypatches `ebay_prices._fetch_sold_html` and parses fixture HTML. Dev deps: `requirements-dev.txt`.
 - Schema is managed by **Alembic** (`alembic/versions/`); `env.py` reads `DATABASE_URL` from `Backend/.env` and targets `models.Base.metadata`, so `alembic revision --autogenerate` works. The app no longer calls `create_all` at startup — after changing `models.py`, generate a migration, review it, and run `alembic upgrade head`. Databases created under the old `create_all` regime were stamped at the initial revision (`alembic stamp head` before the first real migration).
 
 ### Data model
@@ -77,7 +77,7 @@ The API base URL comes from `VITE_API_BASE` (see `.env.example`; baked in at bui
 | `DELETE /portfolio/{id}` | Auth. Remove one lot. |
 
 ### Smart search (`/search`)
-Tokenizes the query, then:
+Lowercases and tokenizes the query (upstream matching is case-insensitive, so "Charizard" and "charizard" must build the same query string and share one cache entry — `/cards` likewise lowercases `name`/`set_id`, but `rarity`/`type` stay exact: era-specific dropdown strings), then:
 1. Digits → card number; letters+digits (e.g. `swsh11`) → set id; rest → name words.
 2. Scans name words for a real **set name** (longest contiguous match against the cached sets list) — "pikachu lost origin" → `name:"pikachu" set.id:swsh11`.
 3. Name is always quoted (unquoted multi-word queries are a syntax error upstream → HTTP 400).
@@ -140,7 +140,7 @@ The plist is machine-specific (absolute paths) and lives outside the repo; the j
 
 1. **Deployment prep** — API base URL (`VITE_API_BASE`) and CORS origins (`CORS_ORIGINS`) are env-configurable now; remaining concern: in-memory state is single-process (the portfolio price cache, `ebay_prices._cache`, and the `ebay_prices._session` cookie jar; the card/search cache has a disk mirror, but it's only read at startup — workers still cache independently in memory). Multiple workers each scrape/cache independently.
 2. **Scheduled snapshots** — done on this dev Mac via a launchd LaunchAgent running `snapshot_all.py` daily (see "Daily snapshot job"). For a deployed environment, replace the LaunchAgent with a server-side cron / systemd timer / cloud scheduler running the same script against the production DB (a Claude cloud routine can't reach a local Postgres).
-3. **Frontend tests** — the backend routers are covered (`Backend/tests/`, 81 tests); the React pages are not.
+3. **Frontend tests** — the backend routers are covered (`Backend/tests/`, 83 tests); the React pages are not.
 4. **Store quantities in snapshots** if "value as held at the time" ever matters for the chart.
 5. **eBay scraping robustness** — the estimate depends on eBay's `.su-card-container` markup and unauthenticated access; consider eBay's official Browse/Marketplace API or a headless fallback if the scrape starts getting blocked or the layout changes.
 

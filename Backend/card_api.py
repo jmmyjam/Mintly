@@ -275,7 +275,9 @@ def _with_price_changes(db: Session, results: dict) -> dict:
 # Natural language search
 @app.get("/search")
 def smart_search(q: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
-    parts = q.strip().replace('"', "").split()
+    # Lowercase up front: upstream matching is case-insensitive, so "Charizard"
+    # and "charizard" must build the same query and share one cache entry
+    parts = q.strip().lower().replace('"', "").split()
     number = None
     set_id = None
     name_parts = []
@@ -343,10 +345,13 @@ def search_cards(
     db: Session = Depends(get_db),
 ):
     filters = []
+    # name/set_id are lowercased so case variants share one cache entry (set ids
+    # are lowercase upstream); rarity/type stay exact — they're era-specific
+    # strings picked from dropdowns, not free text
     if name:
-        filters.append(f'name:"{name.replace(chr(34), "")}"')
+        filters.append(f'name:"{name.replace(chr(34), "").lower()}"')
     if set_id:
-        filters.append(f"set.id:{set_id}")
+        filters.append(f"set.id:{set_id.lower()}")
     if number:
         filters.append(f"number:{number}")
     if rarity:
@@ -406,4 +411,4 @@ def get_set(set_id: str):
 # Get all cards in a set
 @app.get("/sets/{set_id}/cards")
 def get_set_cards(set_id: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
-    return _with_price_changes(db, _fetch_cards(f"set.id:{set_id}", page))
+    return _with_price_changes(db, _fetch_cards(f"set.id:{set_id.lower()}", page))

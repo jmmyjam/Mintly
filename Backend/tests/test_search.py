@@ -113,6 +113,24 @@ def test_search_passes_page_through(client, cards_upstream):
     assert len(body["data"]) == 50
 
 
+def test_case_variants_share_one_cache_entry(client, cards_upstream):
+    # queries are lowercased before hitting upstream, so "Charizard" and
+    # "charizard" build the same query string and cache key
+    cards_upstream.card_lists['name:"charizard"'] = make_cards(2, "Charizard")
+    a = client.get("/search", params={"q": "Charizard"}).json()
+    b = client.get("/search", params={"q": "charizard"}).json()
+    c = client.get("/search", params={"q": "CHARIZARD"}).json()
+    assert a["totalCount"] == b["totalCount"] == c["totalCount"] == 2
+    assert len(cards_upstream.card_calls()) == 1  # one upstream fetch for all three
+
+
+def test_cards_filters_are_case_canonicalized(client, cards_upstream):
+    cards_upstream.card_lists['name:"pikachu" set.id:swsh11'] = make_cards(1)
+    client.get("/cards", params={"name": "Pikachu", "set_id": "SWSH11"})
+    client.get("/cards", params={"name": "pikachu", "set_id": "swsh11"})
+    assert len(cards_upstream.card_calls()) == 1
+
+
 def test_search_fallback_uses_total_count(client, cards_upstream):
     # "sleepy pikachu" matches nothing → fallback drops to "pikachu"
     cards_upstream.card_lists['name:"pikachu"'] = make_cards(10)
