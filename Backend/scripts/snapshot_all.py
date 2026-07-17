@@ -5,7 +5,8 @@ Pages the full Pokemon TCG card list, extracts each card's TCGPlayer price, and
 records one snapshot per card per UTC day. Cards with no TCGPlayer price (the
 newest sets lag upstream, plus ~1.6k old oddballs) then get a second chance: an
 eBay sold-listings estimate (the same estimator CardDetail's fallback uses),
-newest sets first, capped per run (`--max-ebay`) so the job can't hammer eBay.
+newest sets first, paced (`--ebay-pause`) and capped (`--max-ebay`) so the job
+can't hammer eBay.
 `record_snapshots` dedupes per day, so this is idempotent — running it more than
 once a day adds nothing (a re-run spends its eBay budget on cards the first run
 didn't reach). Talks straight to the DB and upstream API; the FastAPI app does
@@ -58,8 +59,9 @@ _RETRY_PASS_PAUSE = 30     # cool-down before re-trying failed pages at the end
 
 # set carries the name + releaseDate the eBay pass needs to build its queries
 _SELECT = "id,name,number,set,tcgplayer"
-_EBAY_PAUSE = 2.0          # be gentle on eBay between scrapes
-_EBAY_GIVEUP = 12          # consecutive empty estimates — likely blocked, stop
+_EBAY_PAUSE = 5.0          # be gentle on eBay between scrapes (--ebay-pause overrides)
+_EBAY_GIVEUP = 5           # consecutive FAILED fetches — blocked or offline, stop
+_EBAY_MAX = 2000           # default --max-ebay: above the priceless count, so all get tried
 
 session = requests.Session()
 session.verify = certifi.where()
@@ -86,6 +88,8 @@ class EbayFill:
     prices: dict[str, float] = field(default_factory=dict)
     attempted: int = 0
     eligible: int = 0     # unpriced cards still lacking a snapshot today
+    no_sales: int = 0     # fetched fine, but too few recent comps to price
+    failures: int = 0     # fetches that failed outright (block/network)
     gave_up: bool = False
 
 
@@ -177,14 +181,28 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
     return crawl
 
 
-def ebay_fill(db, unpriced: list[dict], budget: int) -> EbayFill:
+def _estimate_one(card: dict) -> dict | None:
+    """eBay sold-listings summary for one card, or None when the fetch itself
+    failed (bot block / network). Callers must treat None differently from a
+    fetched-but-saleless summary — only the former suggests we should stop."""
+    query = ebay_prices.build_query(card["name"], card["number"], card["set_name"])
+    html = ebay_prices._fetch_sold_html(query)
+    if html is None:
+        return None
+    return ebay_prices.summarize(ebay_prices.parse_sold(html), query)
+
+
+def ebay_fill(db, unpriced: list[dict], budget: int,
+              pause: float = _EBAY_PAUSE) -> EbayFill:
     """Second price source for cards TCGPlayer can't price: estimate from recent
     eBay sold listings and snapshot the median (what CardDetail's fallback shows).
 
     Newest sets first — that's where the TCGPlayer gap actually is; the tail is
-    old oddballs with few sales. Capped at `budget` scrapes per run so the job
-    stays polite (each estimate is a live eBay fetch), skipping cards that
-    already got a snapshot today so re-runs spend the budget on new ground.
+    old oddballs, many with too few recent sales to price (those record nothing
+    and don't stop the pass — only consecutive failed FETCHES do, since that's
+    the bot-block signature). Paced by `pause` seconds per scrape and capped at
+    `budget` scrapes per run, skipping cards that already got a snapshot today
+    so re-runs spend the budget on new ground.
     """
     fill = EbayFill()
     if budget <= 0 or not unpriced:
@@ -198,27 +216,32 @@ def ebay_fill(db, unpriced: list[dict], budget: int) -> EbayFill:
                   key=lambda c: c["release"], reverse=True)
     fill.eligible = len(todo)
 
-    misses = 0
+    consecutive_failures = 0
     for card in todo[:budget]:
         fill.attempted += 1
-        time.sleep(_EBAY_PAUSE)
+        time.sleep(pause)
         try:
-            est = ebay_prices.estimate(card["name"], card["number"], card["set_name"])
-        except Exception as exc:  # estimate() shouldn't raise; don't let one card end the run
+            est = _estimate_one(card)
+        except Exception as exc:  # scraping shouldn't raise; don't let one card end the run
             log.warning("  ebay %-18s estimator error: %s", card["id"], exc)
-            est = {}
+            est = None
+        if est is None:
+            fill.failures += 1
+            consecutive_failures += 1
+            if consecutive_failures >= _EBAY_GIVEUP:
+                fill.gave_up = True
+                log.warning("  ebay: %d failed fetches in a row — blocked or "
+                            "offline, stopping the eBay pass early",
+                            consecutive_failures)
+                break
+            continue
+        consecutive_failures = 0
         if est.get("median"):
             fill.prices[card["id"]] = est["median"]
-            misses = 0
             log.info("  ebay %-18s $%.2f  (%d sales)",
                      card["id"], est["median"], est.get("count", 0))
         else:
-            misses += 1
-            if misses >= _EBAY_GIVEUP:
-                fill.gave_up = True
-                log.warning("  ebay: %d empty estimates in a row — likely blocked, "
-                            "stopping the eBay pass early", misses)
-                break
+            fill.no_sales += 1
     return fill
 
 
@@ -231,9 +254,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Snapshot every card's price for history.")
     parser.add_argument("--max-pages", type=int, default=0,
                         help="stop after N pages (0 = all); for smoke tests")
-    parser.add_argument("--max-ebay", type=int, default=450,
+    parser.add_argument("--max-ebay", type=int, default=_EBAY_MAX,
                         help="cap on eBay sold-listing estimates for cards TCGPlayer "
-                             "can't price (0 = skip the eBay pass; default 450)")
+                             f"can't price (0 = skip the eBay pass; default {_EBAY_MAX} "
+                             "— more than the priceless count, so all get tried)")
+    parser.add_argument("--ebay-pause", type=float, default=_EBAY_PAUSE,
+                        help="seconds to wait between eBay scrapes "
+                             f"(default {_EBAY_PAUSE:g})")
     args = parser.parse_args()
 
     started = time.time()
@@ -253,7 +280,7 @@ def main() -> int:
         if args.max_ebay > 0 and crawl.unpriced:
             log.info("---- eBay fill: %s cards have no TCGPlayer price ----",
                      f"{len(crawl.unpriced):,}")
-            fill = ebay_fill(db, crawl.unpriced, args.max_ebay)
+            fill = ebay_fill(db, crawl.unpriced, args.max_ebay, args.ebay_pause)
             recorded += record_snapshots(db, fill.prices)
     finally:
         db.close()
@@ -268,8 +295,10 @@ def main() -> int:
              ok_pages, crawl.total_pages, len(crawl.recovered), len(crawl.dropped))
     log.info("  cards priced      %s", f"{len(crawl.prices):,}")
     if args.max_ebay > 0:
-        log.info("  ebay fill         %d priced of %d tried  (%s eligible)%s",
+        log.info("  ebay fill         %d priced of %d tried  (%s eligible, "
+                 "%d without recent sales, %d failed fetches)%s",
                  len(fill.prices), fill.attempted, f"{fill.eligible:,}",
+                 fill.no_sales, fill.failures,
                  "  — stopped early" if fill.gave_up else "")
     log.info("  snapshots today   +%s new", f"{recorded:,}")
     if crawl.dropped:
