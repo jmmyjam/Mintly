@@ -34,18 +34,24 @@ def _today_start() -> datetime:
     return datetime.combine(utcnow().date(), datetime.min.time())
 
 
+def recorded_today(db: Session, card_ids) -> set[str]:
+    """Card ids that already have a snapshot for today (UTC)."""
+    if not card_ids:
+        return set()
+    return {
+        s.card_id
+        for s in db.query(CardPriceSnapshot).filter(
+            CardPriceSnapshot.card_id.in_(card_ids),
+            CardPriceSnapshot.snapshot_date >= _today_start(),
+        )
+    }
+
+
 def record_snapshots(db: Session, prices: dict[str, float]) -> int:
     # At most one snapshot per card per UTC day; returns how many rows were added
     if not prices:
         return 0
-    today_start = _today_start()
-    already_recorded = {
-        s.card_id
-        for s in db.query(CardPriceSnapshot).filter(
-            CardPriceSnapshot.card_id.in_(prices),
-            CardPriceSnapshot.snapshot_date >= today_start,
-        )
-    }
+    already_recorded = recorded_today(db, prices)
     new_snapshots = [
         CardPriceSnapshot(card_id=card_id, price=price)
         for card_id, price in prices.items()

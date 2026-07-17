@@ -1,6 +1,7 @@
 """snapshot_all's crawl: pages that fail their inline retries are remembered and
 re-tried in an end-of-run second pass; only a page failing both passes marks the
-run incomplete (and never aborts the crawl)."""
+run incomplete (and never aborts the crawl). Cards with no TCGPlayer price get a
+capped eBay-estimate pass (newest sets first) instead of being skipped."""
 import os
 import sys
 
@@ -11,7 +12,8 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
 import snapshot_all
-from conftest import make_card
+from app.models import CardPriceSnapshot
+from conftest import TestingSessionLocal, make_card
 
 
 class FakeResponse:
@@ -82,3 +84,101 @@ def test_page_failing_both_passes_marks_incomplete(crawl):
     assert result.dropped == [3]
     assert len(result.prices) == 4  # the other pages were still collected
     assert "c3-0" not in result.prices
+
+
+# ---- eBay fill for cards TCGPlayer can't price ------------------------------
+
+def test_crawl_collects_unpriced_card_metadata(crawl, monkeypatch):
+    pages = three_pages()
+    pages[2][0] = {
+        "id": "me9-1", "name": "Mega Card ex", "number": "188",
+        "set": {"name": "Mega Set", "releaseDate": "2026/05/30"},
+    }
+    fake = FlakyUpstream(pages, {})
+    monkeypatch.setattr(snapshot_all, "session", fake)
+    result = snapshot_all.fetch_all_prices()
+
+    assert "me9-1" not in result.prices
+    assert result.unpriced == [{
+        "id": "me9-1", "name": "Mega Card ex", "number": "188",
+        "set_name": "Mega Set", "release": "2026/05/30",
+    }]
+
+
+def unpriced(card_id: str, release: str = "2026/05/30") -> dict:
+    # name doubles as the estimator-call key in FakeEstimator
+    return {"id": card_id, "name": card_id, "number": "1",
+            "set_name": "Some Set", "release": release}
+
+
+class FakeEstimator:
+    """estimate() stand-in: medians keyed by card name, count:0 otherwise."""
+
+    def __init__(self, medians: dict[str, float]):
+        self.medians = medians
+        self.calls: list[str] = []
+
+    def __call__(self, name, number, set_name):
+        self.calls.append(name)
+        med = self.medians.get(name)
+        return {"count": 5 if med else 0, "median": med}
+
+
+@pytest.fixture
+def fill(monkeypatch):
+    """Run ebay_fill against the test DB with a fake estimator; no real sleeping."""
+    monkeypatch.setattr(snapshot_all.time, "sleep", lambda s: None)
+
+    def run(cards: list[dict], medians: dict[str, float], budget: int):
+        fake = FakeEstimator(medians)
+        monkeypatch.setattr(snapshot_all.ebay_prices, "estimate", fake)
+        db = TestingSessionLocal()
+        try:
+            return snapshot_all.ebay_fill(db, cards, budget), fake
+        finally:
+            db.close()
+
+    return run
+
+
+def test_ebay_fill_prices_newest_sets_first_within_budget(fill):
+    cards = [unpriced("old-1", "2001/01/01"),
+             unpriced("new-1", "2026/07/01"),
+             unpriced("mid-1", "2024/06/15")]
+    result, fake = fill(cards, {"new-1": 250.0, "mid-1": 12.5, "old-1": 3.0}, budget=2)
+
+    assert fake.calls == ["new-1", "mid-1"]  # newest first, old-1 beyond budget
+    assert result.prices == {"new-1": 250.0, "mid-1": 12.5}
+    assert result.attempted == 2
+    assert result.eligible == 3
+
+
+def test_ebay_fill_skips_cards_already_snapshotted_today(fill):
+    db = TestingSessionLocal()
+    db.add(CardPriceSnapshot(card_id="done-1", price=9.99))
+    db.commit()
+    db.close()
+
+    result, fake = fill([unpriced("done-1"), unpriced("todo-1")],
+                        {"done-1": 1.0, "todo-1": 2.0}, budget=10)
+
+    assert fake.calls == ["todo-1"]  # no scrape wasted on the already-recorded card
+    assert result.prices == {"todo-1": 2.0}
+    assert result.eligible == 1
+
+
+def test_ebay_fill_empty_estimates_record_nothing(fill):
+    result, fake = fill([unpriced("nosales-1")], {}, budget=10)
+    assert result.prices == {}
+    assert result.attempted == 1
+    assert not result.gave_up
+
+
+def test_ebay_fill_gives_up_after_consecutive_misses(fill, monkeypatch):
+    monkeypatch.setattr(snapshot_all, "_EBAY_GIVEUP", 3)
+    cards = [unpriced(f"miss-{i}") for i in range(10)]
+    result, fake = fill(cards, {}, budget=10)
+
+    assert result.gave_up
+    assert result.attempted == 3  # stopped at the give-up threshold, not the budget
+    assert result.prices == {}
