@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
-from app.services import ebay_prices  # noqa: E402
+from app.services import ebay_prices, history_archive  # noqa: E402
 from app.services.price_history import (  # noqa: E402
     extract_price, record_snapshots, recorded_today,
 )
@@ -261,6 +261,9 @@ def main() -> int:
     parser.add_argument("--ebay-pause", type=float, default=_EBAY_PAUSE,
                         help="seconds to wait between eBay scrapes "
                              f"(default {_EBAY_PAUSE:g})")
+    parser.add_argument("--no-compact", action="store_true",
+                        help="skip archiving months older than the daily window "
+                             "to cold storage")
     args = parser.parse_args()
 
     started = time.time()
@@ -282,6 +285,18 @@ def main() -> int:
                      f"{len(crawl.unpriced):,}")
             fill = ebay_fill(db, crawl.unpriced, args.max_ebay, args.ebay_pause)
             recorded += record_snapshots(db, fill.prices)
+
+        compacted: list[dict] = []
+        if not args.no_compact:
+            try:
+                compacted = history_archive.compact(db)
+            except Exception as exc:  # cold storage must never cost us the day's snapshots
+                log.warning("history compaction failed: %s — rows stay in the DB "
+                            "until the next run", exc)
+            for c in compacted:
+                log.info("  archived %s: %s rows -> %s  (thinned %s from the DB)",
+                         c["month"], f"{c['rows_archived']:,}", c["path"],
+                         f"{c['rows_deleted']:,}")
     finally:
         db.close()
 
@@ -301,6 +316,8 @@ def main() -> int:
                  fill.no_sales, fill.failures,
                  "  — stopped early" if fill.gave_up else "")
     log.info("  snapshots today   +%s new", f"{recorded:,}")
+    if compacted:
+        log.info("  compacted         %d month(s) to cold storage", len(compacted))
     if crawl.dropped:
         log.warning("  dropped pages     %s — their cards get caught next run",
                     ", ".join(map(str, crawl.dropped)))
