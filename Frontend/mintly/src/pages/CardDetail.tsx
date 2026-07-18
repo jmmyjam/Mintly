@@ -8,6 +8,7 @@ import PriceHistoryChart from '../components/PriceHistoryChart'
 import PriceQtyForm from '../components/PriceQtyForm'
 import StatRow from '../components/StatRow'
 import StatusMessage from '../components/StatusMessage'
+import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
 import { money } from '../format'
 
@@ -22,6 +23,39 @@ const VARIANT_LABELS: { [key: string]: string } = {
 
 function variantLabel(key: string) {
   return VARIANT_LABELS[key] || key
+}
+
+// Must match the static <title> in index.html — restored when leaving the page
+const DEFAULT_TITLE = 'Mintly — Pokémon TCG Portfolio Tracker'
+
+// schema.org Product markup for the card. Only facts visible on the page: the
+// offer (price + TCGPlayer listing link) is included only when a real
+// TCGPlayer market price exists — an eBay estimate is not an offer.
+function cardJsonLd(card: Card, market: number | null) {
+  const num = card.number
+    ? ` #${card.number}${card.set.printedTotal ? `/${card.set.printedTotal}` : ''}`
+    : ''
+  const data: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: card.name,
+    image: [card.images.large],
+    description:
+      `${card.name} — Pokémon TCG card from ${card.set.name}${num}` +
+      `${card.rarity ? `, ${card.rarity}` : ''}. Live market price and price history on Mintly.`,
+    sku: card.id,
+    brand: { '@type': 'Brand', name: 'Pokémon TCG' },
+  }
+  if (market != null && card.tcgplayer?.url) {
+    data.offers = {
+      '@type': 'Offer',
+      url: card.tcgplayer.url,
+      price: market.toFixed(2),
+      priceCurrency: 'USD',
+      seller: { '@type': 'Organization', name: 'TCGplayer' },
+    }
+  }
+  return data
 }
 
 export default function CardDetail() {
@@ -41,6 +75,7 @@ export default function CardDetail() {
       .then(data => {
         if (cancelled) return
         setCard(data)
+        document.title = `${data.name} · ${data.set.name} — Mintly`
         setEbay(null)  // drop any prior card's estimate (in a callback, not the effect body)
         const market = getCardPrice(data)
         if (market != null) {
@@ -65,6 +100,7 @@ export default function CardDetail() {
       })
     return () => {
       cancelled = true
+      document.title = DEFAULT_TITLE
     }
   }, [cardId])
 
@@ -82,6 +118,7 @@ export default function CardDetail() {
 
   return (
     <div className="page">
+      <StructuredData data={cardJsonLd(card, market)} />
       <Link to="/search" className="back-link">← Back to Search</Link>
 
       <div className="detail-layout">
