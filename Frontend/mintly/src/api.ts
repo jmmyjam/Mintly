@@ -169,7 +169,15 @@ export async function login(username: string, password: string): Promise<void> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ username, password }),
   })
-  if (!res.ok) throw new Error('Invalid credentials')
+  if (!res.ok) {
+    // 429 carries a "too many attempts" detail — showing "Invalid credentials"
+    // for it would send a rate-limited user hunting for a typo
+    if (res.status === 429) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.detail || 'Too many login attempts — try again in a few minutes')
+    }
+    throw new Error('Invalid credentials')
+  }
   const data = await res.json()
   setToken(data.access_token)
 }

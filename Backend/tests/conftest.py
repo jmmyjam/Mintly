@@ -24,6 +24,7 @@ from app.main import app
 from app.database import get_db
 from app.models import Base
 from app.routers import portfolio as portfolio_module
+from app.services import rate_limit as rate_limit_module
 
 engine = create_engine(
     "sqlite://",
@@ -48,6 +49,14 @@ app.dependency_overrides[get_db] = override_get_db
 def fresh_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    # Every test request comes from the same TestClient "IP" — without a reset
+    # the suite's cumulative logins would trip the per-IP login limit
+    rate_limit_module.reset()
     yield
 
 

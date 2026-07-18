@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, utcnow
+from app.services.rate_limit import rate_limit
 import os
 import re
 from dotenv import load_dotenv
@@ -62,7 +63,9 @@ def password_error(password: str) -> str | None:
 
 # ----- Routes ----------------------------------------------------------------
 
-@router.post("/register")
+@router.post("/register",
+             dependencies=[Depends(rate_limit("register", times=10, seconds=3600,
+                                              what="signup attempts"))])
 def register(body: RegisterRequest, db=Depends(get_db)):
     if not body.accepted_terms:
         raise HTTPException(status_code=400, detail="You must agree to the Terms of Service")
@@ -82,7 +85,11 @@ def register(body: RegisterRequest, db=Depends(get_db)):
         "message": "Account created"
         }
 
-@router.post("/login")
+# Counts every attempt (success or failure) per IP — the cap is what matters
+# for credential stuffing; 10 per 5 min never touches a real user logging in
+@router.post("/login",
+             dependencies=[Depends(rate_limit("login", times=10, seconds=300,
+                                              what="login attempts"))])
 def login(form: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
     user = db.query(User).filter(
         (User.email == form.username) | (User.username == form.username)

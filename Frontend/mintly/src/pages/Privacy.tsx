@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 15, 2026</p>
+      <p className="legal-updated">Last updated: July 17, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -10,7 +10,10 @@ export default function Privacy() {
         version of your password (never the password itself), and the time
         you accepted the Terms of Service. When you use the portfolio we
         store the cards you add: card id, name, quantity, purchase price, and
-        purchase date.
+        purchase date. To protect against abuse (such as password-guessing),
+        our servers also keep a short-lived, in-memory count of recent
+        requests per network address; these counts are not stored durably or
+        linked to your account.
       </p>
 
       <h2>2. How it's used</h2>

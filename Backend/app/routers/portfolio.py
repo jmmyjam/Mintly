@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models import PortfolioCard, CardPriceSnapshot
 from app.routers.auth import get_current_user
 from app.services.price_history import extract_price, record_snapshots, previous_prices, price_change
+from app.services.rate_limit import rate_limit
 
 load_dotenv()
 
@@ -40,7 +41,8 @@ _session = requests.Session()
 _session.verify = certifi.where()
 _session.headers.update({"X-Api-Key": API_KEY})
 
-router = APIRouter()
+# Same "api" scope as the cards router — one shared per-IP budget for the API
+router = APIRouter(dependencies=[Depends(rate_limit("api", times=120, seconds=60))])
 
 
 # ----- Request models --------------------------------------------------------

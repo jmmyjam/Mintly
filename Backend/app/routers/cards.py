@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from app.database import get_db
 from app.services import ebay_prices
 from app.services.price_history import annotate_price_changes, card_history
+from app.services.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,10 @@ session = requests.Session()
 session.verify = certifi.where()
 session.headers.update({"X-Api-Key": API_KEY})
 
-router = APIRouter()
+# One general per-IP budget across all card AND portfolio endpoints (the
+# portfolio router registers the same "api" scope) — generous for a browsing
+# human, a wall for a scraper burning the upstream API quota
+router = APIRouter(dependencies=[Depends(rate_limit("api", times=120, seconds=60))])
 
 
 # ----- Upstream fetch helpers (cached) ----------------------------------------
@@ -351,7 +355,11 @@ def get_card_history(card_id: str, days: int = Query(1825, ge=1, le=3650), db: S
 
 # Recent-sold-listings price estimate from eBay, for cards the TCGPlayer feed
 # can't price (newest sets). Best-effort — returns count:0 when nothing usable.
-@router.get("/cards/{card_id}/ebay-price")
+# Extra rate limit on top of the router's: each uncached estimate is a live
+# eBay scrape, and hammering those gets the server's IP bot-blocked
+@router.get("/cards/{card_id}/ebay-price",
+            dependencies=[Depends(rate_limit("ebay", times=60, seconds=3600,
+                                             what="price-estimate requests"))])
 def get_ebay_price(card_id: str):
     card = _fetch_card(card_id)
     return ebay_prices.estimate(
