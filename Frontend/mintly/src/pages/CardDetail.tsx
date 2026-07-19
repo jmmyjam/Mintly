@@ -71,35 +71,56 @@ export default function CardDetail() {
   useEffect(() => {
     if (!cardId) return
     let cancelled = false
-    getCard(cardId)
-      .then(data => {
-        if (cancelled) return
-        setCard(data)
-        document.title = `${data.name} · ${data.set.name} — Mintly`
-        setEbay(null)  // drop any prior card's estimate (in a callback, not the effect body)
-        const market = getCardPrice(data)
-        if (market != null) {
-          setPurchasePrice(market.toFixed(2))
-          return
-        }
-        // No TCGPlayer price — fall back to a recent-eBay-sold estimate, and
-        // seed the add form with its median so the card can still be added
-        return getEbayEstimate(data.id)
-          .then(est => {
-            if (cancelled) return
-            setEbay(est)
-            if (est.median != null) setPurchasePrice(est.median.toFixed(2))
-          })
-          .catch(() => {})
-      })
-      .catch(() => {
-        if (!cancelled) setError('Card not found.')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let autoPrice = ''  // the last price we auto-filled — only ever overwrite that
+
+    // Seed the add form, but never clobber a price the user typed themselves
+    const seedPrice = (value: number) => {
+      const next = value.toFixed(2)
+      setPurchasePrice(prev => (prev === '' || prev === autoPrice ? next : prev))
+      autoPrice = next
+    }
+
+    const load = (attempt: number) => {
+      getCard(cardId)
+        .then(data => {
+          if (cancelled) return
+          setCard(data)
+          document.title = `${data.name} · ${data.set.name} — Mintly`
+          if (attempt === 0) setEbay(null)  // drop any prior card's estimate (in a callback, not the effect body)
+          const market = getCardPrice(data)
+          if (market != null) {
+            seedPrice(market)
+          } else if (attempt === 0) {
+            // No TCGPlayer price — fall back to a recent-eBay-sold estimate, and
+            // seed the add form with its median so the card can still be added
+            getEbayEstimate(data.id)
+              .then(est => {
+                if (cancelled) return
+                setEbay(est)
+                if (est.median != null) seedPrice(est.median)
+              })
+              .catch(() => {})
+          }
+          // The backend served a stale catalog price and is re-fetching it in
+          // the background — re-poll a few times so the fresh number lands
+          // on the page without a reload
+          if (data.refreshing && attempt < 3) {
+            timer = setTimeout(() => load(attempt + 1), 3000)
+          }
+        })
+        .catch(() => {
+          if (!cancelled && attempt === 0) setError('Card not found.')
+        })
+        .finally(() => {
+          if (!cancelled && attempt === 0) setLoading(false)
+        })
+    }
+
+    load(0)
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
       document.title = DEFAULT_TITLE
     }
   }, [cardId])

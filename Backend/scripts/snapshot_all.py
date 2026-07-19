@@ -2,7 +2,9 @@
 gap-free instead of only covering cards someone happened to browse.
 
 Pages the full Pokemon TCG card list, extracts each card's TCGPlayer price, and
-records one snapshot per card per UTC day. Cards with no TCGPlayer price (the
+records one snapshot per card per UTC day. Every crawled card is also mirrored
+into the `card_catalog` table the app serves browsing from (a complete crawl
+stamps the sync marker that lets list endpoints trust the catalog). Cards with no TCGPlayer price (the
 newest sets lag upstream, plus ~1.6k old oddballs) then get a second chance: an
 eBay sold-listings estimate (the same estimator CardDetail's fallback uses),
 newest sets first, paced (`--ebay-pause`) and capped (`--max-ebay`) so the job
@@ -33,7 +35,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
-from app.services import ebay_prices, history_archive  # noqa: E402
+from app.services import card_catalog, ebay_prices, history_archive  # noqa: E402
 from app.services.price_history import (  # noqa: E402
     extract_price, record_snapshots, recorded_today,
 )
@@ -57,8 +59,10 @@ _DEDUPE_CHUNK = 1000       # keep the per-day dedupe IN() clause reasonable
 _MAX_RETRIES = 3           # upstream flakes with transient 404s/timeouts
 _RETRY_PASS_PAUSE = 30     # cool-down before re-trying failed pages at the end
 
-# set carries the name + releaseDate the eBay pass needs to build its queries
-_SELECT = "id,name,number,set,tcgplayer"
+# The full frontend field set (mirrors _CARD_FIELDS in app/routers/cards.py):
+# the crawl now feeds the card_catalog table too, so browsing is served from
+# the DB; set carries the name + releaseDate the eBay pass needs as well
+_SELECT = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
 _EBAY_PAUSE = 5.0          # be gentle on eBay between scrapes (--ebay-pause overrides)
 _EBAY_GIVEUP = 5           # consecutive FAILED fetches — blocked or offline, stop
 _EBAY_MAX = 2000           # default --max-ebay: above the priceless count, so all get tried
@@ -72,6 +76,7 @@ session.headers.update({"X-Api-Key": API_KEY})
 class Crawl:
     """What fetch_all_prices saw: prices plus the page-level story for the summary."""
     prices: dict[str, float] = field(default_factory=dict)
+    cards: list[dict] = field(default_factory=list)     # every card dict, for the catalog upsert
     unpriced: list[dict] = field(default_factory=list)  # no TCGPlayer price — eBay-fill candidates
     total_pages: int = 0
     recovered: list[int] = field(default_factory=list)  # failed the sweep, saved by the retry pass
@@ -115,6 +120,7 @@ def _get_page(page: int) -> dict | None:
 
 def _collect(payload: dict, crawl: Crawl) -> None:
     for card in payload.get("data", []):
+        crawl.cards.append(card)
         price = extract_price(card)
         if price is not None:
             crawl.prices[card["id"]] = price
@@ -279,6 +285,21 @@ def main() -> int:
         for i in range(0, len(items), _DEDUPE_CHUNK):
             recorded += record_snapshots(db, dict(items[i:i + _DEDUPE_CHUNK]))
 
+        # Mirror the crawled cards into the local catalog the app browses from.
+        # Best-effort: a catalog failure never costs the day's snapshots. The
+        # sync marker (which lets list endpoints trust the catalog) is stamped
+        # only by a complete, un-truncated crawl — never a --max-pages smoke run.
+        upserted = 0
+        try:
+            for i in range(0, len(crawl.cards), _DEDUPE_CHUNK):
+                upserted += card_catalog.upsert_cards(db, crawl.cards[i:i + _DEDUPE_CHUNK])
+            if crawl.complete and not args.max_pages:
+                card_catalog.mark_full_sync(db)
+        except Exception as exc:
+            db.rollback()
+            log.warning("catalog upsert failed: %s — browsing falls back to the "
+                        "upstream proxy until the next run", exc)
+
         fill = EbayFill()
         if args.max_ebay > 0 and crawl.unpriced:
             log.info("---- eBay fill: %s cards have no TCGPlayer price ----",
@@ -309,6 +330,9 @@ def main() -> int:
     log.info("  pages             %d/%d ok  (%d recovered, %d dropped)",
              ok_pages, crawl.total_pages, len(crawl.recovered), len(crawl.dropped))
     log.info("  cards priced      %s", f"{len(crawl.prices):,}")
+    log.info("  catalog           %s cards upserted%s", f"{upserted:,}",
+             "" if crawl.complete and not args.max_pages
+             else "  (partial run — sync marker untouched)")
     if args.max_ebay > 0:
         log.info("  ebay fill         %d priced of %d tried  (%s eligible, "
                  "%d without recent sales, %d failed fetches)%s",

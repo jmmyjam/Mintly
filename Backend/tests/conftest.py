@@ -13,6 +13,9 @@ os.environ.setdefault("POKEMON_TCG_API_KEY", "test-api-key")
 # the cards router mirrors its response cache to disk — keep each test run in
 # its own throwaway dir instead of Backend/.cache
 os.environ.setdefault("CARD_CACHE_DIR", tempfile.mkdtemp(prefix="mintly-test-cache-"))
+# a dev .env may set this for deploy testing; the suite asserts the untrusted
+# default, so pin it before rate_limit.py reads it at import
+os.environ.setdefault("RATE_LIMIT_TRUST_FORWARDED", "0")
 
 import pytest
 from fastapi.testclient import TestClient

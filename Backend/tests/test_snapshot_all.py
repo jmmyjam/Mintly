@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(
 
 import snapshot_all
 from app.models import CardPriceSnapshot
+from app.services import card_catalog
 from conftest import TestingSessionLocal, make_card
 
 
@@ -84,6 +85,58 @@ def test_page_failing_both_passes_marks_incomplete(crawl):
     assert result.dropped == [3]
     assert len(result.prices) == 4  # the other pages were still collected
     assert "c3-0" not in result.prices
+
+
+# ---- Catalog upsert + sync marker -------------------------------------------
+# The crawl mirrors every card into card_catalog; only a complete, un-truncated
+# run may stamp the sync marker that lets list endpoints trust the catalog.
+
+@pytest.fixture
+def run_main(monkeypatch):
+    monkeypatch.setattr(snapshot_all, "_PAGE_SIZE", 2)
+    monkeypatch.setattr(snapshot_all.time, "sleep", lambda s: None)
+    monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+
+    def run(extra_args: list[str] = [], fail_first: dict[int, int] = {}):
+        fake = FlakyUpstream(three_pages(), fail_first)
+        monkeypatch.setattr(snapshot_all, "session", fake)
+        monkeypatch.setattr(sys, "argv", ["snapshot_all.py", "--max-ebay", "0",
+                                          "--no-compact", *extra_args])
+        return snapshot_all.main()
+
+    return run
+
+
+def test_complete_run_fills_catalog_and_stamps_sync(run_main):
+    assert run_main() == 0
+    db = TestingSessionLocal()
+    try:
+        assert card_catalog.is_synced(db)
+        envelope, _ = card_catalog.search(db, name="Test Card")
+        assert envelope["totalCount"] == 6
+        assert card_catalog.get_card(db, "c2-1").data["tcgplayer"]  # full dict stored
+    finally:
+        db.close()
+
+
+def test_max_pages_smoke_run_never_stamps_sync(run_main):
+    assert run_main(["--max-pages", "2"]) == 0
+    db = TestingSessionLocal()
+    try:
+        assert not card_catalog.is_synced(db)          # truncated ≠ complete
+        assert card_catalog.get_card(db, "c1-0") is not None  # but cards landed
+    finally:
+        db.close()
+
+
+def test_incomplete_crawl_never_stamps_sync(run_main):
+    assert run_main(fail_first={3: 99}) == 0  # page 3 dropped both passes
+    db = TestingSessionLocal()
+    try:
+        assert not card_catalog.is_synced(db)
+        assert card_catalog.get_card(db, "c1-0") is not None
+    finally:
+        db.close()
 
 
 # ---- eBay fill for cards TCGPlayer can't price ------------------------------

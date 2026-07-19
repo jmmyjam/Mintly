@@ -14,8 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
-from app.database import get_db
-from app.services import ebay_prices
+from app.database import SessionLocal, get_db
+from app.services import card_catalog, ebay_prices
 from app.services.price_history import annotate_price_changes, card_history
 from app.services.rate_limit import rate_limit
 
@@ -240,6 +240,92 @@ def _fetch_sets() -> list:
     return data
 
 
+# ----- Local catalog ---------------------------------------------------------
+# The card_catalog table (filled by the daily crawl) answers browsing straight
+# from the DB. All catalog access here is best-effort: a DB hiccup drops us
+# back to the upstream proxy, never to a 500.
+
+def _catalog_ready(db: Session) -> bool:
+    # List endpoints only trust the catalog after a complete crawl has stamped
+    # the sync marker — a partial catalog would serve confidently-short pages
+    try:
+        return card_catalog.is_synced(db)
+    except Exception:
+        db.rollback()
+        logger.warning("catalog sync check failed", exc_info=True)
+        return False
+
+
+def _catalog_row(db: Session, card_id: str):
+    try:
+        return card_catalog.get_card(db, card_id)
+    except Exception:
+        db.rollback()
+        logger.warning("catalog lookup failed", exc_info=True)
+        return None
+
+
+def _upsert_results(db: Session, results: dict) -> None:
+    # Proxied responses top up the catalog (so new sets appear before the next
+    # crawl); called before annotation so priceChange never persists
+    try:
+        card_catalog.upsert_cards(db, results.get("data", []))
+    except Exception:
+        db.rollback()
+        logger.warning("catalog upsert failed", exc_info=True)
+
+
+def refresh_card_prices(db: Session, card_ids: list[str]) -> int:
+    """Synchronous core of the background price refresh: one batched upstream
+    fetch for up to a page of ids, upserted into the catalog. Returns how many
+    cards were refreshed (0 on any upstream failure — the stale rows just get
+    another chance on the next view)."""
+    if not card_ids:
+        return 0
+    q = " OR ".join(f'id:"{cid}"' for cid in card_ids)
+    try:
+        response = session.get(
+            f"{BASE_URL}/cards",
+            params={"q": q, "select": _CARD_FIELDS, "pageSize": len(card_ids)},
+            timeout=_TIMEOUT,
+        )
+    except requests.RequestException:
+        return 0
+    if response.status_code != 200:
+        return 0
+    return card_catalog.upsert_cards(db, response.json().get("data", []))
+
+
+def _refresh_prices_in_background(card_ids: list[str]) -> None:
+    # Stale prices never block a response: serve what the catalog has and let a
+    # daemon thread re-fetch (deduped per id set); the next request — or
+    # CardDetail's `refreshing` poll — picks up the fresh numbers
+    ids = sorted(set(card_ids))
+    key = "__prices__" + hashlib.sha1("|".join(ids).encode()).hexdigest()
+
+    def fetch():
+        db = SessionLocal()
+        try:
+            refresh_card_prices(db, ids)
+        finally:
+            db.close()
+
+    _refresh_in_background(key, fetch)
+
+
+def _expected_set_total(set_id: str) -> int:
+    """The set's card count per the sets list — a catalog holding fewer must
+    proxy (a half-crawled new set serving short pages is worse than slow).
+    Unknown set or a flaky sets fetch → 0, i.e. trust the catalog."""
+    try:
+        for s in _fetch_sets():
+            if s.get("id") == set_id:
+                return s.get("total") or 0
+    except HTTPException:
+        pass
+    return 0
+
+
 def _with_price_changes(db: Session, results: dict) -> dict:
     # Snapshot recording + daily-change annotation are best-effort: the card
     # proxy must keep answering even if the database is down
@@ -300,17 +386,41 @@ def smart_search(q: str, page: int = Query(1, ge=1), db: Session = Depends(get_d
     if not name_parts and not number and not set_id:
         raise HTTPException(status_code=400, detail="Invalid search query")
 
-    results = _fetch_cards(build_query(name_parts), page)
+    def catalog_query(name_words: list[str]) -> dict:
+        results, stale = card_catalog.search(
+            db, name=" ".join(name_words) or None, number=number,
+            set_id=set_id, page=page,
+        )
+        if stale:
+            _refresh_prices_in_background(stale)
+        return results
 
-    # Fallback for loose names like "sleepy pikachu": drop words until something matches.
-    # Keyed on totalCount, not the page's data — an empty page 2 of a real query
-    # must not trigger the fallback.
-    if results["totalCount"] == 0 and len(name_parts) > 1:
-        for i in range(1, len(name_parts)):
-            for candidate in (name_parts[i:], name_parts[:-i]):
-                results = _fetch_cards(build_query(candidate), page)
-                if results["totalCount"] > 0:
-                    return _with_price_changes(db, results)
+    def upstream_query(name_words: list[str]) -> dict:
+        return _fetch_cards(build_query(name_words), page)
+
+    # Fallback for loose names like "sleepy pikachu": drop words until something
+    # matches. Keyed on totalCount, not the page's data — an empty page 2 of a
+    # real query must not trigger the fallback.
+    def first_match(run) -> dict:
+        results = run(name_parts)
+        if results["totalCount"] == 0 and len(name_parts) > 1:
+            for i in range(1, len(name_parts)):
+                for candidate in (name_parts[i:], name_parts[:-i]):
+                    results = run(candidate)
+                    if results["totalCount"] > 0:
+                        return results
+        return results
+
+    if _catalog_ready(db):
+        results = first_match(catalog_query)
+        if results["totalCount"] == 0:
+            # Nothing local — a typo, or a set newer than the last crawl. One
+            # cached upstream try before answering empty.
+            results = first_match(upstream_query)
+            _upsert_results(db, results)
+    else:
+        results = first_match(upstream_query)
+        _upsert_results(db, results)
     return _with_price_changes(db, results)
 
 
@@ -343,7 +453,24 @@ def search_cards(
     if not filters:
         raise HTTPException(status_code=400, detail="Provide at least one search parameter")
 
-    return _with_price_changes(db, _fetch_cards(" ".join(filters), page))
+    if _catalog_ready(db):
+        results, stale = card_catalog.search(
+            db,
+            name=name.replace(chr(34), "").lower() if name else None,
+            number=number,
+            set_id=set_id.lower() if set_id else None,
+            rarity=rarity,
+            type_=type,
+            page=page,
+        )
+        if results["totalCount"]:
+            if stale:
+                _refresh_prices_in_background(stale)
+            return _with_price_changes(db, results)
+
+    results = _fetch_cards(" ".join(filters), page)
+    _upsert_results(db, results)
+    return _with_price_changes(db, results)
 
 
 # Daily price points for one card (built from Mintly's own snapshots — the
@@ -360,8 +487,9 @@ def get_card_history(card_id: str, days: int = Query(1825, ge=1, le=3650), db: S
 @router.get("/cards/{card_id}/ebay-price",
             dependencies=[Depends(rate_limit("ebay", times=60, seconds=3600,
                                              what="price-estimate requests"))])
-def get_ebay_price(card_id: str):
-    card = _fetch_card(card_id)
+def get_ebay_price(card_id: str, db: Session = Depends(get_db)):
+    row = _catalog_row(db, card_id)
+    card = card_catalog.card_payload(row) if row is not None else _fetch_card(card_id)
     return ebay_prices.estimate(
         card.get("name", ""),
         card.get("number"),
@@ -372,7 +500,18 @@ def get_ebay_price(card_id: str):
 # Get a single card by its API ID (e.g. base1-4)
 @router.get("/cards/{card_id}")
 def get_card(card_id: str, db: Session = Depends(get_db)):
+    row = _catalog_row(db, card_id)
+    if row is not None:
+        card = card_catalog.card_payload(row)
+        if card_catalog.price_is_stale(row):
+            # Serve instantly anyway; a daemon thread re-fetches the price and
+            # the frontend re-polls while `refreshing` is set
+            card["refreshing"] = True
+            _refresh_prices_in_background([card_id])
+        _with_price_changes(db, {"data": [card]})
+        return card
     card = _fetch_card(card_id)
+    _upsert_results(db, {"data": [card]})
     _with_price_changes(db, {"data": [card]})
     return card
 
@@ -396,4 +535,14 @@ def get_set(set_id: str):
 # Get all cards in a set
 @router.get("/sets/{set_id}/cards")
 def get_set_cards(set_id: str, page: int = Query(1, ge=1), db: Session = Depends(get_db)):
-    return _with_price_changes(db, _fetch_cards(f"set.id:{set_id.lower()}", page))
+    sid = set_id.lower()
+    if _catalog_ready(db):
+        have = card_catalog.set_count(db, sid)
+        if have and have >= _expected_set_total(sid):
+            results, stale = card_catalog.search(db, set_id=sid, page=page)
+            if stale:
+                _refresh_prices_in_background(stale)
+            return _with_price_changes(db, results)
+    results = _fetch_cards(f"set.id:{sid}", page)
+    _upsert_results(db, results)
+    return _with_price_changes(db, results)

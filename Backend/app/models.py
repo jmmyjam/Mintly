@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index, JSON
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 
@@ -31,6 +31,31 @@ class PortfolioCard(Base):
     purchase_price = Column(Float)    # price paid per card
     purchase_date = Column(DateTime, default=utcnow)
     owner = relationship("User", back_populates="portfolio")
+
+class CatalogCard(Base):
+    # Local mirror of the upstream card list, so browsing is answered from the
+    # DB instead of a 2-5s upstream call. Filled by the daily crawl and topped
+    # up whenever the cards router falls back to the upstream proxy.
+    __tablename__ = "card_catalog"
+    card_id = Column(String, primary_key=True)   # e.g. "base1-4"
+    name = Column(String, index=True)
+    number = Column(String)
+    set_id = Column(String, index=True)
+    rarity = Column(String)
+    types = Column(String)          # "|Fire|Flying|" — LIKE "%|Fire|%" answers type filters
+    release_date = Column(String)   # set releaseDate "YYYY/MM/DD" — sorts as text
+    data = Column(JSON)             # the card dict exactly as served to the frontend
+    price_updated_at = Column(DateTime, default=utcnow)  # when data's tcgplayer block was last fetched
+
+
+class CatalogMeta(Base):
+    # Catalog bookkeeping (key/value). List endpoints only trust the catalog
+    # once a COMPLETE crawl has stamped `last_full_sync` — a partial catalog
+    # would confidently serve incomplete search pages.
+    __tablename__ = "catalog_meta"
+    key = Column(String, primary_key=True)
+    value = Column(String)
+
 
 class CardPriceSnapshot(Base):
     # The app-wide daily price history for ANY card (browsed or held), one row

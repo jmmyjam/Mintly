@@ -43,6 +43,9 @@ export interface Card {
   }
   // Attached by the backend when a prior snapshot exists (see app/services/price_history.py)
   priceChange?: PriceChange
+  // True when the catalog's stored price was stale and the backend kicked off a
+  // background re-fetch — CardDetail re-polls until it clears
+  refreshing?: boolean
 }
 
 // One daily point in a card's price history (from Mintly's own snapshots)

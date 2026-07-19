@@ -6,14 +6,14 @@ cards talks upstream through its own module-level `session`; these tests swap
 it for a fake serving priced cards, and insert prior-day snapshots straight into
 the shared in-memory DB.
 """
-import time
 from datetime import timedelta
 
 import pytest
 
 from app.routers import cards
 from conftest import TestingSessionLocal, make_card
-from app.models import CardPriceSnapshot, utcnow
+from app.models import CardPriceSnapshot, CatalogCard, utcnow
+from app.services import card_catalog
 from app.services.price_history import extract_price
 
 
@@ -165,24 +165,60 @@ class TestPortfolioDailyChange:
         assert row["price_change"] is None
 
 
-class TestStaleSingleCardCache:
-    def test_stale_card_served_then_refreshed(self, client, cards_upstream):
-        def market(card):
-            return card["tcgplayer"]["prices"]["holofoil"]["market"]
+class TestStaleCatalogPrice:
+    """A viewed card whose catalog price is past PRICE_TTL is served instantly
+    with `refreshing: true` while a background fetch updates the row (the old
+    stale-while-revalidate, moved from the response cache to the catalog)."""
 
+    @staticmethod
+    def market(card):
+        return card["tcgplayer"]["prices"]["holofoil"]["market"]
+
+    @staticmethod
+    def age_row(card_id: str):
+        db = TestingSessionLocal()
+        row = db.get(CatalogCard, card_id)
+        row.price_updated_at = utcnow() - card_catalog.PRICE_TTL - timedelta(minutes=1)
+        db.commit()
+        db.close()
+
+    def test_stale_price_served_instantly_with_refreshing_flag(
+            self, client, cards_upstream, monkeypatch):
+        refreshes = []
+        monkeypatch.setattr(cards, "_refresh_prices_in_background", refreshes.append)
         cards_upstream.add(make_card("sv1-9", price=10.0))
-        client.get("/cards/sv1-9")  # primes the cache
-        key = "__card__sv1-9"
-        ts, data = cards._cache[key]
-        cards._cache[key] = (ts - cards._CACHE_TTL - 1, data)
+        client.get("/cards/sv1-9")  # catalog miss → proxied, then upserted
+        self.age_row("sv1-9")
         cards_upstream.add(make_card("sv1-9", price=20.0))  # upstream moved on
 
-        assert market(client.get("/cards/sv1-9").json()) == 10.0  # stale, instant
+        body = client.get("/cards/sv1-9").json()
+        assert self.market(body) == 10.0        # stale, but instant
+        assert body["refreshing"] is True       # frontend re-polls on this
+        assert refreshes == [["sv1-9"]]
 
-        deadline = time.time() + 2
-        while time.time() < deadline and market(cards._cache[key][1]) != 20.0:
-            time.sleep(0.01)
-        assert market(client.get("/cards/sv1-9").json()) == 20.0  # refresh landed
+    def test_refresh_lands_new_price_and_clears_the_flag(self, client, cards_upstream):
+        cards_upstream.add(make_card("sv1-9", price=10.0))
+        client.get("/cards/sv1-9")
+        self.age_row("sv1-9")
+        cards_upstream.add(make_card("sv1-9", price=20.0))
+
+        db = TestingSessionLocal()
+        assert cards.refresh_card_prices(db, ["sv1-9"]) == 1
+        db.close()
+
+        body = client.get("/cards/sv1-9").json()
+        assert self.market(body) == 20.0
+        assert "refreshing" not in body
+
+    def test_fresh_catalog_row_served_without_flag_or_upstream(self, client, cards_upstream):
+        cards_upstream.add(make_card("sv1-9", price=10.0))
+        client.get("/cards/sv1-9")
+        cards_upstream.by_id.clear()  # upstream gone — the catalog answers alone
+        cards._cache.clear()
+
+        body = client.get("/cards/sv1-9").json()
+        assert self.market(body) == 10.0
+        assert "refreshing" not in body
 
 
 class TestExtractPrice:
