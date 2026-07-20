@@ -272,8 +272,9 @@ export default function Search() {
         cards.length > 0 &&
         cards.every((c) => getCardPrice(c) == null) && (
           <p className="prices-note">
-            Market prices aren't available for these cards yet — the price data
-            source hasn't been updated for this set.
+            {cards.some((c) => c.estimate)
+              ? "TCGPlayer market prices aren't available for this set yet — values marked \"eBay est.\" are estimates from recent eBay sales."
+              : "Market prices aren't available for these cards yet — the price data source hasn't been updated for this set."}
           </p>
         )}
 
@@ -297,12 +298,20 @@ export default function Search() {
                 <div className="card-info">
                   <p className="card-name">{card.name}</p>
                   <p className="card-set">{card.set.name}</p>
-                  {price != null && (
+                  {price != null ? (
                     <p className="card-price">
                       {money(price)}
                       {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
                     </p>
-                  )}
+                  ) : card.estimate ? (
+                    // No TCGPlayer price — recent-eBay-sold estimate, styled
+                    // like a normal price with the source named beside it
+                    <p className="card-price">
+                      {money(card.estimate.value)}
+                      <span className="est-badge">eBay est.</span>
+                      {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
+                    </p>
+                  ) : null}
                 </div>
               </Link>
 
@@ -329,7 +338,14 @@ export default function Search() {
                 ) : (
                   <button
                     className="btn-outline btn-sm"
-                    onClick={() => setAdding(card.id)}
+                    onClick={() => {
+                      setAdding(card.id);
+                      // Priceless cards can't fall back to a market price on
+                      // add — seed the form with the eBay estimate instead
+                      if (price == null && card.estimate) {
+                        setPurchasePrice(card.estimate.value.toFixed(2));
+                      }
+                    }}
                   >
                     + Portfolio
                   </button>

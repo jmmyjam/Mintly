@@ -63,11 +63,13 @@ def record_snapshots(db: Session, prices: dict[str, float]) -> int:
     return len(new_snapshots)
 
 
-def previous_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, date]]:
-    """Each card's most recent snapshot strictly before today (UTC)."""
+def previous_prices(db: Session, card_ids: list[str],
+                    before: datetime | None = None) -> dict[str, tuple[float, date]]:
+    """Each card's most recent snapshot strictly before `before` — default is
+    today's UTC start, i.e. the most recent prior-day snapshot."""
     if not card_ids:
         return {}
-    today_start = _today_start()
+    cutoff = before if before is not None else _today_start()
     latest = (
         db.query(
             CardPriceSnapshot.card_id,
@@ -75,7 +77,7 @@ def previous_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, 
         )
         .filter(
             CardPriceSnapshot.card_id.in_(card_ids),
-            CardPriceSnapshot.snapshot_date < today_start,
+            CardPriceSnapshot.snapshot_date < cutoff,
         )
         .group_by(CardPriceSnapshot.card_id)
         .subquery()
@@ -90,6 +92,63 @@ def previous_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, 
         .all()
     )
     return {r.card_id: (r.price, r.snapshot_date.date()) for r in rows}
+
+
+def latest_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, date]]:
+    """Each card's most recent snapshot, today included (unlike previous_prices,
+    which is strictly before today — that one anchors day-over-day change)."""
+    if not card_ids:
+        return {}
+    latest = (
+        db.query(
+            CardPriceSnapshot.card_id,
+            func.max(CardPriceSnapshot.snapshot_date).label("latest_date"),
+        )
+        .filter(CardPriceSnapshot.card_id.in_(card_ids))
+        .group_by(CardPriceSnapshot.card_id)
+        .subquery()
+    )
+    rows = (
+        db.query(CardPriceSnapshot)
+        .join(
+            latest,
+            (CardPriceSnapshot.card_id == latest.c.card_id)
+            & (CardPriceSnapshot.snapshot_date == latest.c.latest_date),
+        )
+        .all()
+    )
+    return {r.card_id: (r.price, r.snapshot_date.date()) for r in rows}
+
+
+def attach_estimates(db: Session, cards: list[dict]) -> None:
+    """For cards TCGPlayer can't price, attach the most recent snapshot as
+    `estimate` (in place) — the daily job records eBay sold-medians for exactly
+    these cards, so search tiles can show an estimated value instead of nothing
+    — plus a `priceChange` vs the snapshot before it, so estimated cards get
+    the same daily-change chip as priced ones. Cards with a real market price,
+    or no snapshot at all, are left untouched."""
+    unpriced = [c["id"] for c in cards if c.get("id") and extract_price(c) is None]
+    if not unpriced:
+        return
+    latest = latest_prices(db, unpriced)
+    # Change is measured against the snapshot before each card's LATEST one —
+    # the cutoff is per-card-day, not "today", so a card whose newest estimate
+    # is from yesterday isn't compared against itself
+    by_day: dict[date, list[str]] = {}
+    for card_id, (_, when) in latest.items():
+        by_day.setdefault(when, []).append(card_id)
+    prior: dict[str, tuple[float, date]] = {}
+    for day, ids in by_day.items():
+        prior.update(previous_prices(
+            db, ids, before=datetime.combine(day, datetime.min.time())))
+    for card in cards:
+        hit = latest.get(card.get("id"))
+        if hit:
+            price, when = hit
+            card["estimate"] = {"value": price, "date": when.isoformat()}
+            if card["id"] in prior:
+                prev_price, since = prior[card["id"]]
+                card["priceChange"] = price_change(price, prev_price, since)
 
 
 def price_change(current: float, prev: float, since: date) -> dict:

@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from app.database import SessionLocal, get_db
 from app.services import card_catalog, ebay_prices
-from app.services.price_history import annotate_price_changes, card_history
+from app.services.price_history import annotate_price_changes, attach_estimates, card_history
 from app.services.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
@@ -222,15 +222,25 @@ def _fetch_sets() -> list:
     cached = _cache.get("__sets__")
     if cached and time.time() - cached[0] < _CACHE_TTL:
         return cached[1]
+    if cached:
+        # The sets list barely changes, but sits on hot paths (smart search's
+        # set-name matching, the set-page completeness check) — never block a
+        # request on the upstream refresh (observed 404s / 50s hangs): serve
+        # stale at any age while one background thread re-fetches
+        _refresh_in_background("__sets__", _fetch_sets_upstream)
+        return cached[1]
+    return _fetch_sets_upstream()
+
+
+def _fetch_sets_upstream() -> list:
     try:
         response = session.get(f"{BASE_URL}/sets", timeout=_TIMEOUT)
     except requests.RequestException:
         response = None
     if response is None or response.status_code != 200:
-        # Upstream flakes (observed transient 404s / 50s hangs); an expired sets
-        # list barely changes, so serve it rather than break /search
+        cached = _cache.get("__sets__")
         if cached:
-            return cached[1]
+            return cached[1]  # flake with a cached copy — keep serving it
         raise HTTPException(
             status_code=response.status_code if response is not None else 504,
             detail="Failed to fetch sets",
@@ -331,6 +341,7 @@ def _with_price_changes(db: Session, results: dict) -> dict:
     # proxy must keep answering even if the database is down
     try:
         annotate_price_changes(db, results.get("data", []))
+        attach_estimates(db, results.get("data", []))
     except Exception:
         db.rollback()
         logger.warning("price-change annotation failed", exc_info=True)

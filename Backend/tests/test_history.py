@@ -221,6 +221,52 @@ class TestStaleCatalogPrice:
         assert "refreshing" not in body
 
 
+class TestEstimates:
+    """Cards TCGPlayer can't price carry their latest snapshot as `estimate`
+    (the daily job records eBay sold-medians for exactly these), so search
+    tiles can show a value instead of nothing."""
+
+    def test_priceless_card_carries_latest_snapshot_estimate(self, client, cards_upstream):
+        cards_upstream.add(make_card("me4-7", price=None))
+        seed_prior_snapshot("me4-7", 5.25)
+        body = client.get("/cards/me4-7").json()
+        assert body["estimate"] == {"value": 5.25, "date": (utcnow() - timedelta(days=1)).date().isoformat()}
+        assert "tcgplayer" not in body  # no market price is being claimed
+
+    def test_priced_card_has_no_estimate(self, client, cards_upstream):
+        cards_upstream.add(make_card("sv1-1", price=12.0))
+        seed_prior_snapshot("sv1-1", 11.0)
+        assert "estimate" not in client.get("/cards/sv1-1").json()
+
+    def test_snapshotless_priceless_card_has_no_estimate(self, client, cards_upstream):
+        cards_upstream.add(make_card("me4-8", price=None))
+        assert "estimate" not in client.get("/cards/me4-8").json()
+
+    def test_list_responses_carry_estimates(self, client, cards_upstream):
+        cards_upstream.add(make_card("me4-7", price=None))
+        seed_prior_snapshot("me4-7", 5.25)
+        body = client.get("/cards", params={"name": "test card"}).json()
+        assert body["data"][0]["estimate"]["value"] == 5.25
+
+    def test_estimate_carries_day_change_vs_prior_snapshot(self, client, cards_upstream):
+        cards_upstream.add(make_card("me4-7", price=None))
+        seed_prior_snapshot("me4-7", 4.00, days_ago=2)
+        seed_prior_snapshot("me4-7", 5.00, days_ago=1)
+        body = client.get("/cards/me4-7").json()
+        assert body["estimate"]["value"] == 5.00
+        assert body["priceChange"]["amount"] == 1.0
+        assert body["priceChange"]["percent"] == 25.0
+        assert body["priceChange"]["since"] == (utcnow() - timedelta(days=2)).date().isoformat()
+
+    def test_single_snapshot_estimate_has_no_change(self, client, cards_upstream):
+        # one snapshot = nothing to compare against — and never vs itself
+        cards_upstream.add(make_card("me4-9", price=None))
+        seed_prior_snapshot("me4-9", 5.0)
+        body = client.get("/cards/me4-9").json()
+        assert "estimate" in body
+        assert "priceChange" not in body
+
+
 class TestExtractPrice:
     def test_market_preferred_over_mid(self):
         card = {"tcgplayer": {"prices": {"holofoil": {"market": 12.5, "mid": 15.0}}}}

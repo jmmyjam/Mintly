@@ -46,6 +46,9 @@ export interface Card {
   // True when the catalog's stored price was stale and the backend kicked off a
   // background re-fetch — CardDetail re-polls until it clears
   refreshing?: boolean
+  // For cards TCGPlayer can't price: the most recent snapshot (an eBay
+  // sold-median from the daily job). Informational — never a market price.
+  estimate?: { value: number; date: string }
 }
 
 // One daily point in a card's price history (from Mintly's own snapshots)
