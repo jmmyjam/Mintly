@@ -380,3 +380,83 @@ def test_no_tcgcsv_flag_skips_the_fill(run_main, monkeypatch):
     pages[2][0] = mega_card()
     assert run_main(["--no-tcgcsv"], pages=pages) == 0
     assert called == []
+
+
+# ---- Dropped-page recovery via the catalog + TCGCSV --------------------------
+# A page pokemontcg.io couldn't serve even after the retry pass leaves its cards
+# out of the crawl entirely, so the tcgcsv/eBay fills (driven by crawl.unpriced)
+# never see them. recover_dropped pulls those cards from the catalog and prices
+# them from the independent TCGCSV mirror, so the outage doesn't gap history.
+
+def test_recover_dropped_prices_uncrawled_catalog_cards_via_tcgcsv(fake_tcgcsv):
+    db = TestingSessionLocal()
+    try:
+        # the catalog already holds two Mega Set cards from a prior sync
+        card_catalog.upsert_cards(db, [mega_card("me9-1", "1"),
+                                       mega_card("me9-2", "188")])
+        # this run crawled only me9-1; me9-2's page dropped both passes
+        crawl = snapshot_all.Crawl(cards=[mega_card("me9-1", "1")], dropped=[7])
+        result = snapshot_all.recover_dropped(db, crawl)
+
+        assert result.candidates == 1              # only me9-2 was uncrawled
+        assert result.prices == {"me9-2": 250.0}   # priced from the TCGCSV mirror
+        assert "me9-1" not in result.prices        # the crawled card is left alone
+    finally:
+        db.close()
+
+
+def test_dropped_page_cards_recovered_from_catalog_via_tcgcsv(run_main, fake_tcgcsv):
+    # a card the catalog knows from a prior sync, whose page drops this run, is
+    # priced from TCGCSV instead of vanishing from history for the day
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(db, [mega_card("me9-1", "188")])
+    card_catalog.mark_full_sync(db)
+    db.close()
+
+    # page 3 drops both passes; me9-1 is on no page this run
+    assert run_main(fail_first={3: 99}) == 0
+
+    db = TestingSessionLocal()
+    try:
+        snap = (db.query(CardPriceSnapshot)
+                  .filter(CardPriceSnapshot.card_id == "me9-1").one())
+        assert snap.price == 250.0   # recovered from the TCGCSV mirror
+        # its catalog price was refreshed too
+        assert card_catalog.get_card(db, "me9-1").data["tcgplayer"]["prices"]
+    finally:
+        db.close()
+
+
+def test_recovery_skipped_until_catalog_synced(run_main, monkeypatch):
+    # a first-ever run has no catalog universe to diff against — a dropped page's
+    # never-seen cards can't be recovered yet, so the stage stays off
+    called = []
+    monkeypatch.setattr(snapshot_all, "recover_dropped",
+                        lambda db, crawl: called.append(1) or snapshot_all.DroppedFill())
+    assert run_main(fail_first={3: 99}) == 0  # fresh DB → never synced
+    assert called == []
+
+
+def test_recovery_skipped_on_truncated_run(run_main, monkeypatch):
+    # on a --max-pages smoke run most cards are "uncrawled" but not dropped —
+    # recovery must never treat them as dropped and TCGCSV-blast them
+    called = []
+    monkeypatch.setattr(snapshot_all, "recover_dropped",
+                        lambda db, crawl: called.append(1) or snapshot_all.DroppedFill())
+    db = TestingSessionLocal()
+    card_catalog.mark_full_sync(db)
+    db.close()
+    # page 2 drops within a 2-page truncated run: dropped IS non-empty
+    assert run_main(["--max-pages", "2"], fail_first={2: 99}) == 0
+    assert called == []
+
+
+def test_no_tcgcsv_flag_also_skips_dropped_recovery(run_main, monkeypatch):
+    called = []
+    monkeypatch.setattr(snapshot_all, "recover_dropped",
+                        lambda db, crawl: called.append(1) or snapshot_all.DroppedFill())
+    db = TestingSessionLocal()
+    card_catalog.mark_full_sync(db)
+    db.close()
+    assert run_main(["--no-tcgcsv"], fail_first={3: 99}) == 0
+    assert called == []

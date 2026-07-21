@@ -13,6 +13,15 @@ same estimator CardDetail's fallback uses), newest sets first, paced
 Every crawled card is also mirrored into the `card_catalog` table the app
 serves browsing from (a complete crawl stamps the sync marker that lets list
 endpoints trust the catalog).
+
+Cards on pages pokemontcg.io *couldn't serve at all* (a page that failed both
+the inline retries and the end-of-run retry pass — `crawl.dropped`) are a
+separate gap from cards it served with no price: they never reach the fills
+above. A final `recover_dropped` stage recovers those cards' metadata from the
+catalog (any card the catalog holds that this run didn't crawl) and prices them
+from the same TCGCSV mirror, so an upstream page outage doesn't punch a hole in
+the day's history. It only runs on a full, already-synced run — a brand-new
+card the catalog has never seen still waits for the next complete crawl.
 `record_snapshots` dedupes per day, so this is idempotent — running it more than
 once a day adds nothing (a re-run spends its eBay budget on cards the first run
 didn't reach). Talks straight to the DB and upstream API; the FastAPI app does
@@ -24,6 +33,7 @@ not need to be running.
 Scheduled daily via launchd (see HANDOFF "Daily snapshot job" / the LaunchAgent plist).
 """
 import argparse
+import copy
 import logging
 import os
 import sys
@@ -39,6 +49,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
+from app.models import CatalogCard  # noqa: E402
 from app.services import card_catalog, ebay_prices, history_archive, tcgcsv  # noqa: E402
 from app.services.price_history import (  # noqa: E402
     extract_price, record_snapshots, record_variant_snapshots, recorded_today,
@@ -109,6 +120,17 @@ class EbayFill:
     no_sales: int = 0     # fetched fine, but too few recent comps to price
     failures: int = 0     # fetches that failed outright (block/network)
     gave_up: bool = False
+
+
+@dataclass
+class DroppedFill:
+    """What the dropped-page recovery did: TCGCSV prices pulled for cards on
+    pages pokemontcg.io couldn't serve this run (recovered via the catalog)."""
+    prices: dict[str, float] = field(default_factory=dict)
+    cards: list[dict] = field(default_factory=list)  # recovered dicts, re-upserted
+    candidates: int = 0   # catalog cards this run never crawled (= dropped-page cards)
+    sets_matched: int = 0
+    sets_unmatched: list[str] = field(default_factory=list)
 
 
 def _get_page(page: int) -> dict | None:
@@ -317,6 +339,65 @@ def ebay_fill(db, unpriced: list[dict], budget: int,
     return fill
 
 
+def recover_dropped(db, crawl: Crawl) -> DroppedFill:
+    """Last-resort price source for cards on DROPPED pages — pages pokemontcg.io
+    couldn't serve even after the retry pass. `_collect` never saw their cards,
+    so they're absent from crawl.cards/prices/unpriced and neither tcgcsv_fill
+    nor ebay_fill (both driven by crawl.unpriced) can reach them.
+
+    The metadata those cards need is recovered from the local catalog: any card
+    the catalog holds that this run did NOT crawl is — barring the rare upstream
+    deletion — exactly a dropped page's card. Each is matched to the independent
+    TCGCSV mirror by set + number and snapshotted, so a page pokemontcg.io
+    couldn't serve still gets a same-day point instead of a hole in the series.
+    The TCGCSV matching is the same code the regular fill uses: the recovered
+    cards are presented as a mini-crawl whose every card is an unpriced
+    candidate (we couldn't fetch their real price this run, so a fresh TCGCSV
+    price is the one to record).
+
+    The caller gates this on a synced catalog and a full (non --max-pages) run —
+    without those, "not crawled this run" doesn't mean "dropped", and a brand-new
+    card the catalog has never seen still has to wait for the next full crawl
+    (we have no set/number to match it on until then).
+    """
+    fill = DroppedFill()
+    crawled = {c["id"] for c in crawl.cards}
+    catalog_ids = [cid for (cid,) in db.query(CatalogCard.card_id).all()]
+    missing_ids = [cid for cid in catalog_ids if cid not in crawled]
+    fill.candidates = len(missing_ids)
+    if not missing_ids:
+        return fill
+
+    mini = Crawl()
+    for i in range(0, len(missing_ids), _DEDUPE_CHUNK):
+        rows = (db.query(CatalogCard)
+                  .filter(CatalogCard.card_id.in_(missing_ids[i:i + _DEDUPE_CHUNK]))
+                  .all())
+        for row in rows:
+            # deepcopy: tcgcsv_fill mutates the tcgplayer block in place, and the
+            # row's JSON is still attached to the session — don't touch it
+            data = copy.deepcopy(row.data) if row.data else None
+            if not data or not data.get("id") or not data.get("name"):
+                continue
+            mini.cards.append(data)
+            card_set = data.get("set") or {}
+            mini.unpriced.append({
+                "id": data["id"],
+                "name": data["name"],
+                "number": data.get("number"),
+                "set_id": card_set.get("id"),
+                "set_name": card_set.get("name"),
+                "release": card_set.get("releaseDate") or "",
+            })
+
+    tfill = tcgcsv_fill(mini)
+    fill.prices = tfill.prices
+    fill.cards = mini.cards
+    fill.sets_matched = tfill.sets_matched
+    fill.sets_unmatched = tfill.sets_unmatched
+    return fill
+
+
 def _record_chunked(db, prices: dict[str, float]) -> int:
     """record_snapshots in _DEDUPE_CHUNK slices, keeping the per-day dedupe's
     IN() clause reasonable. Returns rows newly inserted."""
@@ -405,6 +486,34 @@ def main() -> int:
             fill = ebay_fill(db, remaining, args.max_ebay, args.ebay_pause)
             recorded += _record_chunked(db, fill.prices)
 
+        # Dropped-page recovery: pages pokemontcg.io couldn't serve even after
+        # the retry pass left their cards out of the crawl entirely, so nothing
+        # above priced them. Pull those cards from the catalog and price them
+        # from the independent TCGCSV mirror — a page upstream couldn't serve
+        # still gets a same-day point instead of a gap. Only meaningful on a full
+        # run against an already-synced catalog (else "uncrawled" ≠ "dropped").
+        dfill = DroppedFill()
+        if (crawl.dropped and not args.no_tcgcsv and not args.max_pages
+                and card_catalog.is_synced(db)):
+            log.info("---- dropped-page recovery: %d dropped page(s), pricing "
+                     "their cards from TCGCSV via the catalog ----",
+                     len(crawl.dropped))
+            try:
+                dfill = recover_dropped(db, crawl)
+            except Exception as exc:  # best-effort — never costs the rest of the run
+                log.warning("dropped-page recovery failed: %s", exc)
+            recorded += _record_chunked(db, dfill.prices)
+            for i in range(0, len(dfill.cards), _DEDUPE_CHUNK):
+                variant_rows += record_variant_snapshots(
+                    db, dfill.cards[i:i + _DEDUPE_CHUNK])
+            try:  # refresh the recovered cards' catalog price too
+                for i in range(0, len(dfill.cards), _DEDUPE_CHUNK):
+                    card_catalog.upsert_cards(db, dfill.cards[i:i + _DEDUPE_CHUNK])
+            except Exception as exc:
+                db.rollback()
+                log.warning("catalog upsert (recovery) failed: %s — recovered "
+                            "prices still snapshotted", exc)
+
         compacted: list[dict] = []
         if not args.no_compact:
             try:
@@ -446,7 +555,9 @@ def main() -> int:
     if compacted:
         log.info("  compacted         %d month(s) to cold storage", len(compacted))
     if crawl.dropped:
-        log.warning("  dropped pages     %s — their cards get caught next run",
+        log.info("  dropped recovery  %s of %s dropped-page cards priced from TCGCSV",
+                 f"{len(dfill.prices):,}", f"{dfill.candidates:,}")
+        log.warning("  dropped pages     %s — the rest get caught next run",
                     ", ".join(map(str, crawl.dropped)))
     log.info(bar)
     return 0
