@@ -4,6 +4,8 @@ import pytest
 
 from app.routers import cards
 from app.services import ebay_prices
+from app.models import CardPriceSnapshot
+from conftest import TestingSessionLocal
 
 
 def card_html(title: str, sold: str, price: str) -> str:
@@ -163,3 +165,49 @@ class TestEndpoint:
         body = client.get("/cards/me1-1/ebay-price").json()
         assert body["count"] == 0
         assert body["median"] is None
+
+    @staticmethod
+    def _snapshot_price(card_id):
+        db = TestingSessionLocal()
+        row = (db.query(CardPriceSnapshot)
+                 .filter(CardPriceSnapshot.card_id == card_id).one_or_none())
+        db.close()
+        return row.price if row else None
+
+    def test_usable_estimate_records_snapshot(self, client, monkeypatch):
+        # A priceless card's estimate is snapshotted so its history point keeps
+        # step with the median the page shows (median of $240/$250/$260 = $250).
+        card = {"id": "me1-200", "name": "Mega X", "number": "200/132",
+                "set": {"name": "Mega Evolution"}}
+        monkeypatch.setattr(cards, "session", FakeCardUpstream(card))
+        html = page(
+            card_html("Mega X 200", "Jul 14, 2026", "$250.00"),
+            card_html("Mega X 200", "Jul 13, 2026", "$260.00"),
+            card_html("Mega X 200", "Jul 12, 2026", "$240.00"),
+        )
+        monkeypatch.setattr(ebay_prices, "_fetch_sold_html", lambda q: html)
+        client.get("/cards/me1-200/ebay-price")
+        assert self._snapshot_price("me1-200") == 250.0
+
+    def test_blocked_estimate_records_no_snapshot(self, client, monkeypatch):
+        card = {"id": "me1-201", "name": "Test", "number": "1/1", "set": {"name": "X"}}
+        monkeypatch.setattr(cards, "session", FakeCardUpstream(card))
+        monkeypatch.setattr(ebay_prices, "_fetch_sold_html", lambda q: None)
+        client.get("/cards/me1-201/ebay-price")
+        assert self._snapshot_price("me1-201") is None
+
+    def test_priced_card_estimate_never_overwrites_snapshot(self, client, monkeypatch):
+        # A card TCGPlayer CAN price must not get an eBay-median snapshot here —
+        # that would clobber its real market history.
+        card = {"id": "base1-4", "name": "Charizard", "number": "4/102",
+                "set": {"name": "Base"},
+                "tcgplayer": {"prices": {"holofoil": {"market": 300.0}}}}
+        monkeypatch.setattr(cards, "session", FakeCardUpstream(card))
+        html = page(
+            card_html("Charizard 4", "Jul 14, 2026", "$250.00"),
+            card_html("Charizard 4", "Jul 13, 2026", "$260.00"),
+            card_html("Charizard 4", "Jul 12, 2026", "$240.00"),
+        )
+        monkeypatch.setattr(ebay_prices, "_fetch_sold_html", lambda q: html)
+        client.get("/cards/base1-4/ebay-price")
+        assert self._snapshot_price("base1-4") is None

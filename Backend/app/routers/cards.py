@@ -16,7 +16,10 @@ from dotenv import load_dotenv
 
 from app.database import SessionLocal, get_db
 from app.services import card_catalog, ebay_prices
-from app.services.price_history import annotate_price_changes, attach_estimates, card_history
+from app.services.price_history import (
+    annotate_price_changes, attach_estimates, card_history, extract_price,
+    record_snapshots,
+)
 from app.services.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
@@ -501,11 +504,23 @@ def get_card_history(card_id: str, days: int = Query(1825, ge=1, le=3650), db: S
 def get_ebay_price(card_id: str, db: Session = Depends(get_db)):
     row = _catalog_row(db, card_id)
     card = card_catalog.card_payload(row) if row is not None else _fetch_card(card_id)
-    return ebay_prices.estimate(
+    est = ebay_prices.estimate(
         card.get("name", ""),
         card.get("number"),
         card.get("set", {}).get("name"),
     )
+    # Keep this card's daily history point in step with the estimate the page is
+    # about to show, mirroring record_snapshots' refresh for TCGPlayer-priced
+    # cards. Only for cards TCGPlayer genuinely can't price (so we never overwrite
+    # a real market snapshot with an eBay median) and only on a usable scrape.
+    median = est.get("median")
+    if median is not None and extract_price(card) is None:
+        try:
+            record_snapshots(db, {card_id: median})
+        except Exception:
+            db.rollback()
+            logger.warning("eBay estimate snapshot failed", exc_info=True)
+    return est
 
 
 # Get a single card by its API ID (e.g. base1-4)

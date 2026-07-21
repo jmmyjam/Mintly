@@ -216,7 +216,7 @@ export default function CardDetail() {
             <p className="prices-note">Prices from TCGPlayer, updated {card.tcgplayer.updatedAt}</p>
           )}
 
-          <PriceHistoryChart key={card.id} cardId={card.id} />
+          <PriceHistoryChart key={card.id} cardId={card.id} currentPrice={market ?? ebay?.median ?? null} />
 
           <h2>Add to Portfolio</h2>
           {addStatus ? (

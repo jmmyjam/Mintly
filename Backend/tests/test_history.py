@@ -82,6 +82,18 @@ def count_snapshots(card_id: str) -> int:
     return n
 
 
+def newest_snapshot_price(card_id: str) -> float | None:
+    db = TestingSessionLocal()
+    row = (
+        db.query(CardPriceSnapshot)
+        .filter(CardPriceSnapshot.card_id == card_id)
+        .order_by(CardPriceSnapshot.snapshot_date.desc())
+        .first()
+    )
+    db.close()
+    return row.price if row else None
+
+
 class TestSnapshotRecording:
     def test_browsing_a_priced_card_records_a_snapshot(self, client, cards_upstream):
         cards_upstream.add(make_card("sv1-1", price=12.0))
@@ -103,6 +115,26 @@ class TestSnapshotRecording:
         cards_upstream.add(make_card("sv1-2", price=8.0))
         client.get("/cards/sv1-2")
         assert count_snapshots("sv1-2") == 1
+
+    def test_same_day_reprice_refreshes_todays_point(self):
+        # A same-day re-record updates the day's price in place — still one row,
+        # but tracking the latest value, so the chart's newest point matches the
+        # current price shown to users instead of freezing at the first read.
+        from app.services.price_history import record_snapshots
+        db = TestingSessionLocal()
+        assert record_snapshots(db, {"sv1-9": 10.0}) == 1
+        assert record_snapshots(db, {"sv1-9": 12.5}) == 0  # a refresh, not a new row
+        db.close()
+        assert count_snapshots("sv1-9") == 1
+        assert newest_snapshot_price("sv1-9") == 12.5
+
+    def test_same_day_same_price_is_noop(self):
+        from app.services.price_history import record_snapshots
+        db = TestingSessionLocal()
+        assert record_snapshots(db, {"sv1-10": 10.0}) == 1
+        assert record_snapshots(db, {"sv1-10": 10.0}) == 0
+        db.close()
+        assert count_snapshots("sv1-10") == 1
 
 
 class TestPriceChangeAnnotation:

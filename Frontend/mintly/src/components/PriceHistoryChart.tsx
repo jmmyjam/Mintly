@@ -18,8 +18,10 @@ function formatDate(d: string) {
 
 // Per-card price tracker: a single series (this card's daily market price) so no
 // legend is needed — the heading names it. Data is Mintly's own snapshots, which
-// build up over time, so early on it may be sparse.
-export default function PriceHistoryChart({ cardId }: { cardId: string }) {
+// build up over time, so early on it may be sparse. `currentPrice` is the live
+// price shown at the top of the page — the chart ends on it so the graph never
+// contradicts the number above it (see the reconciliation below).
+export default function PriceHistoryChart({ cardId, currentPrice }: { cardId: string; currentPrice?: number | null }) {
   const [points, setPoints] = useState<PricePoint[]>([])
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState('all')
@@ -41,14 +43,29 @@ export default function PriceHistoryChart({ cardId }: { cardId: string }) {
     }
   }, [cardId])
 
+  // The stored snapshot can lag the live price (a >6h-old catalog price refreshes
+  // in the background, possibly after this chart already loaded), so overlay the
+  // current price onto today's point — the line always ends where the big price
+  // does. Older points are historical fact and left untouched.
+  const series = useMemo(() => {
+    if (currentPrice == null || points.length === 0) return points
+    const today = new Date().toISOString().slice(0, 10)
+    if (points[points.length - 1].date >= today) {
+      const copy = points.slice()
+      copy[copy.length - 1] = { ...copy[copy.length - 1], price: currentPrice }
+      return copy
+    }
+    return [...points, { date: today, price: currentPrice }]
+  }, [points, currentPrice])
+
   const days = RANGES.find(r => r.key === range)!.days
   const visible = useMemo(() => {
-    if (days == null) return points
+    if (days == null) return series
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - days)
     const iso = cutoff.toISOString().slice(0, 10)
-    return points.filter(p => p.date >= iso)
-  }, [points, days])
+    return series.filter(p => p.date >= iso)
+  }, [series, days])
 
   if (loading) {
     return (
@@ -61,7 +78,7 @@ export default function PriceHistoryChart({ cardId }: { cardId: string }) {
 
   // With a single point (or none), there's no line to draw yet — the snapshot
   // store only grows as the card is viewed over time.
-  if (points.length < 2) {
+  if (series.length < 2) {
     return (
       <div className={styles.priceHistory}>
         <h2>Price History</h2>
@@ -73,7 +90,7 @@ export default function PriceHistoryChart({ cardId }: { cardId: string }) {
     )
   }
 
-  const chartData = days == null || visible.length >= 2 ? visible : points
+  const chartData = days == null || visible.length >= 2 ? visible : series
 
   return (
     <div className={styles.priceHistory}>

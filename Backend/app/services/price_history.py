@@ -48,19 +48,33 @@ def recorded_today(db: Session, card_ids) -> set[str]:
 
 
 def record_snapshots(db: Session, prices: dict[str, float]) -> int:
-    # At most one snapshot per card per UTC day; returns how many rows were added
+    """Record today's price for each card, at most one row per card per UTC day.
+    A card already snapshotted today has its price refreshed to the latest value
+    seen, so the day's point keeps step with the current market price shown to
+    users instead of freezing at the first read of the day (e.g. the 6am daily
+    job). Returns how many rows were newly inserted — refreshes aren't counted."""
     if not prices:
         return 0
-    already_recorded = recorded_today(db, prices)
-    new_snapshots = [
-        CardPriceSnapshot(card_id=card_id, price=price)
-        for card_id, price in prices.items()
-        if card_id not in already_recorded
-    ]
-    if new_snapshots:
-        db.add_all(new_snapshots)
+    existing = {
+        s.card_id: s
+        for s in db.query(CardPriceSnapshot).filter(
+            CardPriceSnapshot.card_id.in_(prices),
+            CardPriceSnapshot.snapshot_date >= _today_start(),
+        )
+    }
+    inserted = 0
+    changed = False
+    for card_id, price in prices.items():
+        row = existing.get(card_id)
+        if row is None:
+            db.add(CardPriceSnapshot(card_id=card_id, price=price))
+            inserted += 1
+        elif row.price != price:
+            row.price = price
+            changed = True
+    if inserted or changed:
         db.commit()
-    return len(new_snapshots)
+    return inserted
 
 
 def previous_prices(db: Session, card_ids: list[str],
