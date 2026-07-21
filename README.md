@@ -11,7 +11,8 @@ A Pokemon TCG portfolio tracker. Search cards, monitor live market prices, and t
 
 - Search cards by name, set, or card number
 - Live prices pulled from TCGPlayer via the Pokemon TCG API
-- eBay sold-listings estimate for cards TCGPlayer can't price (shown on the card page, and used by the daily snapshot job so those cards get history too)
+- Real TCGplayer prices for brand-new sets the Pokemon TCG API hasn't priced yet, filled daily from [TCGCSV](https://tcgcsv.com) (a nightly mirror of TCGplayer's price data) — variant-accurate, so a 5¢ common shows as 5¢
+- eBay sold-listings estimate as the last resort for cards neither source can price (shown on the card page, and used by the daily snapshot job so those cards get history too)
 - Per-card price history chart and daily price-change chips, built from Mintly's own daily snapshots
 - Portfolio tracking with gain/loss per card and a value-over-time chart
 - User accounts with JWT authentication
@@ -67,23 +68,25 @@ A Pokemon TCG portfolio tracker. Search cards, monitor live market prices, and t
 
 ## Price history & the daily snapshot job
 
-Mintly builds its own price history — there is no upstream history API. One row per card per UTC day lands in `card_price_snapshot`, written by `Backend/scripts/snapshot_all.py`, which runs in three phases:
+Mintly builds its own price history — there is no upstream history API. One row per card per UTC day lands in `card_price_snapshot`, written by `Backend/scripts/snapshot_all.py`, which runs in four phases:
 
 1. **TCGPlayer crawl** — pages the full card list (~20.5k cards) and snapshots every priced card. Flaky pages are retried inline, then again in an end-of-run second pass; a page has to fail both to be skipped.
-2. **eBay fill** — cards with no TCGPlayer price (~1.6k: brand-new sets plus old oddballs) get the median of their recent eBay *sold* listings instead, newest sets first, paced 5s between scrapes. Cards with too few recent sales record nothing; only 5 consecutive failed fetches (bot block) stop the pass early.
-3. **Compaction to cold storage** — see the next section.
+2. **TCGCSV fill** — cards with no TCGPlayer price (~1.6k: brand-new sets plus old oddballs) get real TCGplayer prices from the TCGCSV mirror, matched by set + card number and stored in the catalog like any other price — so newest-set cards browse as normally-priced cards, variant table and all.
+3. **eBay fill** — whatever TCGCSV couldn't match gets the median of its recent eBay *sold* listings instead, newest sets first, paced 5s between scrapes. Cards with too few recent sales record nothing; only 5 consecutive failed fetches (bot block) stop the pass early.
+4. **Compaction to cold storage** — see the next section.
 
 ```bash
 cd Backend
-venv/bin/python scripts/snapshot_all.py                       # full run by hand (crawl ~30min + eBay fill ~2.5-3h)
-venv/bin/python scripts/snapshot_all.py --max-pages 2 --max-ebay 0   # quick smoke test
+venv/bin/python scripts/snapshot_all.py                       # full run by hand (crawl ~30min; the eBay tail depends on what TCGCSV leaves over)
+venv/bin/python scripts/snapshot_all.py --max-pages 2 --max-ebay 0 --no-tcgcsv   # quick smoke test
 # flags: --max-pages N     stop the crawl after N pages (0 = all)
-#        --max-ebay N      cap eBay estimates (default 2000 = all priceless cards; 0 = skip)
+#        --no-tcgcsv       skip the TCGCSV price fill
+#        --max-ebay N      cap eBay estimates (default 2000; 0 = skip)
 #        --ebay-pause S    seconds between eBay scrapes (default 5)
 #        --no-compact      skip the cold-storage step
 ```
 
-It's scheduled daily at **6:00am** by a launchd LaunchAgent (`~/Library/LaunchAgents/com.mintly.daily-snapshot.plist`), logging to `~/Library/Logs/mintly-daily-snapshot.log`. Postgres must be running; if the Mac is asleep at 6am it runs on the next wake. The Python binary in the plist needs **Full Disk Access** because the repo lives under `~/Documents` — see HANDOFF.md "Daily snapshot job" if runs fail with "Operation not permitted".
+It's scheduled daily at **1:00pm local** by a launchd LaunchAgent (`~/Library/LaunchAgents/com.mintly.daily-snapshot.plist`) — just after TCGCSV's daily 20:00 UTC refresh, so the fill reads same-day prices — logging to `~/Library/Logs/mintly-daily-snapshot.log`. Postgres must be running; if the Mac is asleep at 1pm it runs on the next wake. The Python binary in the plist needs **Full Disk Access** because the repo lives under `~/Documents` — see HANDOFF.md "Daily snapshot job" if runs fail with "Operation not permitted".
 
 ```bash
 launchctl load   ~/Library/LaunchAgents/com.mintly.daily-snapshot.plist   # enable

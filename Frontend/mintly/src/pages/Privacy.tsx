@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 17, 2026</p>
+      <p className="legal-updated">Last updated: July 21, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -33,10 +33,11 @@ export default function Privacy() {
       <h2>4. Third parties</h2>
       <p>
         Card searches and price lookups are served through the Pokémon TCG
-        API. For cards it cannot price, Mintly also queries recent sold
+        API. For cards it cannot price, Mintly fetches TCGplayer price data
+        from TCGCSV, a public daily mirror, and may also query recent sold
         listings on eBay to estimate a value. Your account details are never
-        sent to either service — only the card name, number, or set needed to
-        find results and prices.
+        sent to any of these services — only the card name, number, or set
+        needed to find results and prices.
       </p>
 
       <h2>5. Your data</h2>

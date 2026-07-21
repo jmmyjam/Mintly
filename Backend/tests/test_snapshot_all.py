@@ -97,8 +97,9 @@ def run_main(monkeypatch):
     monkeypatch.setattr(snapshot_all.time, "sleep", lambda s: None)
     monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
 
-    def run(extra_args: list[str] = [], fail_first: dict[int, int] = {}):
-        fake = FlakyUpstream(three_pages(), fail_first)
+    def run(extra_args: list[str] = [], fail_first: dict[int, int] = {},
+            pages: dict[int, list] | None = None):
+        fake = FlakyUpstream(pages or three_pages(), fail_first)
         monkeypatch.setattr(snapshot_all, "session", fake)
         monkeypatch.setattr(sys, "argv", ["snapshot_all.py", "--max-ebay", "0",
                                           "--no-compact", *extra_args])
@@ -141,12 +142,17 @@ def test_incomplete_crawl_never_stamps_sync(run_main):
 
 # ---- eBay fill for cards TCGPlayer can't price ------------------------------
 
+def mega_card(card_id: str = "me9-1", number: str = "188",
+              name: str = "Mega Card ex") -> dict:
+    """An upstream card dict with NO TCGPlayer prices (newest-set style)."""
+    return {"id": card_id, "name": name, "number": number,
+            "set": {"id": "me9", "name": "Mega Set",
+                    "releaseDate": "2026/05/30"}}
+
+
 def test_crawl_collects_unpriced_card_metadata(crawl, monkeypatch):
     pages = three_pages()
-    pages[2][0] = {
-        "id": "me9-1", "name": "Mega Card ex", "number": "188",
-        "set": {"name": "Mega Set", "releaseDate": "2026/05/30"},
-    }
+    pages[2][0] = mega_card()
     fake = FlakyUpstream(pages, {})
     monkeypatch.setattr(snapshot_all, "session", fake)
     result = snapshot_all.fetch_all_prices()
@@ -154,7 +160,7 @@ def test_crawl_collects_unpriced_card_metadata(crawl, monkeypatch):
     assert "me9-1" not in result.prices
     assert result.unpriced == [{
         "id": "me9-1", "name": "Mega Card ex", "number": "188",
-        "set_name": "Mega Set", "release": "2026/05/30",
+        "set_id": "me9", "set_name": "Mega Set", "release": "2026/05/30",
     }]
 
 
@@ -262,3 +268,115 @@ def test_ebay_fill_successful_fetch_resets_the_failure_streak(fill, monkeypatch)
     assert result.attempted == 6
     assert result.failures == 4
     assert result.prices == {"c-2": 5.0, "c-5": 7.0}
+
+
+# ---- TCGCSV fill for cards TCGPlayer can't price ----------------------------
+# Real TCGplayer prices from the TCGCSV mirror are injected into the card dicts
+# BEFORE the catalog upsert (so they're stored like any upstream price) and
+# BEFORE the eBay pass (which only sees what TCGCSV couldn't match).
+
+def crawl_with(*cards: dict) -> "snapshot_all.Crawl":
+    """A Crawl holding unpriced cards, shaped the way _collect builds them."""
+    return snapshot_all.Crawl(cards=list(cards), unpriced=[
+        {"id": c["id"], "name": c["name"], "number": c["number"],
+         "set_id": c["set"]["id"], "set_name": c["set"]["name"],
+         "release": c["set"]["releaseDate"]}
+        for c in cards
+    ])
+
+
+@pytest.fixture
+def fake_tcgcsv(monkeypatch):
+    """A one-set fake mirror: "Mega Set" resolves, card number 188 is priced."""
+    monkeypatch.setattr(
+        snapshot_all.tcgcsv, "group_id_for_set",
+        lambda name, set_id=None: 24380 if name == "Mega Set" else None)
+    monkeypatch.setattr(
+        snapshot_all.tcgcsv, "prices_for_group",
+        lambda gid: {"188": {"holofoil": {"market": 250.0, "mid": 260.0}}})
+
+
+def test_tcgcsv_fill_injects_prices_and_shrinks_the_ebay_set(fake_tcgcsv):
+    card = mega_card()
+    crawl = crawl_with(card)
+    result = snapshot_all.tcgcsv_fill(crawl)
+
+    # real prices injected into the full card dict (what the catalog stores)
+    assert card["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+    # snapshot price is extract_price of the injected block
+    assert result.prices == {"me9-1": 250.0}
+    assert result.sets_matched == 1 and result.sets_unmatched == []
+    # the eBay candidate computation drops the matched card
+    assert [c for c in crawl.unpriced if c["id"] not in result.prices] == []
+
+
+def test_tcgcsv_fill_misses_leave_cards_for_ebay(fake_tcgcsv):
+    unmatched_set = mega_card("xx1-1")
+    unmatched_set["set"] = {"id": "xx1", "name": "Unknown Set",
+                            "releaseDate": "2001/01/01"}
+    missed_number = mega_card("me9-2", number="999", name="Missed Card")
+    crawl = crawl_with(unmatched_set, missed_number)
+    result = snapshot_all.tcgcsv_fill(crawl)
+
+    assert result.prices == {}
+    assert result.sets_matched == 1          # Mega Set matched, just not #999
+    assert result.sets_unmatched == ["Unknown Set"]
+    assert "tcgplayer" not in unmatched_set and "tcgplayer" not in missed_number
+    remaining = [c for c in crawl.unpriced if c["id"] not in result.prices]
+    assert {c["id"] for c in remaining} == {"xx1-1", "me9-2"}
+
+
+def test_tcgcsv_fill_survives_service_errors(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("mirror exploded")
+    monkeypatch.setattr(snapshot_all.tcgcsv, "group_id_for_set", boom)
+    result = snapshot_all.tcgcsv_fill(crawl_with(mega_card()))
+
+    assert result.prices == {}
+    assert result.sets_unmatched == ["Mega Set"]
+
+
+def test_tcgcsv_priced_card_lands_in_catalog_and_history(run_main, fake_tcgcsv):
+    # ordering guarantee: inject BEFORE upsert, so the catalog row carries the
+    # real prices and the day's snapshot matches them
+    pages = three_pages()
+    pages[2][0] = mega_card()
+    assert run_main(pages=pages) == 0
+
+    db = TestingSessionLocal()
+    try:
+        stored = card_catalog.get_card(db, "me9-1").data
+        assert stored["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+        snap = (db.query(CardPriceSnapshot)
+                  .filter(CardPriceSnapshot.card_id == "me9-1").one())
+        assert snap.price == 250.0
+    finally:
+        db.close()
+
+
+def test_ebay_pass_only_sees_cards_tcgcsv_missed(run_main, monkeypatch, fake_tcgcsv):
+    pages = three_pages()
+    pages[2][0] = mega_card()                                    # TCGCSV covers
+    pages[3][0] = mega_card("me9-2", number="999", name="Missed Card")
+    estimator = FakeEstimator({"Missed Card": 40.0})
+    monkeypatch.setattr(snapshot_all, "_estimate_one", estimator)
+    assert run_main(["--max-ebay", "5"], pages=pages) == 0
+
+    assert estimator.calls == ["Missed Card"]  # never the TCGCSV-priced card
+    db = TestingSessionLocal()
+    try:
+        snap = (db.query(CardPriceSnapshot)
+                  .filter(CardPriceSnapshot.card_id == "me9-2").one())
+        assert snap.price == 40.0
+    finally:
+        db.close()
+
+
+def test_no_tcgcsv_flag_skips_the_fill(run_main, monkeypatch):
+    called = []
+    monkeypatch.setattr(snapshot_all, "tcgcsv_fill",
+                        lambda crawl: called.append(1) or snapshot_all.TcgcsvFill())
+    pages = three_pages()
+    pages[2][0] = mega_card()
+    assert run_main(["--no-tcgcsv"], pages=pages) == 0
+    assert called == []

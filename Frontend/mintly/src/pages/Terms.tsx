@@ -2,7 +2,7 @@ export default function Terms() {
   return (
     <div className="page legal-page">
       <h1>Terms of Service</h1>
-      <p className="legal-updated">Last updated: July 15, 2026</p>
+      <p className="legal-updated">Last updated: July 21, 2026</p>
 
       <h2>1. The service</h2>
       <p>
@@ -22,10 +22,12 @@ export default function Terms() {
       <h2>3. Prices and data</h2>
       <p>
         Card data and images are provided by the Pokémon TCG API, and price
-        figures originate from TCGplayer. For cards TCGplayer does not price,
-        Mintly may also show an estimate derived from recent completed and sold
-        listings on eBay, along with a per-card price history built from the
-        daily prices Mintly records over time. All of these figures are
+        figures originate from TCGplayer — retrieved through the Pokémon TCG
+        API or through TCGCSV, a daily mirror of TCGplayer price data. For
+        cards TCGplayer does not price, Mintly may also show an estimate
+        derived from recent completed and sold listings on eBay, along with a
+        per-card price history built from the daily prices Mintly records over
+        time. All of these figures are
         estimates — they can be delayed, incomplete, or wrong, and may be
         missing entirely for some cards or sets. Nothing on Mintly is financial,
         investment, or purchasing advice; portfolio and price values shown are

@@ -2,20 +2,24 @@
 gap-free instead of only covering cards someone happened to browse.
 
 Pages the full Pokemon TCG card list, extracts each card's TCGPlayer price, and
-records one snapshot per card per UTC day. Every crawled card is also mirrored
-into the `card_catalog` table the app serves browsing from (a complete crawl
-stamps the sync marker that lets list endpoints trust the catalog). Cards with no TCGPlayer price (the
-newest sets lag upstream, plus ~1.6k old oddballs) then get a second chance: an
-eBay sold-listings estimate (the same estimator CardDetail's fallback uses),
-newest sets first, paced (`--ebay-pause`) and capped (`--max-ebay`) so the job
-can't hammer eBay.
+records one snapshot per card per UTC day. Cards with no TCGPlayer price (the
+newest sets lag upstream, plus ~1.6k old oddballs) get two more chances, in
+order of accuracy: first real TCGplayer prices from the TCGCSV nightly mirror
+(`tcgcsv_fill` — matched by set + card number, injected into the card dicts so
+the catalog stores them like any other TCGplayer price; `--no-tcgcsv` skips),
+then an eBay sold-listings estimate for whatever TCGCSV couldn't match (the
+same estimator CardDetail's fallback uses), newest sets first, paced
+(`--ebay-pause`) and capped (`--max-ebay`) so the job can't hammer eBay.
+Every crawled card is also mirrored into the `card_catalog` table the app
+serves browsing from (a complete crawl stamps the sync marker that lets list
+endpoints trust the catalog).
 `record_snapshots` dedupes per day, so this is idempotent — running it more than
 once a day adds nothing (a re-run spends its eBay budget on cards the first run
 didn't reach). Talks straight to the DB and upstream API; the FastAPI app does
 not need to be running.
 
     venv/bin/python scripts/snapshot_all.py               # all cards
-    venv/bin/python scripts/snapshot_all.py --max-pages 2 --max-ebay 0  # smoke test
+    venv/bin/python scripts/snapshot_all.py --max-pages 2 --max-ebay 0 --no-tcgcsv  # smoke test
 
 Scheduled daily via launchd (see HANDOFF "Daily snapshot job" / the LaunchAgent plist).
 """
@@ -35,7 +39,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
-from app.services import card_catalog, ebay_prices, history_archive  # noqa: E402
+from app.services import card_catalog, ebay_prices, history_archive, tcgcsv  # noqa: E402
 from app.services.price_history import (  # noqa: E402
     extract_price, record_snapshots, recorded_today,
 )
@@ -88,6 +92,15 @@ class Crawl:
 
 
 @dataclass
+class TcgcsvFill:
+    """What the TCGCSV pass did: real TCGplayer prices injected for cards
+    pokemontcg.io couldn't price, plus the numbers for the summary."""
+    prices: dict[str, float] = field(default_factory=dict)
+    sets_matched: int = 0
+    sets_unmatched: list[str] = field(default_factory=list)
+
+
+@dataclass
 class EbayFill:
     """What the eBay pass did: filled prices plus the numbers for the summary."""
     prices: dict[str, float] = field(default_factory=dict)
@@ -130,6 +143,7 @@ def _collect(payload: dict, crawl: Crawl) -> None:
                 "id": card["id"],
                 "name": card["name"],
                 "number": card.get("number"),
+                "set_id": card_set.get("id"),
                 "set_name": card_set.get("name"),
                 "release": card_set.get("releaseDate") or "",
             })
@@ -185,6 +199,58 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
             log.info("page %*d     recovered   %7s priced",
                      width, page, f"{len(crawl.prices):,}")
     return crawl
+
+
+def tcgcsv_fill(crawl: Crawl) -> TcgcsvFill:
+    """First fallback for cards pokemontcg.io can't price: real TCGplayer
+    prices from the TCGCSV nightly mirror, matched by set + card number.
+
+    Matched prices are injected straight into the card dicts in `crawl.cards`
+    (as a `tcgplayer.prices` block), so the catalog upsert that follows stores
+    them exactly like upstream-priced cards — the app then renders these as
+    normally TCGplayer-priced, variant tiles and all. Only cards TCGCSV can't
+    match fall through to the eBay pass. Each set's group is fetched once;
+    unmatched sets are collected so gaps stay visible in the log.
+    """
+    fill = TcgcsvFill()
+    if not crawl.unpriced:
+        return fill
+
+    by_id = {c["id"]: c for c in crawl.cards}
+    by_set: dict[tuple, list[dict]] = {}
+    for card in crawl.unpriced:
+        by_set.setdefault((card.get("set_id"), card.get("set_name")), []).append(card)
+
+    for (set_id, set_name), cards_in_set in sorted(
+            by_set.items(), key=lambda kv: kv[0][1] or ""):
+        try:
+            group_id = tcgcsv.group_id_for_set(set_name, set_id)
+            group_prices = tcgcsv.prices_for_group(group_id) if group_id else {}
+        except Exception as exc:  # the service is best-effort, but never trust that
+            log.warning("  tcgcsv %-24s lookup error: %s", set_name, exc)
+            group_prices = {}
+        if not group_prices:
+            fill.sets_unmatched.append(set_name or "?")
+            continue
+        fill.sets_matched += 1
+        before = len(fill.prices)
+        for card in cards_in_set:
+            prices = group_prices.get(tcgcsv.norm_number(card.get("number") or ""))
+            full = by_id.get(card["id"])
+            if not prices or full is None:
+                continue
+            price = extract_price({"tcgplayer": {"prices": prices}})
+            if price is None:
+                continue  # no variant the app reads — leave the card untouched
+            # Preserve any existing url/updatedAt alongside the injected prices
+            full.setdefault("tcgplayer", {})["prices"] = prices
+            fill.prices[card["id"]] = price
+        log.info("  tcgcsv %-24s %d/%d cards priced",
+                 set_name, len(fill.prices) - before, len(cards_in_set))
+    if fill.sets_unmatched:
+        log.info("  tcgcsv: no match for set(s): %s — those cards fall through "
+                 "to the eBay pass", ", ".join(fill.sets_unmatched))
+    return fill
 
 
 def _estimate_one(card: dict) -> dict | None:
@@ -251,6 +317,16 @@ def ebay_fill(db, unpriced: list[dict], budget: int,
     return fill
 
 
+def _record_chunked(db, prices: dict[str, float]) -> int:
+    """record_snapshots in _DEDUPE_CHUNK slices, keeping the per-day dedupe's
+    IN() clause reasonable. Returns rows newly inserted."""
+    recorded = 0
+    items = list(prices.items())
+    for i in range(0, len(items), _DEDUPE_CHUNK):
+        recorded += record_snapshots(db, dict(items[i:i + _DEDUPE_CHUNK]))
+    return recorded
+
+
 def _fmt_duration(seconds: float) -> str:
     m, s = divmod(int(seconds), 60)
     return f"{m}m {s:02d}s" if m else f"{s}s"
@@ -267,6 +343,9 @@ def main() -> int:
     parser.add_argument("--ebay-pause", type=float, default=_EBAY_PAUSE,
                         help="seconds to wait between eBay scrapes "
                              f"(default {_EBAY_PAUSE:g})")
+    parser.add_argument("--no-tcgcsv", action="store_true",
+                        help="skip the TCGCSV price fill for cards TCGPlayer "
+                             "can't price (they fall through to the eBay pass)")
     parser.add_argument("--no-compact", action="store_true",
                         help="skip archiving months older than the daily window "
                              "to cold storage")
@@ -280,10 +359,21 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        recorded = 0
-        items = list(crawl.prices.items())
-        for i in range(0, len(items), _DEDUPE_CHUNK):
-            recorded += record_snapshots(db, dict(items[i:i + _DEDUPE_CHUNK]))
+        recorded = _record_chunked(db, crawl.prices)
+
+        # TCGCSV fill runs BEFORE the catalog upsert (so injected prices land
+        # in the catalog rows) and BEFORE the eBay pass (so eBay only sees the
+        # cards TCGCSV couldn't match).
+        tfill = TcgcsvFill()
+        if not args.no_tcgcsv and crawl.unpriced:
+            log.info("---- TCGCSV fill: %s cards have no TCGPlayer price ----",
+                     f"{len(crawl.unpriced):,}")
+            try:
+                tfill = tcgcsv_fill(crawl)
+            except Exception as exc:  # best-effort — never costs the day's snapshots
+                log.warning("tcgcsv fill failed: %s — unpriced cards fall "
+                            "through to the eBay pass", exc)
+            recorded += _record_chunked(db, tfill.prices)
 
         # Mirror the crawled cards into the local catalog the app browses from.
         # Best-effort: a catalog failure never costs the day's snapshots. The
@@ -300,12 +390,13 @@ def main() -> int:
             log.warning("catalog upsert failed: %s — browsing falls back to the "
                         "upstream proxy until the next run", exc)
 
+        remaining = [c for c in crawl.unpriced if c["id"] not in tfill.prices]
         fill = EbayFill()
-        if args.max_ebay > 0 and crawl.unpriced:
-            log.info("---- eBay fill: %s cards have no TCGPlayer price ----",
-                     f"{len(crawl.unpriced):,}")
-            fill = ebay_fill(db, crawl.unpriced, args.max_ebay, args.ebay_pause)
-            recorded += record_snapshots(db, fill.prices)
+        if args.max_ebay > 0 and remaining:
+            log.info("---- eBay fill: %s cards still unpriced after TCGCSV ----",
+                     f"{len(remaining):,}")
+            fill = ebay_fill(db, remaining, args.max_ebay, args.ebay_pause)
+            recorded += _record_chunked(db, fill.prices)
 
         compacted: list[dict] = []
         if not args.no_compact:
@@ -333,6 +424,10 @@ def main() -> int:
     log.info("  catalog           %s cards upserted%s", f"{upserted:,}",
              "" if crawl.complete and not args.max_pages
              else "  (partial run — sync marker untouched)")
+    if not args.no_tcgcsv:
+        log.info("  tcgcsv fill       %s cards priced  (%d sets matched, "
+                 "%d unmatched)", f"{len(tfill.prices):,}",
+                 tfill.sets_matched, len(tfill.sets_unmatched))
     if args.max_ebay > 0:
         log.info("  ebay fill         %d priced of %d tried  (%s eligible, "
                  "%d without recent sales, %d failed fetches)%s",

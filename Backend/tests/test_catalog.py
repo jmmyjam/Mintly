@@ -77,6 +77,34 @@ def db_search(**kwargs):
         db.close()
 
 
+def test_upsert_never_wipes_stored_prices_with_an_empty_block():
+    # A TCGCSV-filled card re-fetched from pokemontcg.io arrives with empty
+    # prices while upstream lags — the background refresh must not clobber it
+    seed_catalog([catalog_card("me5-1", "Tropius", price=0.05)])
+    db = TestingSessionLocal()
+    try:
+        priceless = catalog_card("me5-1", "Tropius", price=None)
+        priceless["tcgplayer"] = {"prices": {}}  # how upstream serves new sets
+        card_catalog.upsert_cards(db, [priceless])
+        stored = card_catalog.get_card(db, "me5-1")
+        assert stored.data["tcgplayer"]["prices"]["holofoil"]["market"] == 0.05
+        assert stored.price_updated_at is not None  # the check still counts
+    finally:
+        db.close()
+
+
+def test_upsert_real_prices_still_overwrite():
+    seed_catalog([catalog_card("me5-2", "Lurantis ex", price=0.43)])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(
+            db, [catalog_card("me5-2", "Lurantis ex", price=0.50)])
+        stored = card_catalog.get_card(db, "me5-2")
+        assert stored.data["tcgplayer"]["prices"]["holofoil"]["market"] == 0.50
+    finally:
+        db.close()
+
+
 def test_name_search_is_case_insensitive_substring():
     seed_catalog([catalog_card("b1-1", "Pikachu VMAX"),
                   catalog_card("b1-2", "Raichu")])

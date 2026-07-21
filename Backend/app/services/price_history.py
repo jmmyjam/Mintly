@@ -51,7 +51,7 @@ def record_snapshots(db: Session, prices: dict[str, float]) -> int:
     """Record today's price for each card, at most one row per card per UTC day.
     A card already snapshotted today has its price refreshed to the latest value
     seen, so the day's point keeps step with the current market price shown to
-    users instead of freezing at the first read of the day (e.g. the 6am daily
+    users instead of freezing at the first read of the day (e.g. the 1pm daily
     job). Returns how many rows were newly inserted — refreshes aren't counted."""
     if not prices:
         return 0

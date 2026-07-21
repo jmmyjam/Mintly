@@ -59,7 +59,16 @@ def upsert_cards(db: Session, cards: list[dict], commit: bool = True) -> int:
         row.rarity = card.get("rarity")
         row.types = f"|{'|'.join(types)}|" if types else None
         row.release_date = card_set.get("releaseDate")
-        row.data = {k: card[k] for k in _KEEP if k in card}
+        data = {k: card[k] for k in _KEEP if k in card}
+        # Upstream can lag behind a TCGCSV-filled price (the newest sets arrive
+        # from pokemontcg.io with an empty prices block for months): never let
+        # a price-less refetch wipe a real stored prices block. The fresh
+        # price_updated_at still counts — the upstream check IS the refresh.
+        if row.data:
+            stored_tcg = row.data.get("tcgplayer") or {}
+            if stored_tcg.get("prices") and not (data.get("tcgplayer") or {}).get("prices"):
+                data["tcgplayer"] = stored_tcg
+        row.data = data
         row.price_updated_at = now
     if commit:
         db.commit()
