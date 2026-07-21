@@ -1,8 +1,24 @@
-from conftest import make_card
+from app.services import card_catalog
+from app.services.price_history import record_snapshots
+from conftest import TestingSessionLocal, make_card
 
 
 def add(client, headers, card_id="base1-4", **body):
     return client.post("/portfolio/add", json={"card_id": card_id, **body}, headers=headers)
+
+
+def seed_catalog_card(card):
+    """Put a priced card into the local catalog, as the daily TCGCSV fill does."""
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(db, [card])
+    db.close()
+
+
+def seed_snapshot(card_id, price):
+    """Record a price snapshot, as the daily job's eBay-median fill does."""
+    db = TestingSessionLocal()
+    record_snapshots(db, {card_id: price})
+    db.close()
 
 
 class TestAdd:
@@ -120,6 +136,60 @@ class TestUpdateAndDelete:
         assert client.delete(f"/portfolio/{lot_id}", headers=auth_headers).status_code == 200
         assert client.get("/portfolio", headers=auth_headers).json() == []
         assert client.delete(f"/portfolio/{lot_id}", headers=auth_headers).status_code == 404
+
+
+class TestPriceFallbackSources:
+    """The portfolio must track a card's value from every price source — the
+    live pokemontcg.io TCGplayer figure, then TCGCSV, then eBay — so newest-set
+    cards (e.g. Ascended Heroes) that upstream returns unpriced still show a
+    price once the daily job has seeded one."""
+
+    def test_catalog_tcgcsv_price_when_upstream_unpriced(self, client, auth_headers, upstream):
+        # pokemontcg.io returns this new-set card without a price...
+        upstream.add(make_card("me5-1", price=None))
+        # ...but the daily job seeded a real TCGplayer price (via TCGCSV) into
+        # the local catalog
+        seed_catalog_card(make_card("me5-1", price=25.0))
+        add(client, auth_headers, card_id="me5-1", purchase_price=10.0)
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["current_price"] == 25.0
+        assert row["gain_loss"] == 15.0  # (25 - 10) * 1
+
+    def test_ebay_snapshot_price_when_upstream_and_catalog_unpriced(self, client, auth_headers, upstream):
+        upstream.add(make_card("me5-2", price=None))
+        # No TCGCSV catalog price either — only the daily job's recorded eBay median
+        seed_snapshot("me5-2", 30.0)
+        add(client, auth_headers, card_id="me5-2", purchase_price=12.0)
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["current_price"] == 30.0
+
+    def test_live_upstream_price_wins_over_catalog(self, client, auth_headers, upstream):
+        # When upstream has a price it stays the source of truth (freshest)
+        upstream.add(make_card("base1-4", price=500.0))
+        seed_catalog_card(make_card("base1-4", price=999.0))
+        add(client, auth_headers, purchase_price=400.0)
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["current_price"] == 500.0
+
+    def test_add_without_price_uses_catalog_fallback(self, client, auth_headers, upstream):
+        upstream.add(make_card("me5-3", price=None))
+        seed_catalog_card(make_card("me5-3", price=7.5))
+        assert add(client, auth_headers, card_id="me5-3").status_code == 200
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["purchase_price"] == 7.5
+        assert row["current_price"] == 7.5
+
+    def test_add_without_price_uses_snapshot_fallback(self, client, auth_headers, upstream):
+        upstream.add(make_card("me5-4", price=None))
+        seed_snapshot("me5-4", 18.0)
+        assert add(client, auth_headers, card_id="me5-4").status_code == 200
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["purchase_price"] == 18.0
 
 
 class TestHistory:

@@ -22,6 +22,14 @@
   padding: clamp(28px, 5vw, 48px) clamp(16px, 4vw, 24px);
 }
 
+/* A route's top-level heading needs more breathing room above its content than
+   the base 8px h1 margin — otherwise "Search Cards" butts against the search
+   bar and "My Portfolio" against the first card. Scoped to direct children so
+   the nested headings on Card detail / Home keep their own spacing. */
+.page > h1 {
+  margin-bottom: 24px;
+}
+
 .page.centered {
   display: flex;
   flex-direction: column;

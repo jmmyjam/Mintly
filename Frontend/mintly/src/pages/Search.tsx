@@ -58,6 +58,7 @@ export default function Search() {
   // sync; the debounce effect then runs it like any typed query.
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const initialPage = Math.max(1, Number(searchParams.get("page")) || 1);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [sets, setSets] = useState<CardSet[]>([]);
   const [setId, setSetId] = useState(searchParams.get("set") ?? "");
@@ -65,7 +66,7 @@ export default function Search() {
   const [typeFilter, setTypeFilter] = useState(searchParams.get("type") ?? "");
   const [number, setNumber] = useState(searchParams.get("number") ?? "");
   const [cards, setCards] = useState<Card[]>([]);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [resultsLabel, setResultsLabel] = useState("");
@@ -76,6 +77,9 @@ export default function Search() {
   const [quantity, setQuantity] = useState("1");
   const { add: addToPortfolio, busy: addBusy, status: addStatus } = useAddCard();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The first search after mount honors the URL's ?page= (so Back from a card
+  // lands on the same page); every later query/filter change restarts at page 1.
+  const firstRunRef = useRef(true);
 
   const hasFilters = !!(setId || rarity || typeFilter || number.trim());
 
@@ -91,9 +95,10 @@ export default function Search() {
       .catch(() => {});
   }, []);
 
-  // Mirror the active query + filters into the URL (replace, so typing doesn't
-  // pile up history entries). This is what makes browser Back from a card return
-  // to the search you had — Search re-seeds its state from these params on mount.
+  // Mirror the active query + filters + page into the URL (replace, so typing
+  // doesn't pile up history entries). This is what makes browser Back from a card
+  // return to the search — and the page — you had: Search re-seeds its state from
+  // these params on mount. page=1 is left off to keep the URL clean.
   useEffect(() => {
     const params: Record<string, string> = {};
     if (query.trim()) params.q = query.trim();
@@ -101,8 +106,9 @@ export default function Search() {
     if (rarity) params.rarity = rarity;
     if (typeFilter) params.type = typeFilter;
     if (number.trim()) params.number = number.trim();
+    if (page > 1) params.page = String(page);
     setSearchParams(params, { replace: true });
-  }, [query, setId, rarity, typeFilter, number, setSearchParams]);
+  }, [query, setId, rarity, typeFilter, number, page, setSearchParams]);
 
   const isDefaultView = !query.trim() && !hasFilters;
 
@@ -149,15 +155,22 @@ export default function Search() {
     }
   }
 
-  // Query/filter changes always restart from page 1; only Prev/Next move it
+  // Query/filter changes always restart from page 1; only Prev/Next move it.
+  // The very first run honors the URL's seeded page (Back from a card / shared
+  // link); firstRunRef flips once that run actually fires.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const run = () => {
+      const target = firstRunRef.current ? initialPage : 1;
+      firstRunRef.current = false;
+      runSearch(target);
+    };
     if (!query.trim() && !hasFilters) {
       if (sets.length > 0) {
-        debounceRef.current = setTimeout(() => runSearch(1), 0);
+        debounceRef.current = setTimeout(run, 0);
       }
     } else {
-      debounceRef.current = setTimeout(() => runSearch(1), 400); //400 ms debounce
+      debounceRef.current = setTimeout(run, 400); //400 ms debounce
     }
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

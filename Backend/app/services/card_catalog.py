@@ -79,6 +79,16 @@ def get_card(db: Session, card_id: str) -> CatalogCard | None:
     return db.get(CatalogCard, card_id)
 
 
+def get_cards(db: Session, card_ids: list[str]) -> dict[str, CatalogCard]:
+    """Batch primary-key fetch — {card_id: row} for the ids that exist."""
+    if not card_ids:
+        return {}
+    return {
+        r.card_id: r
+        for r in db.query(CatalogCard).filter(CatalogCard.card_id.in_(card_ids))
+    }
+
+
 def card_payload(row: CatalogCard) -> dict:
     # Shallow copy: annotate_price_changes mutates the dict (priceChange), and
     # that must never bleed into the stored JSON
