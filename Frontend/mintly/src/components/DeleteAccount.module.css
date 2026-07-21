@@ -1,0 +1,30 @@
+.danger-zone {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.danger-title {
+  font-size: 1.05rem;
+  margin: 0 0 8px;
+}
+
+.danger-text {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0 0 14px;
+  max-width: 54ch;
+}
+
+.confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.confirm-input {
+  max-width: 160px;
+  min-width: 0;
+}

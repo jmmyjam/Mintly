@@ -1,3 +1,6 @@
+from app.models import PortfolioCard
+from conftest import TestingSessionLocal, make_card
+
 REGISTER = {"email": "ash@example.com", "username": "ash", "password": "pikachu1",
             "accepted_terms": True}
 
@@ -73,6 +76,47 @@ class TestLogin:
     def test_unknown_user(self, client):
         res = client.post("/auth/login", data={"username": "nobody", "password": "pikachu1"})
         assert res.status_code == 401
+
+
+class TestDeleteAccount:
+    def test_requires_auth(self, client):
+        assert client.delete("/auth/me").status_code == 401
+
+    def test_deletes_account(self, client, auth_headers):
+        res = client.delete("/auth/me", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json() == {"message": "Account deleted"}
+
+    def test_token_stops_working_after_delete(self, client, auth_headers):
+        client.delete("/auth/me", headers=auth_headers)
+        # the JWT now points at a deleted user
+        assert client.get("/portfolio", headers=auth_headers).status_code == 401
+
+    def test_email_and_username_freed(self, client, auth_headers):
+        client.delete("/auth/me", headers=auth_headers)
+        # re-registering the same credentials succeeds — the account is really gone
+        assert register(client).status_code == 200
+
+    def test_deletes_portfolio_cards(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", "Charizard", price=500.0))
+        add = client.post("/portfolio/add",
+                          json={"card_id": "base1-4", "quantity": 2},
+                          headers=auth_headers)
+        assert add.status_code == 200
+        db = TestingSessionLocal()
+        assert db.query(PortfolioCard).count() == 1
+        db.close()
+
+        client.delete("/auth/me", headers=auth_headers)
+
+        db = TestingSessionLocal()
+        assert db.query(PortfolioCard).count() == 0
+        db.close()
+
+    def test_only_deletes_own_account(self, client, auth_headers, second_auth_headers):
+        client.delete("/auth/me", headers=auth_headers)
+        # the other user is untouched
+        assert client.get("/portfolio", headers=second_auth_headers).status_code == 200
 
 
 class TestTokenValidation:

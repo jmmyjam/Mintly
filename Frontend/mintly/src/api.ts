@@ -210,6 +210,14 @@ export async function register(email: string, username: string, password: string
   }
 }
 
+// Permanently delete the logged-in user's account and all their portfolio data.
+// Clears the local token on success (the account it points at no longer exists).
+export async function deleteAccount(): Promise<void> {
+  const res = await authedFetch('/auth/me', { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete account')
+  clearToken()
+}
+
 // ----- Card calls ----------------------------------------------------------------
 
 export async function searchCards(query: string, page = 1): Promise<CardPage> {

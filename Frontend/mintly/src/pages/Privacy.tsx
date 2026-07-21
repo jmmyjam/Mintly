@@ -43,13 +43,23 @@ export default function Privacy() {
       <h2>5. Your data</h2>
       <p>
         You can remove cards from your portfolio at any time, which deletes
-        those records. To build price history, Mintly records a daily market
-        price for cards that are searched or viewed; these snapshots are
-        aggregate per-card figures, are not tied to your account, and contain
-        nothing personal.
+        those records. You can also permanently delete your entire account from
+        the Portfolio page: this erases your email, username, password hash, and
+        all of your portfolio records, and cannot be undone. To build price
+        history, Mintly records a daily market price for cards that are searched
+        or viewed; these snapshots are aggregate per-card figures, are not tied
+        to your account, and contain nothing personal, so they remain after an
+        account is deleted.
       </p>
 
-      <h2>6. Changes</h2>
+      <h2>6. Contact</h2>
+      <p>
+        Questions about this policy or a request about your data? Email us at{' '}
+        {/* TODO: swap this placeholder for a real support address once Mintly has a domain */}
+        <a href="mailto:contact@mintly.app">contact@mintly.app</a>.
+      </p>
+
+      <h2>7. Changes</h2>
       <p>
         If this policy changes, the date above will be updated. Material
         changes will be noted on the site.

@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, utcnow
+from app.models import User, PortfolioCard, utcnow
 from app.services.rate_limit import rate_limit
 import os
 import re
@@ -100,6 +100,19 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
                         "exp": datetime.now(timezone.utc) + timedelta(days=7)},
                        SECRET_KEY, algorithm=ALGORITHM)
     return {
-        "access_token": token, 
+        "access_token": token,
         "token_type": "bearer"
         }
+
+
+@router.delete("/me")
+def delete_account(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Remove the user's portfolio lots first — the FK has no ON DELETE cascade,
+    # so Postgres would reject deleting a user who still holds cards. The shared
+    # per-card price snapshots aren't tied to a user (Privacy §5), so they stay.
+    db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).delete(
+        synchronize_session=False
+    )
+    db.delete(current_user)
+    db.commit()
+    return {"message": "Account deleted"}
