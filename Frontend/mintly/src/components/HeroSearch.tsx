@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAccessibility } from "../accessibility";
 import styles from "./HeroSearch.module.css";
 
 // Real queries the smart search handles well (name + set name combos)
@@ -15,12 +16,15 @@ const QUICK_SEARCHES = ["Charizard", "Pikachu VMAX", "Prismatic Evolutions"];
 
 // Typewriter effect for the placeholder: type an example, pause, erase, next.
 // All state updates happen inside timeout callbacks (strict react-hooks rule).
-function useTypingPlaceholder(examples: string[]) {
+// Disabled (returns "") when `enabled` is false, so reduce-motion gets a static
+// placeholder instead of an animated one.
+function useTypingPlaceholder(examples: string[], enabled: boolean) {
   const [text, setText] = useState("");
   const [index, setIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     const full = examples[index];
     const delay = deleting ? 35 : text === full ? 2000 : 75;
     const timer = setTimeout(() => {
@@ -35,7 +39,7 @@ function useTypingPlaceholder(examples: string[]) {
       }
     }, delay);
     return () => clearTimeout(timer);
-  }, [text, deleting, index, examples]);
+  }, [text, deleting, index, examples, enabled]);
 
   return text;
 }
@@ -44,8 +48,10 @@ function useTypingPlaceholder(examples: string[]) {
 // via /search?q=, where it runs automatically.
 export default function HeroSearch() {
   const navigate = useNavigate();
+  const { settings } = useAccessibility();
   const [value, setValue] = useState("");
-  const placeholder = useTypingPlaceholder(EXAMPLES);
+  const typed = useTypingPlaceholder(EXAMPLES, !settings.reduceMotion);
+  const placeholder = settings.reduceMotion ? 'Try "charizard base"' : typed;
 
   function goSearch(query: string) {
     const q = query.trim();

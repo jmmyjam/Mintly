@@ -14,11 +14,11 @@ export default function Terms() {
       <h2>2. Your account</h2>
       <p>
         You are responsible for the accuracy of the information you provide
-        and for keeping your login credentials private. You must not use the
-        service for anything unlawful or attempt to disrupt or gain
-        unauthorized access to it. You may delete your account at any time from
-        the Portfolio page, which permanently removes your account and all of
-        your portfolio data.
+        and for keeping your login credentials private. You can update your
+        account details from your profile page. You must not use the service
+        for anything unlawful or attempt to disrupt or gain unauthorized access
+        to it. You may delete your account at any time from your profile page,
+        which permanently removes your account and all of your portfolio data.
       </p>
 
       <h2>3. Prices and data</h2>

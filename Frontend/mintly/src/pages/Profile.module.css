@@ -1,0 +1,182 @@
+/* Profile page — stacked setting cards (account, password, accessibility) */
+
+/* Title row: page heading on the left, Log out on the right (logout moved off
+   the nav bar). Wraps on very narrow screens. */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  margin: 0;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: clamp(20px, 3vw, 28px);
+  max-width: 620px;
+  margin-bottom: 20px;
+}
+
+.card-title {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.card-hint {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+
+.member-since {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 15px;
+  color: var(--text-h);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s;
+}
+
+.input:focus { border-color: var(--text-h); }
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+/* ----- Accessibility rows ----- */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border);
+}
+
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setting-label {
+  color: var(--text-h);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setting-desc {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* On/off switch (role="switch") */
+.switch {
+  flex: none;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  padding: 2px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.switch-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch-knob {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-h);
+  transition: transform 0.2s;
+}
+
+.switch-on .switch-knob {
+  background: var(--ink);
+  transform: translateX(20px);
+}
+
+/* Segmented control (text size) */
+.segmented {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.segment {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s, color 0.2s;
+}
+
+.segment-on {
+  background: var(--cream);
+  color: var(--ink);
+}
+
+@media (max-width: 460px) {
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

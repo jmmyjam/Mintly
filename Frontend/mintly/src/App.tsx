@@ -5,6 +5,7 @@ import StructuredData from './components/StructuredData'
 import Home from './pages/Home'
 import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
+import Profile from './pages/Profile'
 import CardDetail from './pages/CardDetail'
 import Login from './pages/Login'
 import Terms from './pages/Terms'
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
           <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/card/:cardId" element={<CardDetail />} />
           <Route path="/login" element={<Login />} />
           <Route path="/terms" element={<Terms />} />

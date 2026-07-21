@@ -26,8 +26,10 @@ export default function Privacy() {
       <h2>3. Cookies and local storage</h2>
       <p>
         Mintly stores a login token in your browser's local storage so you
-        stay signed in for up to 7 days. No third-party tracking cookies are
-        used.
+        stay signed in for up to 7 days, along with your display and
+        accessibility preferences (such as reduced motion or larger text),
+        which stay on your device and are never sent to our servers. No
+        third-party tracking cookies are used.
       </p>
 
       <h2>4. Third parties</h2>
@@ -42,10 +44,11 @@ export default function Privacy() {
 
       <h2>5. Your data</h2>
       <p>
-        You can remove cards from your portfolio at any time, which deletes
-        those records. You can also permanently delete your entire account from
-        the Portfolio page: this erases your email, username, password hash, and
-        all of your portfolio records, and cannot be undone. To build price
+        You can view and update your email, username, and password from your
+        profile page, and remove cards from your portfolio at any time, which
+        deletes those records. You can also permanently delete your entire
+        account from your profile page: this erases your email, username,
+        password hash, and all of your portfolio records, and cannot be undone. To build price
         history, Mintly records a daily market price for cards that are searched
         or viewed; these snapshots are aggregate per-card figures, are not tied
         to your account, and contain nothing personal, so they remain after an

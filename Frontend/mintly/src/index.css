@@ -53,3 +53,44 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
 }
+
+/* ----- Accessibility preferences (set from the Profile page) -----------------
+   Driven by data-* attributes the accessibility store stamps on <html>. Kept
+   here (not in a module) so they can reach every component's scoped styles. */
+
+/* Reduce motion: near-instant transitions/animations everywhere. Also honors
+   the OS-level setting so the preference is respected even before a visit. */
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High contrast: brighter text, stronger borders, deeper surfaces */
+:root[data-contrast='high'] {
+  --text: #d7d7de;
+  --text-h: #ffffff;
+  --border: #5a5a66;
+  --bg: #101012;
+  --bg-card: #232327;
+  --bg-elevated: #303036;
+}
+
+/* Always underline links for clearer affordance (skips buttons styled as links) */
+:root[data-underline-links='true'] a { text-decoration: underline; }
+
+/* Larger text: zoom the whole document so the app's px-based sizes scale too */
+:root[data-text-size='large'] { zoom: 1.12; }
+:root[data-text-size='larger'] { zoom: 1.25; }

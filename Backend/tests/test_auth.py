@@ -78,6 +78,100 @@ class TestLogin:
         assert res.status_code == 401
 
 
+class TestGetMe:
+    def test_requires_auth(self, client):
+        assert client.get("/auth/me").status_code == 401
+
+    def test_returns_profile(self, client, auth_headers):
+        res = client.get("/auth/me", headers=auth_headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["email"] == "ash@example.com"
+        assert body["username"] == "ash"
+        assert body["created_at"]
+        # never leak the password hash
+        assert "hashed_password" not in body
+
+
+class TestUpdateProfile:
+    def test_requires_auth(self, client):
+        assert client.patch("/auth/me", json={"username": "new"}).status_code == 401
+
+    def test_update_username(self, client, auth_headers):
+        res = client.patch("/auth/me", json={"username": "ashketchum"}, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["username"] == "ashketchum"
+        # the new username logs in
+        login = client.post("/auth/login", data={"username": "ashketchum", "password": "pikachu1"})
+        assert login.status_code == 200
+
+    def test_update_email(self, client, auth_headers):
+        res = client.patch("/auth/me", json={"email": "ash2@example.com"}, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["email"] == "ash2@example.com"
+
+    def test_duplicate_username_rejected(self, client, auth_headers, second_auth_headers):
+        res = client.patch("/auth/me", json={"username": "gary"}, headers=auth_headers)
+        assert res.status_code == 409
+        assert res.json()["detail"] == "Username already taken"
+
+    def test_duplicate_email_rejected(self, client, auth_headers, second_auth_headers):
+        res = client.patch("/auth/me", json={"email": "gary@example.com"}, headers=auth_headers)
+        assert res.status_code == 409
+        assert res.json()["detail"] == "Email already registered"
+
+    def test_keeping_own_values_is_ok(self, client, auth_headers):
+        # re-saving your current username/email is not a duplicate conflict
+        res = client.patch("/auth/me",
+                           json={"username": "ash", "email": "ash@example.com"},
+                           headers=auth_headers)
+        assert res.status_code == 200
+
+    def test_invalid_email_rejected(self, client, auth_headers):
+        res = client.patch("/auth/me", json={"email": "notanemail"}, headers=auth_headers)
+        assert res.status_code == 400
+
+    def test_blank_username_rejected(self, client, auth_headers):
+        res = client.patch("/auth/me", json={"username": "   "}, headers=auth_headers)
+        assert res.status_code == 400
+
+    def test_empty_body_is_noop(self, client, auth_headers):
+        res = client.patch("/auth/me", json={}, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["username"] == "ash"
+
+
+class TestChangePassword:
+    def test_requires_auth(self, client):
+        res = client.post("/auth/me/password",
+                          json={"current_password": "x", "new_password": "newpass123"})
+        assert res.status_code == 401
+
+    def test_wrong_current_password(self, client, auth_headers):
+        res = client.post("/auth/me/password",
+                          json={"current_password": "wrongpass1", "new_password": "newpass123"},
+                          headers=auth_headers)
+        assert res.status_code == 400
+        assert res.json()["detail"] == "Current password is incorrect"
+
+    def test_weak_new_password(self, client, auth_headers):
+        res = client.post("/auth/me/password",
+                          json={"current_password": "pikachu1", "new_password": "short"},
+                          headers=auth_headers)
+        assert res.status_code == 400
+        assert res.json()["detail"] == "Password must be at least 8 characters"
+
+    def test_success_swaps_password(self, client, auth_headers):
+        res = client.post("/auth/me/password",
+                          json={"current_password": "pikachu1", "new_password": "newpass123"},
+                          headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json() == {"message": "Password updated"}
+        # old password no longer works, new one does
+        assert client.post("/auth/login", data={"username": "ash", "password": "pikachu1"}).status_code == 401
+        assert client.post("/auth/login", data={"username": "ash", "password": "newpass123"}).status_code == 200
+
+
 class TestDeleteAccount:
     def test_requires_auth(self, client):
         assert client.delete("/auth/me").status_code == 401

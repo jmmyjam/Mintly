@@ -124,6 +124,14 @@ export interface PortfolioCard {
   image_url: string | null
 }
 
+// The logged-in user's account details, shown/edited on the Profile page
+export interface UserProfile {
+  email: string
+  username: string
+  created_at: string
+  accepted_terms_at: string | null
+}
+
 // Thrown on 401 so pages can redirect to /login instead of showing a generic error
 export class SessionExpiredError extends Error {
   constructor() {
@@ -207,6 +215,38 @@ export async function register(email: string, username: string, password: string
   if (!res.ok) {
     const data = await res.json()
     throw new Error(data.detail || 'Registration failed')
+  }
+}
+
+// The logged-in user's account details (email, username, join date)
+export async function getMe(): Promise<UserProfile> {
+  const res = await authedFetch('/auth/me')
+  if (!res.ok) throw new Error('Failed to load profile')
+  return res.json()
+}
+
+// Update email and/or username; returns the refreshed profile
+export async function updateProfile(updates: { email?: string; username?: string }): Promise<UserProfile> {
+  const res = await authedFetch('/auth/me', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Failed to update profile')
+  return data
+}
+
+// Change the account password; the backend verifies the current one
+export async function changePassword(current_password: string, new_password: string): Promise<void> {
+  const res = await authedFetch('/auth/me/password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password, new_password }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to change password')
   }
 }
 

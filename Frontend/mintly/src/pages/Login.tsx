@@ -104,10 +104,10 @@ export default function Login() {
           </p>
         </div>
         <div className={styles.authTabs}>
-          <button className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`} onClick={() => switchMode('login')}>
+          <button type="button" className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`} onClick={() => switchMode('login')}>
             Login
           </button>
-          <button className={`${styles.tab} ${mode === 'register' ? styles.active : ''}`} onClick={() => switchMode('register')}>
+          <button type="button" className={`${styles.tab} ${mode === 'register' ? styles.active : ''}`} onClick={() => switchMode('register')}>
             Register
           </button>
         </div>
@@ -118,6 +118,8 @@ export default function Login() {
           {mode === 'register' && (
             <input
               type="email"
+              name="email"
+              autoComplete="email"
               placeholder="Email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -127,6 +129,8 @@ export default function Login() {
           )}
           <input
             type="text"
+            name="username"
+            autoComplete="username"
             placeholder="Username"
             value={username}
             onChange={e => setUsername(e.target.value)}
@@ -135,6 +139,10 @@ export default function Login() {
           />
           <input
             type="password"
+            name="password"
+            // login reads an existing password, register creates one — the
+            // right hint lets password managers autofill/submit cleanly
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             placeholder="Password"
             value={password}
             onChange={e => setPassword(e.target.value)}

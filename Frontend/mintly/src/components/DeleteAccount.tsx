@@ -5,7 +5,7 @@ import { useSessionRedirect } from '../hooks'
 import StatusMessage from './StatusMessage'
 import styles from './DeleteAccount.module.css'
 
-// Bottom-of-Portfolio "danger zone": permanently delete the account and all its
+// Profile-page "danger zone": permanently delete the account and all its
 // portfolio data. Two-step, with a typed "DELETE" gate proportionate to how
 // irreversible this is (the app's convention: no native confirm()/alert()).
 export default function DeleteAccount() {

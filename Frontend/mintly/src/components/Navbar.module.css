@@ -54,6 +54,34 @@
   gap: 8px;
 }
 
+/* Logged-in account button: a generic circular profile avatar linking to
+   /profile (logout now lives inside that page, not the nav bar) */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-decoration: none;
+  flex: none;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.avatar:hover {
+  border-color: var(--cream);
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.avatar-active {
+  border-color: var(--accent);
+  color: var(--text-h);
+}
+
 .nav-link {
   color: rgba(242, 242, 239, 0.6);
   text-decoration: none;
@@ -81,6 +109,7 @@
   .nav-pill { padding: 4px; gap: 2px; }
   .nav-link { padding: 6px 12px; font-size: 14px; }
   .navbar-right :global(.btn-outline) { padding: 8px 15px; font-size: 14px; }
+  .avatar { width: 36px; height: 36px; }
 }
 
 /* Smallest phones: the leaf logo alone links home so the wordmark can go,
@@ -95,4 +124,5 @@
   .navbar { gap: 6px; }
   .nav-link { padding: 6px 9px; }
   .navbar-right :global(.btn-outline) { padding: 7px 11px; }
+  .avatar { width: 32px; height: 32px; }
 }

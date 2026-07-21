@@ -4,7 +4,6 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint, type PriceChange } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
-import DeleteAccount from '../components/DeleteAccount'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
 import PriceQtyForm from '../components/PriceQtyForm'
@@ -509,8 +508,6 @@ export default function Portfolio() {
           )}
         </>
       )}
-
-      <DeleteAccount />
     </div>
   )
 }
