@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { getCard, getCardPrice, getEbayEstimate, type Card, type EbayEstimate as Estimate } from '../api'
+import {
+  getCard, getCardPrice, getEbayEstimate,
+  type Card, type CardHistory, type EbayEstimate as Estimate,
+  type PriceChange, type PriceVariant,
+} from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import PageMessage from '../components/PageMessage'
@@ -10,24 +14,8 @@ import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
 import { money } from '../format'
+import { PRICE_PREFERENCE, mergeHeadline, variantLabel } from '../variants'
 import styles from './CardDetail.module.css'
-
-const VARIANT_LABELS: { [key: string]: string } = {
-  normal: 'Normal',
-  holofoil: 'Holofoil',
-  reverseHolofoil: 'Reverse Holofoil',
-  '1stEditionHolofoil': '1st Edition Holofoil',
-  '1stEditionNormal': '1st Edition Normal',
-  unlimitedHolofoil: 'Unlimited Holofoil',
-}
-
-function variantLabel(key: string) {
-  return VARIANT_LABELS[key] || key
-}
-
-// Matches getCardPrice's variant preference — the tile row + hero price both
-// describe this "primary" variant.
-const PRICE_PREF = ['holofoil', 'normal', 'reverseHolofoil', '1stEditionHolofoil']
 
 function formatDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -73,7 +61,50 @@ export default function CardDetail() {
   const [purchasePrice, setPurchasePrice] = useState('')
   const [quantity, setQuantity] = useState('1')
   const [ebay, setEbay] = useState<Estimate | null>(null)
+  const [history, setHistory] = useState<CardHistory | null>(null)
   const { add, busy: addBusy, status: addStatus } = useAddCard()
+
+  // Stable identity so the chart's fetch effect doesn't re-run per render
+  const handleHistory = useCallback((h: CardHistory) => setHistory(h), [])
+
+  // Live per-variant prices (market, falling back to mid — extract_price's
+  // rule): the chart ends each variant line on these, and the variants table
+  // measures its daily change against them
+  const variantPrices = useMemo(() => {
+    const out: { [key: string]: number } = {}
+    for (const [key, prices] of Object.entries(card?.tcgplayer?.prices ?? {})) {
+      const value = prices.market ?? prices.mid
+      if (value != null) out[key] = value
+    }
+    return out
+  }, [card])
+
+  // Per-variant history with the headline series backfilled into the preferred
+  // variant (same merged view the chart plots)
+  const variantSeries = useMemo(
+    () => (history ? mergeHeadline(history.points, history.variants) : {}),
+    [history],
+  )
+
+  // Daily change for one variant: its live price vs its most recent prior-day
+  // snapshot — the same rule the headline DayChange chip follows
+  const variantDayChange = (variant: string, prices: PriceVariant): PriceChange | null => {
+    const current = prices.market ?? prices.mid
+    const series = variantSeries[variant]
+    if (current == null || !series || series.length === 0) return null
+    const today = new Date().toISOString().slice(0, 10)
+    let prior: { date: string; price: number } | undefined
+    for (const p of series) {
+      if (p.date < today) prior = p
+      else break
+    }
+    if (!prior || prior.price === 0) return null
+    return {
+      amount: Math.round((current - prior.price) * 100) / 100,
+      percent: Math.round(((current - prior.price) / prior.price) * 10000) / 100,
+      since: prior.date,
+    }
+  }
 
   useEffect(() => {
     if (!cardId) return
@@ -94,7 +125,11 @@ export default function CardDetail() {
           if (cancelled) return
           setCard(data)
           document.title = `${data.name} · ${data.set.name} — Mintly`
-          if (attempt === 0) setEbay(null)  // drop any prior card's estimate (in a callback, not the effect body)
+          if (attempt === 0) {
+            // drop any prior card's estimate/history (in a callback, not the effect body)
+            setEbay(null)
+            setHistory(null)
+          }
           const market = getCardPrice(data)
           if (market != null) {
             seedPrice(market)
@@ -148,7 +183,7 @@ export default function CardDetail() {
   // Primary TCGPlayer variant (drives the tile row); eBay value prefers the
   // freshly-scraped median, falling back to the stored snapshot for an instant
   // number while the live scrape lands.
-  const primaryKey = PRICE_PREF.find(k => card.tcgplayer?.prices?.[k]) ?? priceEntries[0]?.[0]
+  const primaryKey = PRICE_PREFERENCE.find(k => card.tcgplayer?.prices?.[k]) ?? priceEntries[0]?.[0]
   const primary = primaryKey ? card.tcgplayer?.prices?.[primaryKey] : undefined
   const ebayValue = ebay?.median ?? card.estimate?.value ?? null
   const heroValue = hasMarket ? market : ebayValue
@@ -272,7 +307,13 @@ export default function CardDetail() {
       </div>
 
       <div className={styles.below}>
-        <PriceHistoryChart key={card.id} cardId={card.id} currentPrice={heroValue} />
+        <PriceHistoryChart
+          key={card.id}
+          cardId={card.id}
+          currentPrice={heroValue}
+          currentVariantPrices={variantPrices}
+          onData={handleHistory}
+        />
 
         {priceEntries.length > 1 && (
           <div className={styles.variants}>
@@ -286,18 +327,23 @@ export default function CardDetail() {
                     <th>Mid</th>
                     <th>High</th>
                     <th>Market</th>
+                    <th>Today</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {priceEntries.map(([variant, prices]) => (
-                    <tr key={variant}>
-                      <td>{variantLabel(variant)}</td>
-                      <td>{money(prices.low)}</td>
-                      <td>{money(prices.mid)}</td>
-                      <td>{money(prices.high)}</td>
-                      <td>{money(prices.market)}</td>
-                    </tr>
-                  ))}
+                  {priceEntries.map(([variant, prices]) => {
+                    const change = variantDayChange(variant, prices)
+                    return (
+                      <tr key={variant}>
+                        <td>{variantLabel(variant)}</td>
+                        <td>{money(prices.low)}</td>
+                        <td>{money(prices.mid)}</td>
+                        <td>{money(prices.high)}</td>
+                        <td>{money(prices.market)}</td>
+                        <td>{change ? <DayChange change={change} /> : '—'}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

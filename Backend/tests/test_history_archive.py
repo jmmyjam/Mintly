@@ -131,3 +131,50 @@ def test_restore_month_brings_thinned_rows_back(archive_dir):
             history_archive.restore_month(db, "2026-01")
     finally:
         db.close()
+
+
+def test_compact_keeps_a_close_per_variant(archive_dir):
+    # variant rows (multi-variant cards) each keep their own monthly close, so
+    # variant charts get monthly resolution beyond the daily window too
+    db = TestingSessionLocal()
+    db.add_all([
+        CardPriceSnapshot(card_id="a", variant="", price=1.0,
+                          snapshot_date=datetime(2026, 5, 1, 12)),
+        CardPriceSnapshot(card_id="a", variant="", price=2.0,
+                          snapshot_date=datetime(2026, 5, 20, 12)),
+        CardPriceSnapshot(card_id="a", variant="reverseHolofoil", price=0.5,
+                          snapshot_date=datetime(2026, 5, 1, 12)),
+        CardPriceSnapshot(card_id="a", variant="reverseHolofoil", price=0.7,
+                          snapshot_date=datetime(2026, 5, 20, 12)),
+    ])
+    db.commit()
+    seed(JULY_ROWS)
+    try:
+        history_archive.compact(db, TODAY)
+        kept = sorted((r.card_id, r.variant, r.price)
+                      for r in db.query(CardPriceSnapshot)
+                      .filter(CardPriceSnapshot.snapshot_date < datetime(2026, 6, 1)))
+        assert kept == [("a", "", 2.0), ("a", "reverseHolofoil", 0.7)]
+        # ...and the archive round-trips the variant column
+        assert history_archive.restore_month(db, "2026-05") == 2
+        restored = db.query(CardPriceSnapshot).filter(
+            CardPriceSnapshot.variant == "reverseHolofoil").count()
+        assert restored == 2
+    finally:
+        db.close()
+
+
+def test_restore_pre_variant_archive(archive_dir):
+    # archives written before variant tracking lack the variant column — every
+    # row in them is a headline snapshot
+    with gzip.open(archive_dir / "2026-05.csv.gz", "wt", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["card_id", "snapshot_date", "price"])
+        writer.writerow(["a", "2026-05-01T12:00:00", 1.5])
+    db = TestingSessionLocal()
+    try:
+        assert history_archive.restore_month(db, "2026-05") == 1
+        row = db.query(CardPriceSnapshot).one()
+        assert (row.card_id, row.variant, row.price) == ("a", "", 1.5)
+    finally:
+        db.close()

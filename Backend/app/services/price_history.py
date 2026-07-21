@@ -28,6 +28,21 @@ def extract_price(card_data: dict) -> float | None:
     return None
 
 
+def variant_prices(card_data: dict) -> dict[str, float]:
+    """Every priced TCGPlayer variant of a card, market falling back to mid —
+    the same rule extract_price applies to its single preferred variant."""
+    out: dict[str, float] = {}
+    for variant, block in (card_data.get("tcgplayer", {}).get("prices") or {}).items():
+        if not isinstance(block, dict):
+            continue
+        price = block.get("market")
+        if price is None:
+            price = block.get("mid")
+        if price is not None:
+            out[variant] = price
+    return out
+
+
 def _today_start() -> datetime:
     # snapshot_date is naive UTC; deduping by local date would double-record
     # or skip days near midnight
@@ -35,30 +50,34 @@ def _today_start() -> datetime:
 
 
 def recorded_today(db: Session, card_ids) -> set[str]:
-    """Card ids that already have a snapshot for today (UTC)."""
+    """Card ids that already have a headline snapshot for today (UTC)."""
     if not card_ids:
         return set()
     return {
         s.card_id
         for s in db.query(CardPriceSnapshot).filter(
             CardPriceSnapshot.card_id.in_(card_ids),
+            CardPriceSnapshot.variant == "",
             CardPriceSnapshot.snapshot_date >= _today_start(),
         )
     }
 
 
-def record_snapshots(db: Session, prices: dict[str, float]) -> int:
-    """Record today's price for each card, at most one row per card per UTC day.
-    A card already snapshotted today has its price refreshed to the latest value
-    seen, so the day's point keeps step with the current market price shown to
-    users instead of freezing at the first read of the day (e.g. the 1pm daily
-    job). Returns how many rows were newly inserted — refreshes aren't counted."""
+def record_snapshots(db: Session, prices: dict[str, float], variant: str = "") -> int:
+    """Record today's price for each card, at most one row per card per variant
+    per UTC day (variant "" — the default — is the headline series every
+    existing feature reads). A card already snapshotted today has its price
+    refreshed to the latest value seen, so the day's point keeps step with the
+    current market price shown to users instead of freezing at the first read of
+    the day (e.g. the 1pm daily job). Returns how many rows were newly inserted
+    — refreshes aren't counted."""
     if not prices:
         return 0
     existing = {
         s.card_id: s
         for s in db.query(CardPriceSnapshot).filter(
             CardPriceSnapshot.card_id.in_(prices),
+            CardPriceSnapshot.variant == variant,
             CardPriceSnapshot.snapshot_date >= _today_start(),
         )
     }
@@ -67,13 +86,34 @@ def record_snapshots(db: Session, prices: dict[str, float]) -> int:
     for card_id, price in prices.items():
         row = existing.get(card_id)
         if row is None:
-            db.add(CardPriceSnapshot(card_id=card_id, price=price))
+            db.add(CardPriceSnapshot(card_id=card_id, variant=variant, price=price))
             inserted += 1
         elif row.price != price:
             row.price = price
             changed = True
     if inserted or changed:
         db.commit()
+    return inserted
+
+
+def record_variant_snapshots(db: Session, cards: list[dict]) -> int:
+    """Record today's per-variant prices for cards with 2+ priced TCGPlayer
+    variants. Single-variant cards are skipped — their one variant IS the
+    headline series record_snapshots already stores, and duplicating it would
+    double the table for most of the catalog. Returns rows newly inserted."""
+    by_variant: dict[str, dict[str, float]] = {}
+    for card in cards:
+        card_id = card.get("id")
+        if not card_id:
+            continue
+        prices = variant_prices(card)
+        if len(prices) < 2:
+            continue
+        for variant, price in prices.items():
+            by_variant.setdefault(variant, {})[card_id] = price
+    inserted = 0
+    for variant, prices in by_variant.items():
+        inserted += record_snapshots(db, prices, variant=variant)
     return inserted
 
 
@@ -91,6 +131,7 @@ def previous_prices(db: Session, card_ids: list[str],
         )
         .filter(
             CardPriceSnapshot.card_id.in_(card_ids),
+            CardPriceSnapshot.variant == "",
             CardPriceSnapshot.snapshot_date < cutoff,
         )
         .group_by(CardPriceSnapshot.card_id)
@@ -103,6 +144,7 @@ def previous_prices(db: Session, card_ids: list[str],
             (CardPriceSnapshot.card_id == latest.c.card_id)
             & (CardPriceSnapshot.snapshot_date == latest.c.latest_date),
         )
+        .filter(CardPriceSnapshot.variant == "")
         .all()
     )
     return {r.card_id: (r.price, r.snapshot_date.date()) for r in rows}
@@ -118,7 +160,10 @@ def latest_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, da
             CardPriceSnapshot.card_id,
             func.max(CardPriceSnapshot.snapshot_date).label("latest_date"),
         )
-        .filter(CardPriceSnapshot.card_id.in_(card_ids))
+        .filter(
+            CardPriceSnapshot.card_id.in_(card_ids),
+            CardPriceSnapshot.variant == "",
+        )
         .group_by(CardPriceSnapshot.card_id)
         .subquery()
     )
@@ -129,6 +174,7 @@ def latest_prices(db: Session, card_ids: list[str]) -> dict[str, tuple[float, da
             (CardPriceSnapshot.card_id == latest.c.card_id)
             & (CardPriceSnapshot.snapshot_date == latest.c.latest_date),
         )
+        .filter(CardPriceSnapshot.variant == "")
         .all()
     )
     return {r.card_id: (r.price, r.snapshot_date.date()) for r in rows}
@@ -174,8 +220,9 @@ def price_change(current: float, prev: float, since: date) -> dict:
 
 
 def annotate_price_changes(db: Session, cards: list[dict]) -> None:
-    """Record today's snapshots for priced cards and attach `priceChange`
-    (vs each card's most recent prior snapshot) to the card dicts in place."""
+    """Record today's snapshots for priced cards (headline + per-variant) and
+    attach `priceChange` (vs each card's most recent prior snapshot) to the
+    card dicts in place."""
     prices: dict[str, float] = {}
     for card in cards:
         price = extract_price(card)
@@ -184,6 +231,7 @@ def annotate_price_changes(db: Session, cards: list[dict]) -> None:
     if not prices:
         return
     record_snapshots(db, prices)
+    record_variant_snapshots(db, cards)
     prev = previous_prices(db, list(prices))
     for card in cards:
         card_id = card.get("id")
@@ -193,15 +241,37 @@ def annotate_price_changes(db: Session, cards: list[dict]) -> None:
 
 
 def card_history(db: Session, card_id: str, days: int) -> list[dict]:
-    """One point per UTC day (the dedupe guarantees it), oldest first."""
+    """One headline point per UTC day (the dedupe guarantees it), oldest first."""
     cutoff = _today_start() - timedelta(days=days)
     rows = (
         db.query(CardPriceSnapshot)
         .filter(
             CardPriceSnapshot.card_id == card_id,
+            CardPriceSnapshot.variant == "",
             CardPriceSnapshot.snapshot_date >= cutoff,
         )
         .order_by(CardPriceSnapshot.snapshot_date)
         .all()
     )
     return [{"date": r.snapshot_date.date().isoformat(), "price": r.price} for r in rows]
+
+
+def card_variant_history(db: Session, card_id: str, days: int) -> dict[str, list[dict]]:
+    """Per-variant daily points for one card, oldest first — only recorded for
+    cards with 2+ priced variants, so most cards return {}."""
+    cutoff = _today_start() - timedelta(days=days)
+    rows = (
+        db.query(CardPriceSnapshot)
+        .filter(
+            CardPriceSnapshot.card_id == card_id,
+            CardPriceSnapshot.variant != "",
+            CardPriceSnapshot.snapshot_date >= cutoff,
+        )
+        .order_by(CardPriceSnapshot.snapshot_date)
+        .all()
+    )
+    series: dict[str, list[dict]] = {}
+    for r in rows:
+        series.setdefault(r.variant, []).append(
+            {"date": r.snapshot_date.date().isoformat(), "price": r.price})
+    return series

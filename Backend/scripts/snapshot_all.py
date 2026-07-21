@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import SessionLocal  # noqa: E402
 from app.services import card_catalog, ebay_prices, history_archive, tcgcsv  # noqa: E402
 from app.services.price_history import (  # noqa: E402
-    extract_price, record_snapshots, recorded_today,
+    extract_price, record_snapshots, record_variant_snapshots, recorded_today,
 )
 
 load_dotenv()
@@ -375,6 +375,13 @@ def main() -> int:
                             "through to the eBay pass", exc)
             recorded += _record_chunked(db, tfill.prices)
 
+        # Per-variant history for multi-variant cards (their headline row only
+        # covers the preferred variant). After the TCGCSV fill, so injected
+        # variant blocks get their series too.
+        variant_rows = 0
+        for i in range(0, len(crawl.cards), _DEDUPE_CHUNK):
+            variant_rows += record_variant_snapshots(db, crawl.cards[i:i + _DEDUPE_CHUNK])
+
         # Mirror the crawled cards into the local catalog the app browses from.
         # Best-effort: a catalog failure never costs the day's snapshots. The
         # sync marker (which lets list endpoints trust the catalog) is stamped
@@ -435,6 +442,7 @@ def main() -> int:
                  fill.no_sales, fill.failures,
                  "  — stopped early" if fill.gave_up else "")
     log.info("  snapshots today   +%s new", f"{recorded:,}")
+    log.info("  variant rows      +%s new  (multi-variant cards)", f"{variant_rows:,}")
     if compacted:
         log.info("  compacted         %d month(s) to cold storage", len(compacted))
     if crawl.dropped:

@@ -186,11 +186,15 @@ def get_portfolio_history(current_user=Depends(get_current_user), db: Session = 
     for c in cards:
         quantities[c.card_id] = quantities.get(c.card_id, 0) + c.quantity
 
-    # Portfolio value history is derived from the shared card-price snapshots,
+    # Portfolio value history is derived from the shared card-price snapshots
+    # (headline rows only — per-variant rows would overwrite the real price),
     # scoped to the cards this user holds
     snapshots = (
         db.query(CardPriceSnapshot)
-        .filter(CardPriceSnapshot.card_id.in_(quantities))
+        .filter(
+            CardPriceSnapshot.card_id.in_(quantities),
+            CardPriceSnapshot.variant == "",
+        )
         .order_by(CardPriceSnapshot.snapshot_date)
         .all()
     )

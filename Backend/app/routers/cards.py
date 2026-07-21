@@ -17,8 +17,8 @@ from dotenv import load_dotenv
 from app.database import SessionLocal, get_db
 from app.services import card_catalog, ebay_prices
 from app.services.price_history import (
-    annotate_price_changes, attach_estimates, card_history, extract_price,
-    record_snapshots,
+    annotate_price_changes, attach_estimates, card_history,
+    card_variant_history, extract_price, record_snapshots,
 )
 from app.services.rate_limit import rate_limit
 
@@ -488,10 +488,16 @@ def search_cards(
 
 
 # Daily price points for one card (built from Mintly's own snapshots — the
-# upstream API has no history endpoint). Default window: ~5 years.
+# upstream API has no history endpoint). Default window: ~5 years. `points` is
+# the headline series (extract_price's preferred variant); `variants` holds a
+# series per TCGPlayer variant for cards with 2+ priced variants (empty for
+# the rest — per-variant rows are only recorded for those cards).
 @router.get("/cards/{card_id}/history")
 def get_card_history(card_id: str, days: int = Query(1825, ge=1, le=3650), db: Session = Depends(get_db)):
-    return card_history(db, card_id, days)
+    return {
+        "points": card_history(db, card_id, days),
+        "variants": card_variant_history(db, card_id, days),
+    }
 
 
 # Recent-sold-listings price estimate from eBay, for cards the TCGPlayer feed

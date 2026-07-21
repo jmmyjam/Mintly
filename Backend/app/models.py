@@ -59,12 +59,19 @@ class CatalogMeta(Base):
 
 class CardPriceSnapshot(Base):
     # The app-wide daily price history for ANY card (browsed or held), one row
-    # per card per UTC day. Portfolio value-over-time is derived from this by
-    # filtering to a user's holdings — there is no separate portfolio table.
+    # per card per variant per UTC day. variant "" is the headline series (the
+    # preferred-variant price extract_price picks — what every existing feature
+    # reads); named variants ("holofoil", "reverseHolofoil", …) are recorded
+    # alongside it for cards with 2+ priced variants, so per-variant history
+    # charts work too. Portfolio value-over-time is derived from the headline
+    # rows by filtering to a user's holdings — there is no separate portfolio
+    # table.
     __tablename__ = "card_price_snapshot"
     id = Column(Integer, primary_key=True)
     card_id = Column(String, index=True)
+    variant = Column(String, nullable=False, default="", server_default="")
     price = Column(Float)
     snapshot_date = Column(DateTime, default=utcnow)
-    # (card_id, date) covers the history + previous-price + portfolio lookups
+    # (card_id, date) covers the history + previous-price + portfolio lookups;
+    # the few variant rows per card/day are filtered from the indexed matches
     __table_args__ = (Index("ix_card_price_snapshot_card_date", "card_id", "snapshot_date"),)

@@ -1,3 +1,5 @@
+import { PRICE_PREFERENCE } from './variants'
+
 // ----- Configuration ---------------------------------------------------------
 
 // Set VITE_API_BASE at build time to point at a hosted backend
@@ -55,6 +57,14 @@ export interface Card {
 export interface PricePoint {
   date: string
   price: number
+}
+
+// A card's full price history: `points` is the headline series (the preferred
+// variant extract_price picks); `variants` holds one series per TCGPlayer
+// variant for cards with 2+ priced variants (empty for everything else)
+export interface CardHistory {
+  points: PricePoint[]
+  variants: { [variant: string]: PricePoint[] }
 }
 
 // Estimated market value from recent eBay sold listings, for cards the
@@ -160,7 +170,7 @@ export function getCardImageUrl(cardId: string): string {
 export function getCardPrice(card: Card): number | null {
   const prices = card.tcgplayer?.prices
   if (!prices) return null
-  for (const type of ['holofoil', 'normal', 'reverseHolofoil', '1stEditionHolofoil']) {
+  for (const type of PRICE_PREFERENCE) {
     const price = prices[type]?.market ?? prices[type]?.mid
     if (price != null) return price
   }
@@ -221,7 +231,7 @@ export async function getCard(cardId: string): Promise<Card> {
 }
 
 // Daily price history for one card (Mintly's own snapshots). Default ~5 years.
-export async function getCardHistory(cardId: string, days = 1825): Promise<PricePoint[]> {
+export async function getCardHistory(cardId: string, days = 1825): Promise<CardHistory> {
   const res = await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}/history?days=${days}`)
   if (!res.ok) throw new Error('Failed to fetch price history')
   return res.json()
