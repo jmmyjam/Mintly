@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { getCard, getCardPrice, getEbayEstimate, type Card, type EbayEstimate as Estimate } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
@@ -62,6 +62,11 @@ function cardJsonLd(card: Card, market: number | null) {
 
 export default function CardDetail() {
   const { cardId } = useParams<{ cardId: string }>()
+  const location = useLocation()
+  // Search stashes the query it was showing in link state, so "Back to Search"
+  // returns to that exact search rather than the default view (falls back to a
+  // bare /search when arriving from elsewhere, e.g. a portfolio tile).
+  const backSearch = (location.state as { backSearch?: string } | null)?.backSearch ?? ''
   const [card, setCard] = useState<Card | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -142,7 +147,7 @@ export default function CardDetail() {
   return (
     <div className="page">
       <StructuredData data={cardJsonLd(card, market)} />
-      <Link to="/search" className={styles.backLink}>← Back to Search</Link>
+      <Link to={{ pathname: '/search', search: backSearch }} className={styles.backLink}>← Back to Search</Link>
 
       <div className={styles.detailLayout}>
         <CardImage src={card.images.large} alt={card.name} size="detail" eager />

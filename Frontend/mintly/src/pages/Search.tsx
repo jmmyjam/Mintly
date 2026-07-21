@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   searchCards,
   filterCards,
@@ -52,15 +52,18 @@ const TYPES = [
 ];
 
 export default function Search() {
-  // Seed the query from ?q= (the home page's hero search links here);
-  // the debounce effect below then runs it like any typed query
-  const [searchParams] = useSearchParams();
+  // Seed query + filters from the URL (?q=, ?set=, ?rarity=, ?type=, ?number=)
+  // so the home hero's ?q= link, shared URLs, and — crucially — pressing Back
+  // from a card all restore the exact search. The effect below keeps the URL in
+  // sync; the debounce effect then runs it like any typed query.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [sets, setSets] = useState<CardSet[]>([]);
-  const [setId, setSetId] = useState("");
-  const [rarity, setRarity] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [number, setNumber] = useState("");
+  const [setId, setSetId] = useState(searchParams.get("set") ?? "");
+  const [rarity, setRarity] = useState(searchParams.get("rarity") ?? "");
+  const [typeFilter, setTypeFilter] = useState(searchParams.get("type") ?? "");
+  const [number, setNumber] = useState(searchParams.get("number") ?? "");
   const [cards, setCards] = useState<Card[]>([]);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -87,6 +90,19 @@ export default function Search() {
       })
       .catch(() => {});
   }, []);
+
+  // Mirror the active query + filters into the URL (replace, so typing doesn't
+  // pile up history entries). This is what makes browser Back from a card return
+  // to the search you had — Search re-seeds its state from these params on mount.
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (query.trim()) params.q = query.trim();
+    if (setId) params.set = setId;
+    if (rarity) params.rarity = rarity;
+    if (typeFilter) params.type = typeFilter;
+    if (number.trim()) params.number = number.trim();
+    setSearchParams(params, { replace: true });
+  }, [query, setId, rarity, typeFilter, number, setSearchParams]);
 
   const isDefaultView = !query.trim() && !hasFilters;
 
@@ -290,7 +306,7 @@ export default function Search() {
 
           return (
             <div key={card.id} className={styles.cardItem}>
-              <Link to={`/card/${card.id}`} className="card-link">
+              <Link to={`/card/${card.id}`} state={{ backSearch: location.search }} className="card-link">
                 <CardImage src={card.images.small} alt={card.name} />
                 <div className={styles.cardInfo}>
                   <p className="card-name">{card.name}</p>
