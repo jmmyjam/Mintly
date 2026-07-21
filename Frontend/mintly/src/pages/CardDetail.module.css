@@ -8,40 +8,178 @@
 
 .back-link:hover { color: var(--text-h); }
 
+/* ---- Top: big star card (left) + info column (right) --------------------- */
 .detail-layout {
   display: flex;
-  gap: 32px;
+  gap: clamp(20px, 4vw, 44px);
   align-items: flex-start;
   flex-wrap: wrap;
 }
 
-.detail-info {
-  flex: 1;
-  /* 280px min beside the image on desktop, but allowed to collapse below that
-     when the column wraps full-width on a narrow screen (no overflow). */
-  min-width: min(280px, 100%);
+/* The image sits on a soft accent glow so it reads as the hero. Shrinks with
+   the viewport (min-width:0 + the image's own max-width:100%) so it never
+   overflows on a narrow screen. */
+.media {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: clamp(10px, 2vw, 18px);
+  border-radius: 22px;
+  background: radial-gradient(120% 95% at 50% 4%, rgba(86, 207, 158, 0.16), rgba(86, 207, 158, 0) 62%);
 }
 
-.detail-info h1 { margin-bottom: 4px; }
-
-.detail-info h2 {
-  font-size: 16px;
-  color: var(--text-h);
-  margin: 24px 0 12px;
-}
-
-.detail-facts {
+.info {
+  flex: 1 1 340px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 16px;
-  max-width: 360px;
+  gap: clamp(14px, 2.4vw, 20px);
 }
+
+.info h1 {
+  font-size: clamp(24px, 3.4vw, 34px);
+  line-height: 1.04;
+  margin: 0;
+}
+
+.meta {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* ---- Price + source ------------------------------------------------------ */
+.price-block { display: flex; flex-direction: column; gap: 6px; }
+
+.price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.price {
+  font-size: clamp(30px, 4.6vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-h);
+  line-height: 1;
+}
+
+.price-none { font-size: 15px; font-weight: 600; color: var(--text); }
+
+.source {
+  font-size: 11px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.source-ebay {
+  color: var(--text-h);
+  background: var(--bg-elevated);
+}
+
+.disclaimer { font-size: 12px; color: var(--text); }
+.disclaimer a { color: var(--accent); }
+
+/* ---- Buy box ------------------------------------------------------------- */
+.buy-box {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  border-radius: 14px;
+  padding: clamp(12px, 2vw, 16px);
+  max-width: 460px;
+}
+
+.buy-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+
+/* the shared PriceQtyForm rendered inside the buy box (this class replaces the
+   form's default .add-form, so it owns the flex layout too) */
+.buy-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.buy-form :global(.edit-field) { flex: 1; }
+.buy-form :global(.mini-qty) { max-width: 84px; }
+
+/* ---- KPI stat tiles ------------------------------------------------------ */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 118px), 1fr));
+  gap: 10px;
+  max-width: 560px;
+}
+
+.tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 11px 13px;
+}
+
+.tile-label {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.tile-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+.tiles-caption { font-size: 12px; color: var(--text); margin: 8px 0 0; }
+
+/* ---- Fact chips ---------------------------------------------------------- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chip {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--text);
+  padding: 5px 12px;
+}
+
+.chip b { color: var(--text-h); font-weight: 600; }
+
+/* ---- Full-width sections below (chart, variant table) -------------------- */
+.below {
+  margin-top: clamp(22px, 3.5vw, 32px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 2.5vw, 24px);
+}
+
+.variants {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.variants h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-h); }
 
 /* Wide 5-column table scrolls horizontally within its own box on narrow
    screens instead of forcing the whole page to overflow. */
 .table-scroll {
-  max-width: 480px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -51,7 +189,6 @@
   min-width: 360px;
   border-collapse: collapse;
   font-size: 14px;
-  margin-bottom: 8px;
 }
 
 .price-table th {
@@ -71,30 +208,4 @@
   border-bottom: 1px solid var(--border);
 }
 
-.detail-add-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-  max-width: 420px;
-}
-
-/* edit-field / mini-qty are the shared PriceQtyForm vocabulary (global),
-   reached with :global from this contextual override */
-.detail-add-form :global(.edit-field) { flex: 1; }
-.detail-add-form :global(.mini-qty) { max-width: 80px; }
-
-/* Card-detail current price + change */
-.detail-price-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin: 10px 0 2px;
-}
-
-.detail-current-price {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-h);
-  letter-spacing: -0.02em;
-}
+.updated { font-size: 12px; color: var(--text); margin-top: 10px; }
