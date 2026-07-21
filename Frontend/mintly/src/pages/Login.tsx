@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { login, register } from '../api'
+import { login, register, getCardImageUrl } from '../api'
+import type { PriceChange } from '../api'
+import { money } from '../format'
+import CardImage from '../components/CardImage'
+import DayChange from '../components/DayChange'
 import styles from './Login.module.css'
 
 // Mirrors the backend rules in auth.py so users get instant feedback
@@ -9,6 +13,29 @@ function passwordError(password: string): string | null {
   if (!/[A-Za-z]/.test(password)) return 'Password must contain at least one letter'
   if (!/\d/.test(password)) return 'Password must contain at least one number'
   return null
+}
+
+// Illustrative-only preview shown beside the form (marked "Example" and
+// aria-hidden): a taste of what the portfolio looks like, with real Base Set
+// card art but sample prices/changes — there's no real account to read when
+// logged out. The card rows and chips reuse the same DayChange / CardImage
+// components as the live app, so the preview matches the real UI exactly.
+const SINCE_DAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+const SINCE_MONTH = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
+
+const PREVIEW: {
+  value: number
+  change: PriceChange
+  holdings: { id: string; name: string; price: number; change: PriceChange }[]
+} = {
+  value: 4820,
+  change: { amount: 531.4, percent: 12.4, since: SINCE_MONTH },
+  holdings: [
+    { id: 'base1-4', name: 'Charizard', price: 412, change: { amount: 12.4, percent: 3.1, since: SINCE_DAY } },
+    { id: 'base1-2', name: 'Blastoise', price: 203, change: { amount: 1.61, percent: 0.8, since: SINCE_DAY } },
+    { id: 'base1-15', name: 'Venusaur', price: 176, change: { amount: -2.14, percent: -1.2, since: SINCE_DAY } },
+    { id: 'base1-58', name: 'Pikachu', price: 88, change: { amount: 2.06, percent: 2.4, since: SINCE_DAY } },
+  ],
 }
 
 export default function Login() {
@@ -64,7 +91,18 @@ export default function Login() {
 
   return (
     <div className="page centered">
+      <div className={styles.authLayout}>
       <div className={styles.authCard}>
+        <div className={styles.authIntro}>
+          <h1 className={styles.authTitle}>
+            {mode === 'login' ? 'Welcome back' : 'Create your account'}
+          </h1>
+          <p className={styles.authSubtitle}>
+            {mode === 'login'
+              ? 'Log in to track your collection.'
+              : 'Start tracking your portfolio today.'}
+          </p>
+        </div>
         <div className={styles.authTabs}>
           <button className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`} onClick={() => switchMode('login')}>
             Login
@@ -124,6 +162,47 @@ export default function Login() {
             {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}
           </button>
         </form>
+      </div>
+
+      {/* Illustrative preview — decorative sample data, hidden from screen
+          readers and dropped on narrow screens so the form stays the focus */}
+      <aside className={styles.preview} aria-hidden="true">
+        <div className={styles.previewHead}>
+          <span className={styles.previewLabel}>Portfolio value</span>
+          <span className={styles.exampleTag}>Example</span>
+        </div>
+        <div className={styles.previewValueRow}>
+          <span className={styles.previewValue}>{money(PREVIEW.value)}</span>
+          <DayChange change={PREVIEW.change} />
+        </div>
+        <svg className={styles.spark} viewBox="0 0 240 46" preserveAspectRatio="none">
+          <path
+            d="M4,36 L30,33 L56,35 L82,26 L108,29 L134,19 L160,22 L186,12 L212,14 L236,7 L236,46 L4,46 Z"
+            fill="var(--accent-bg)"
+          />
+          <path
+            d="M4,36 L30,33 L56,35 L82,26 L108,29 L134,19 L160,22 L186,12 L212,14 L236,7"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <circle cx="236" cy="7" r="3.5" fill="var(--accent)" />
+        </svg>
+        <ul className={styles.holdings}>
+          {PREVIEW.holdings.map(h => (
+            <li className={styles.holding} key={h.id}>
+              <span className={styles.thumb}>
+                <CardImage src={getCardImageUrl(h.id)} alt={h.name} size="tile" />
+              </span>
+              <span className={styles.holdingName}>{h.name}</span>
+              <span className={styles.holdingPrice}>{money(h.price)}</span>
+              <DayChange change={h.change} />
+            </li>
+          ))}
+        </ul>
+      </aside>
       </div>
     </div>
   )

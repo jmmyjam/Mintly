@@ -1,11 +1,151 @@
 /* Auth */
+
+/* Row that holds the form card and the illustrative preview side by side,
+   centered as a unit. The preview drops away below 720px (see the media query
+   at the bottom), leaving the single form card centered — the original look. */
+.auth-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(32px, 6vw, 72px);
+  width: 100%;
+  max-width: 1000px;
+  text-align: left;
+}
+
 .auth-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 32px;
+  padding: clamp(28px, 3vw, 40px);
+  flex: 1 1 420px;
+  min-width: 0;
+  max-width: 440px;
+}
+
+/* Heading above the tabs — gives the form presence instead of empty space */
+.auth-intro {
+  margin-bottom: 24px;
+}
+
+.auth-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+  margin: 0 0 6px;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+}
+
+/* ----- Illustrative portfolio preview (sample data, aria-hidden) ----- */
+.preview {
+  flex: 1 1 380px;
+  min-width: 0;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 26px 24px;
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.preview-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.example-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.preview-value-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 14px;
+}
+
+.preview-value {
+  color: var(--text-h);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.spark {
   width: 100%;
-  max-width: 380px;
+  height: 44px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.holdings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.holding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.holding + .holding {
+  border-top: 1px solid var(--border);
+}
+
+.thumb {
+  width: 30px;
+  flex: none;
+}
+
+.holding-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-h);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holding-price {
+  color: var(--text-h);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trim the shared DayChange chip a touch so name + price + change fit one row */
+.holding :global(.day-change) {
+  font-size: 11px;
 }
 
 .auth-tabs {
@@ -81,4 +221,11 @@
 .auth-form :global(.btn-primary) {
   justify-content: center;
   padding: 10px;
+}
+
+/* Below this width the illustrative preview drops away so the form takes the
+   full focus — mirrors how the Home hero hides its card spread when narrow. */
+@media (max-width: 720px) {
+  .preview { display: none; }
+  .auth-card { max-width: 440px; }
 }
