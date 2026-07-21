@@ -78,9 +78,9 @@ _RETRY_PASS_PAUSE = 30     # cool-down before re-trying failed pages at the end
 # the crawl now feeds the card_catalog table too, so browsing is served from
 # the DB; set carries the name + releaseDate the eBay pass needs as well
 _SELECT = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
-_EBAY_PAUSE = 5.0          # be gentle on eBay between scrapes (--ebay-pause overrides)
+_EBAY_PAUSE = 3.0          # be gentle on eBay between scrapes (--ebay-pause overrides)
 _EBAY_GIVEUP = 5           # consecutive FAILED fetches — blocked or offline, stop
-_EBAY_MAX = 2000           # default --max-ebay: above the priceless count, so all get tried
+_EBAY_MAX = 500           # default --max-ebay: above the priceless count, so all get tried
 
 session = requests.Session()
 session.verify = certifi.where()
