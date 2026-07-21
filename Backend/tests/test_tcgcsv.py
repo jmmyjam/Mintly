@@ -102,7 +102,14 @@ class TestNumberNormalization:
         # since both sides pass through the same normalizer)
         assert tcgcsv.norm_number("TG12/TG30") == "tg12"
         assert tcgcsv.norm_number("TG12") == "tg12"
-        assert tcgcsv.norm_number("SWSH039") == "swsh039"
+
+    def test_zero_padding_after_a_letter_prefix_dropped(self):
+        # e-Card holos: TCGCSV says "H01/H32", pokemontcg.io says "H1"
+        assert tcgcsv.norm_number("H01/H32") == "h1"
+        assert tcgcsv.norm_number("H1") == "h1"
+        # symmetric on both sides, so padded promo numbers still join
+        assert tcgcsv.norm_number("SWSH039") == "swsh39"
+        assert tcgcsv.norm_number("SWSH39") == "swsh39"
 
     def test_zero_survives_the_strip(self):
         assert tcgcsv.norm_number("0") == "0"

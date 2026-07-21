@@ -58,9 +58,18 @@ _GROUP_OVERRIDES: dict[str, int] = {
     "svp": 22872,    # "Scarlet & Violet Black Star Promos" -> "SV: ... Promo Cards"
     "smp": 1861,     # "SM Black Star Promos" -> "SM Promos"
     "xyp": 1451,     # "XY Black Star Promos" -> "XY Promos"
+    "dpp": 1421,     # "DP Black Star Promos" -> "Diamond and Pearl Promos"
+    "mcd14": 1692,   # "McDonald's Collection 2014" -> "McDonald's Promos 2014"
+    "mcd15": 1694,   # "McDonald's Collection 2015" -> "McDonald's Promos 2015"
+    "mcd16": 3087,   # "McDonald's Collection 2016" -> "McDonald's Promos 2016"
     "mcd17": 2148,   # "McDonald's Collection 2017" -> "McDonald's Promos 2017"
     "mcd18": 2364,   # "McDonald's Collection 2018" -> "McDonald's Promos 2018"
 }
+# Deliberately NOT mapped (verified July 21, 2026): the EX Trainer Kits (both
+# half-decks share one TCGplayer group with colliding numbers — "1/12" is
+# Arcanine AND Beldum) and "Wizards Black Star Promos" ("WoTC Promo" reuses
+# numbers across series — "32" is Smeargle 32/53 and Dark Charmeleon 32/82).
+# A wrong-price match is worse than the eBay fallback those cards keep.
 
 # TCGplayer group names carry a leading set code ("ME05: Pitch Black") or era
 # tag ("XY - Ancient Origins", "SM - Burning Shadows")
@@ -125,11 +134,13 @@ def _norm_set(name: str) -> str:
 
 
 def norm_number(value: str) -> str:
-    """Comparable form of a card number: the part before any "/", leading
-    zeros stripped, lowercased — TCGCSV's "001/084" matches pokemontcg.io's
-    "1"; alphanumeric numbers ("TG12", "SWSH039") pass through intact."""
+    """Comparable form of a card number: the part before any "/", lowercased,
+    with zero-padding stripped after any letter prefix — TCGCSV's "001/084"
+    matches pokemontcg.io's "1", and its "H01/H32" (e-Card holos) matches
+    "H1"; suffixes ("TG12", "SWSH039") survive on both sides."""
     part = value.split("/")[0].strip().lower()
-    return part.lstrip("0") or "0"
+    match = re.match(r"^([a-z]*)0*(.*)$", part)
+    return (match.group(1) + match.group(2)) or "0"
 
 
 def _variant_key(sub_type: str) -> str:
