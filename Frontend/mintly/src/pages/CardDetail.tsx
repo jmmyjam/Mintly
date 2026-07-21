@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getCard, getCardPrice, getEbayEstimate, type Card, type EbayEstimate as Estimate } from '../api'
+import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import EbayEstimate from '../components/EbayEstimate'
 import PageMessage from '../components/PageMessage'
@@ -11,6 +12,7 @@ import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
 import { money } from '../format'
+import styles from './CardDetail.module.css'
 
 const VARIANT_LABELS: { [key: string]: string } = {
   normal: 'Normal',
@@ -140,12 +142,12 @@ export default function CardDetail() {
   return (
     <div className="page">
       <StructuredData data={cardJsonLd(card, market)} />
-      <Link to="/search" className="back-link">← Back to Search</Link>
+      <Link to="/search" className={styles.backLink}>← Back to Search</Link>
 
-      <div className="detail-layout">
-        <img src={card.images.large} alt={card.name} className="detail-image" />
+      <div className={styles.detailLayout}>
+        <CardImage src={card.images.large} alt={card.name} size="detail" eager />
 
-        <div className="detail-info">
+        <div className={styles.detailInfo}>
           <h1>{card.name}</h1>
           <p className="card-set">
             {card.set.name}
@@ -154,8 +156,8 @@ export default function CardDetail() {
           </p>
 
           {market != null && (
-            <div className="detail-price-head">
-              <span className="detail-current-price">{money(market)}</span>
+            <div className={styles.detailPriceHead}>
+              <span className={styles.detailCurrentPrice}>{money(market)}</span>
               {card.priceChange ? (
                 <DayChange change={card.priceChange} />
               ) : (
@@ -164,7 +166,7 @@ export default function CardDetail() {
             </div>
           )}
 
-          <div className="detail-facts">
+          <div className={styles.detailFacts}>
             {card.rarity && <StatRow label="Rarity">{card.rarity}</StatRow>}
             {card.types && card.types.length > 0 && (
               <StatRow label="Type">{card.types.join(', ')}</StatRow>
@@ -185,28 +187,30 @@ export default function CardDetail() {
               {ebay && ebay.count > 0 ? ' — see the recent eBay sales above.' : ' yet.'}
             </p>
           ) : (
-            <table className="price-table">
-              <thead>
-                <tr>
-                  <th>Variant</th>
-                  <th>Low</th>
-                  <th>Mid</th>
-                  <th>High</th>
-                  <th>Market</th>
-                </tr>
-              </thead>
-              <tbody>
-                {priceEntries.map(([variant, prices]) => (
-                  <tr key={variant}>
-                    <td>{variantLabel(variant)}</td>
-                    <td>{money(prices.low)}</td>
-                    <td>{money(prices.mid)}</td>
-                    <td>{money(prices.high)}</td>
-                    <td>{money(prices.market)}</td>
+            <div className={styles.tableScroll}>
+              <table className={styles.priceTable}>
+                <thead>
+                  <tr>
+                    <th>Variant</th>
+                    <th>Low</th>
+                    <th>Mid</th>
+                    <th>High</th>
+                    <th>Market</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {priceEntries.map(([variant, prices]) => (
+                    <tr key={variant}>
+                      <td>{variantLabel(variant)}</td>
+                      <td>{money(prices.low)}</td>
+                      <td>{money(prices.mid)}</td>
+                      <td>{money(prices.high)}</td>
+                      <td>{money(prices.market)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           {card.tcgplayer?.updatedAt && priceEntries.length > 0 && (
             <p className="prices-note">Prices from TCGPlayer, updated {card.tcgplayer.updatedAt}</p>
@@ -219,7 +223,7 @@ export default function CardDetail() {
             <StatusMessage ok={addStatus.ok}>{addStatus.msg}</StatusMessage>
           ) : (
             <PriceQtyForm
-              className="detail-add-form"
+              className={styles.detailAddForm}
               labeled
               price={purchasePrice}
               quantity={quantity}

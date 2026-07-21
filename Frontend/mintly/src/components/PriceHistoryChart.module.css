@@ -1,0 +1,39 @@
+/* Per-card price history chart */
+.price-history {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  margin: 24px 0;
+}
+
+.price-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.price-history h2 { margin: 0; font-size: 16px; color: var(--text-h); }
+
+.range-toggle { display: flex; gap: 4px; }
+
+.range-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.range-btn:hover { color: var(--text-h); border-color: var(--text-h); }
+
+.range-btn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}

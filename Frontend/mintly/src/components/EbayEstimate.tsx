@@ -1,6 +1,7 @@
 import type { EbayEstimate as Estimate } from '../api'
 import { money } from '../format'
 import StatRow from './StatRow'
+import styles from './EbayEstimate.module.css'
 
 function formatDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -11,7 +12,7 @@ function formatDate(d: string) {
 export default function EbayEstimate({ estimate }: { estimate: Estimate }) {
   if (estimate.count === 0) {
     return (
-      <div className="ebay-estimate">
+      <div className={styles.ebayEstimate}>
         <h2>Recent eBay Sales</h2>
         <p className="prices-note">
           No recent eBay sales found for this card.{' '}
@@ -24,11 +25,11 @@ export default function EbayEstimate({ estimate }: { estimate: Estimate }) {
   }
 
   return (
-    <div className="ebay-estimate">
+    <div className={styles.ebayEstimate}>
       <h2>Recent eBay Sales</h2>
-      <p className="ebay-headline">
-        <span className="ebay-median">{money(estimate.median)}</span>
-        <span className="ebay-median-label">median of {estimate.count} recent sales</span>
+      <p className={styles.ebayHeadline}>
+        <span className={styles.ebayMedian}>{money(estimate.median)}</span>
+        <span className={styles.ebayMedianLabel}>median of {estimate.count} recent sales</span>
       </p>
       <div className="price-rows">
         <StatRow label="Average">{money(estimate.average)}</StatRow>

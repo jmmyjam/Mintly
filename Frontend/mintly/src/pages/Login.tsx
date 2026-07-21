@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { login, register } from '../api'
+import styles from './Login.module.css'
 
 // Mirrors the backend rules in auth.py so users get instant feedback
 function passwordError(password: string): string | null {
@@ -63,19 +64,19 @@ export default function Login() {
 
   return (
     <div className="page centered">
-      <div className="auth-card">
-        <div className="auth-tabs">
-          <button className={`tab ${mode === 'login' ? 'active' : ''}`} onClick={() => switchMode('login')}>
+      <div className={styles.authCard}>
+        <div className={styles.authTabs}>
+          <button className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`} onClick={() => switchMode('login')}>
             Login
           </button>
-          <button className={`tab ${mode === 'register' ? 'active' : ''}`} onClick={() => switchMode('register')}>
+          <button className={`${styles.tab} ${mode === 'register' ? styles.active : ''}`} onClick={() => switchMode('register')}>
             Register
           </button>
         </div>
 
-        {notice && !error && <p className="form-hint">{notice}</p>}
+        {notice && !error && <p className={styles.formHint}>{notice}</p>}
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className={styles.authForm}>
           {mode === 'register' && (
             <input
               type="email"
@@ -83,7 +84,7 @@ export default function Login() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="form-input"
+              className={styles.formInput}
             />
           )}
           <input
@@ -92,7 +93,7 @@ export default function Login() {
             value={username}
             onChange={e => setUsername(e.target.value)}
             required
-            className="form-input"
+            className={styles.formInput}
           />
           <input
             type="password"
@@ -100,13 +101,13 @@ export default function Login() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
-            className="form-input"
+            className={styles.formInput}
           />
           {mode === 'register' && (
-            <p className="form-hint">At least 8 characters, with a letter and a number.</p>
+            <p className={styles.formHint}>At least 8 characters, with a letter and a number.</p>
           )}
           {mode === 'register' && (
-            <label className="terms-row">
+            <label className={styles.termsRow}>
               <input
                 type="checkbox"
                 checked={agreedToTerms}

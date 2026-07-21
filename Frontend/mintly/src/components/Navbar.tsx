@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { clearToken, getToken } from '../api'
+import styles from './Navbar.module.css'
 
 export default function Navbar() {
   const navigate = useNavigate()
@@ -26,20 +27,20 @@ export default function Navbar() {
   }
 
   return (
-    <nav className={hidden ? 'navbar navbar-hidden' : 'navbar'}>
-      <Link to="/" className="navbar-brand">
-        <img src="/favicon.svg" alt="" className="brand-logo" />
-        Mintly
+    <nav className={hidden ? `${styles.navbar} ${styles.navbarHidden}` : styles.navbar}>
+      <Link to="/" className={styles.navbarBrand}>
+        <img src="/favicon.svg" alt="" className={styles.brandLogo} />
+        <span className={styles.brandText}>Mintly</span>
       </Link>
-      <div className="nav-pill">
-        <Link to="/search" className={location.pathname === '/search' ? 'nav-link active' : 'nav-link'}>
+      <div className={styles.navPill}>
+        <Link to="/search" className={location.pathname === '/search' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
           Search
         </Link>
-        <Link to="/portfolio" className={location.pathname === '/portfolio' ? 'nav-link active' : 'nav-link'}>
+        <Link to="/portfolio" className={location.pathname === '/portfolio' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
           Portfolio
         </Link>
       </div>
-      <div className="navbar-right">
+      <div className={styles.navbarRight}>
         {loggedIn ? (
           <button onClick={handleLogout} className="btn-outline">Logout</button>
         ) : (

@@ -1,0 +1,57 @@
+/* Hero search — one pill housing the input and the submit button */
+.hero-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 6px 6px 24px;
+  max-width: 560px;
+  transition: border-color 0.2s;
+}
+
+.hero-search:focus-within { border-color: var(--text-h); }
+
+.hero-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  color: var(--text-h);
+  padding: 8px 0;
+}
+
+.hero-search-input::placeholder { color: var(--text); }
+
+.hero-search-btn { flex-shrink: 0; }
+
+.hero-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.hero-chips-label {
+  font-size: 13px;
+  color: var(--text);
+  margin-right: 2px;
+}
+
+.chip {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.chip:hover { color: var(--text-h); border-color: var(--text-h); }

@@ -1,0 +1,146 @@
+.portfolio-summary {
+  display: grid;
+  /* Intrinsic reflow: 4 across on desktop, 2 on phones, 1 when very narrow —
+     no breakpoint, auto-fit stretches the four tiles to fill the row. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.summary-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: clamp(1.375rem, 4.5vw, 1.625rem);
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.02em;
+}
+
+.portfolio-chart {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  margin-bottom: 32px;
+}
+
+.portfolio-chart h2 {
+  font-size: 16px;
+  color: var(--text-h);
+  margin-bottom: 16px;
+}
+
+.chart-caption {
+  color: var(--text);
+  font-size: 13px;
+  margin: -8px 0 16px;
+}
+
+/* Portfolio filter-bar extras — the .filter-row/.filter-select shells stay global */
+.filter-name { width: 200px; }
+.filter-name::placeholder { color: var(--text); }
+
+.toolbar-count {
+  color: var(--text);
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.no-match {
+  color: var(--text);
+  padding: 24px 0;
+}
+
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.portfolio-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.portfolio-card:hover { border-color: var(--text-h); box-shadow: var(--shadow); }
+
+.portfolio-card-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* The action buttons are the global .btn-outline, reached with :global */
+.card-actions :global(.btn-outline) {
+  flex: 1;
+  justify-content: center;
+}
+
+.lot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.lot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.lot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lot-main { color: var(--text-h); }
+
+.lot-date {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.lot-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lot-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.lot-btn:hover { color: var(--text-h); }
+
+.lot-btn-danger:hover { color: var(--negative); }

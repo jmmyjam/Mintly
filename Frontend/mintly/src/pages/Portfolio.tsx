@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint, type PriceChange } from '../api'
+import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
@@ -10,6 +11,7 @@ import StatRow from '../components/StatRow'
 import StatusMessage from '../components/StatusMessage'
 import { useSessionRedirect } from '../hooks'
 import { money } from '../format'
+import styles from './Portfolio.module.css'
 
 // ----- Types & constants ---------------------------------------------------------
 
@@ -230,10 +232,10 @@ export default function Portfolio() {
   }
 
   const chart = (
-    <div className="portfolio-chart">
+    <div className={styles.portfolioChart}>
       <h2>Value Over Time</h2>
       {isPlaceholder && (
-        <p className="chart-caption">Showing today's value — history builds each day you visit.</p>
+        <p className={styles.chartCaption}>Showing today's value — history builds each day you visit.</p>
       )}
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -301,22 +303,22 @@ export default function Portfolio() {
         </>
       ) : (
         <>
-          <div className="portfolio-summary">
-            <div className="summary-stat">
+          <div className={styles.portfolioSummary}>
+            <div className={styles.summaryStat}>
               <span className="stat-label">Total Value</span>
-              <span className="stat-value">{money(totalValue)}</span>
+              <span className={styles.statValue}>{money(totalValue)}</span>
             </div>
-            <div className="summary-stat">
+            <div className={styles.summaryStat}>
               <span className="stat-label">Total Cost</span>
-              <span className="stat-value">{money(totalCost)}</span>
+              <span className={styles.statValue}>{money(totalCost)}</span>
             </div>
-            <div className="summary-stat">
+            <div className={styles.summaryStat}>
               <span className="stat-label">Gain / Loss</span>
-              <GainLoss value={totalGainLoss} className="stat-value" />
+              <GainLoss value={totalGainLoss} className={styles.statValue} />
             </div>
-            <div className="summary-stat">
+            <div className={styles.summaryStat}>
               <span className="stat-label">Cards</span>
-              <span className="stat-value">{groups.length}</span>
+              <span className={styles.statValue}>{groups.length}</span>
             </div>
           </div>
 
@@ -327,7 +329,7 @@ export default function Portfolio() {
               value={nameFilter}
               onChange={e => setNameFilter(e.target.value)}
               placeholder="Filter by name"
-              className="filter-select filter-name"
+              className={`filter-select ${styles.filterName}`}
             />
             <select
               value={plFilter}
@@ -355,7 +357,7 @@ export default function Portfolio() {
                 >
                   Clear
                 </button>
-                <span className="toolbar-count">
+                <span className={styles.toolbarCount}>
                   {visibleGroups.length} of {groups.length} cards
                 </span>
               </>
@@ -363,9 +365,9 @@ export default function Portfolio() {
           </div>
 
           {visibleGroups.length === 0 ? (
-            <p className="no-match">No cards match your filters.</p>
+            <p className={styles.noMatch}>No cards match your filters.</p>
           ) : (
-          <div className="portfolio-grid">
+          <div className={styles.portfolioGrid}>
             {visibleGroups.map(group => {
               const single = group.lots.length === 1
               const totalQty = group.lots.reduce((sum, l) => sum + l.quantity, 0)
@@ -381,17 +383,11 @@ export default function Portfolio() {
               const lot = group.lots[0]
 
               return (
-                <div key={group.card_id} className="portfolio-card">
+                <div key={group.card_id} className={styles.portfolioCard}>
                   <Link to={`/card/${group.card_id}`} className="card-link">
-                    <img
-                      src={group.image_url ?? getCardImageUrl(group.card_id)}
-                      alt={group.card_name}
-                      className="card-image"
-                      loading="lazy"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
+                    <CardImage src={group.image_url ?? getCardImageUrl(group.card_id)} alt={group.card_name} />
                   </Link>
-                  <div className="portfolio-card-body">
+                  <div className={styles.portfolioCardBody}>
                     <Link to={`/card/${group.card_id}`} className="card-link">
                       <p className="card-name">{group.card_name}</p>
                     </Link>
@@ -420,7 +416,7 @@ export default function Portfolio() {
 
                         {single ? (
                           confirmRemoveId === lot.id ? (
-                            <div className="card-actions">
+                            <div className={styles.cardActions}>
                               <button
                                 className="btn-outline btn-sm btn-danger"
                                 onClick={() => handleRemove(lot.id)}
@@ -432,7 +428,7 @@ export default function Portfolio() {
                               </button>
                             </div>
                           ) : (
-                            <div className="card-actions">
+                            <div className={styles.cardActions}>
                               <button className="btn-outline btn-sm" onClick={() => startEdit(lot)}>
                                 Edit
                               </button>
@@ -453,35 +449,35 @@ export default function Portfolio() {
                               {isExpanded ? 'Hide purchases ▴' : `${group.lots.length} purchases ▾`}
                             </button>
                             {isExpanded && (
-                              <div className="lot-list">
+                              <div className={styles.lotList}>
                                 {group.lots.map(l => (
                                   <div key={l.id}>
                                     {editingId === l.id ? (
                                       editForm(l)
                                     ) : (
-                                      <div className="lot-row">
-                                        <div className="lot-info">
-                                          <span className="lot-main">{l.quantity} @ {money(l.purchase_price)}</span>
-                                          <span className="lot-date">{formatLotDate(l.purchase_date)}</span>
+                                      <div className={styles.lotRow}>
+                                        <div className={styles.lotInfo}>
+                                          <span className={styles.lotMain}>{l.quantity} @ {money(l.purchase_price)}</span>
+                                          <span className={styles.lotDate}>{formatLotDate(l.purchase_date)}</span>
                                         </div>
                                         {l.gain_loss != null && <GainLoss value={l.gain_loss} />}
                                         {confirmRemoveId === l.id ? (
-                                          <div className="lot-actions">
+                                          <div className={styles.lotActions}>
                                             <button
-                                              className="lot-btn lot-btn-danger negative"
+                                              className={`${styles.lotBtn} ${styles.lotBtnDanger} negative`}
                                               onClick={() => handleRemove(l.id)}
                                             >
                                               Remove
                                             </button>
-                                            <button className="lot-btn" onClick={() => setConfirmRemoveId(null)}>
+                                            <button className={styles.lotBtn} onClick={() => setConfirmRemoveId(null)}>
                                               Cancel
                                             </button>
                                           </div>
                                         ) : (
-                                          <div className="lot-actions">
-                                            <button className="lot-btn" onClick={() => startEdit(l)}>Edit</button>
+                                          <div className={styles.lotActions}>
+                                            <button className={styles.lotBtn} onClick={() => startEdit(l)}>Edit</button>
                                             <button
-                                              className="lot-btn lot-btn-danger"
+                                              className={`${styles.lotBtn} ${styles.lotBtnDanger}`}
                                               onClick={() => setConfirmRemoveId(l.id)}
                                             >
                                               ✕

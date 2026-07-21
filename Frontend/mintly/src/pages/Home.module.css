@@ -1,0 +1,125 @@
+.home {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 40px) clamp(16px, 4vw, 24px);
+}
+
+.home-hero {
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  text-align: left;
+  padding: clamp(40px, 8vw, 72px) 0;
+}
+
+.home-hero-left {
+  flex: 1;
+  min-width: 0;
+  max-width: 640px;
+}
+
+.home-title {
+  /* Scales continuously between phone (~40px) and desktop (72px). */
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  margin-bottom: 32px;
+}
+
+.home-hero-divider {
+  border-top: 1px solid var(--border);
+  max-width: 480px;
+  margin: 32px 0 18px;
+}
+
+.home-subtitle {
+  font-size: 15px;
+  color: var(--text);
+  max-width: 440px;
+}
+
+/* Fanned spread of classic cards — the hero's visual */
+.home-hero-cards {
+  position: relative;
+  flex: 1;
+  min-height: 460px;
+  align-self: stretch;
+}
+
+.hero-card {
+  position: absolute;
+  width: 47%;
+  max-width: 245px;
+  border-radius: 12px;
+  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.55);
+}
+
+.hero-card-1 { left: 0; top: 84px; transform: rotate(-11deg); }
+.hero-card-2 { left: 27%; top: 24px; transform: rotate(2deg); z-index: 2; }
+.hero-card-3 { left: 54%; top: 96px; transform: rotate(13deg); }
+
+/* Closing call-to-action — the one cream surface on the page */
+.home-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  background: var(--cream);
+  border-radius: 28px;
+  padding: clamp(28px, 5vw, 44px) clamp(28px, 5vw, 48px);
+  margin: 24px 0 48px;
+}
+
+.home-cta h2 {
+  color: var(--ink);
+  letter-spacing: -0.03em;
+  margin-bottom: 6px;
+}
+
+.home-cta p { color: rgba(20, 18, 12, 0.65); }
+
+.home-cta :global(.btn-primary) {
+  background: var(--ink);
+  color: var(--cream);
+  border-color: var(--ink);
+}
+
+.home-features {
+  display: grid;
+  /* 3 up on desktop, 2 on tablets, 1 on phones — reflows on its own. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 20px;
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+}
+
+.feature {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  text-align: left;
+}
+
+.feature-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.feature h3 { margin-bottom: 8px; }
+.feature p { color: var(--text); font-size: 14px; line-height: 160%; }
+
+/* Decorative hero cards hide on small screens */
+@media (max-width: 960px) {
+  .home-hero-cards { display: none; }
+}

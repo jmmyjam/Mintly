@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import styles from "./HeroSearch.module.css";
 
 // Real queries the smart search handles well (name + set name combos)
 const EXAMPLES = [
@@ -52,29 +53,29 @@ export default function HeroSearch() {
   }
 
   return (
-    <div className="hero-search-block">
+    <div className={styles.heroSearchBlock}>
       <form
-        className="hero-search"
+        className={styles.heroSearch}
         onSubmit={(e) => {
           e.preventDefault();
           goSearch(value);
         }}
       >
         <input
-          className="hero-search-input"
+          className={styles.heroSearchInput}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={placeholder}
           aria-label="Search cards"
         />
-        <button type="submit" className="btn-primary hero-search-btn">
+        <button type="submit" className={`btn-primary ${styles.heroSearchBtn}`}>
           Search
         </button>
       </form>
-      <div className="hero-chips">
-        <span className="hero-chips-label">Try</span>
+      <div className={styles.heroChips}>
+        <span className={styles.heroChipsLabel}>Try</span>
         {QUICK_SEARCHES.map((q) => (
-          <button key={q} className="chip" onClick={() => goSearch(q)}>
+          <button key={q} className={styles.chip} onClick={() => goSearch(q)}>
             {q}
           </button>
         ))}

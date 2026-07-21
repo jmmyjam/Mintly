@@ -1,0 +1,78 @@
+.search-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.search-input {
+  flex: 1;
+  /* Let the input shrink past its intrinsic min-width so the Search button
+     stays on-screen on very narrow viewports (folded phones). */
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 11px 20px;
+  font-size: 15px;
+  color: var(--text-h);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus { border-color: var(--text-h); }
+.search-input::placeholder { color: var(--text); }
+
+.filter-number { width: 90px; }
+.filter-number::placeholder { color: var(--text); }
+
+.results-label {
+  font-size: 16px;
+  color: var(--text-h);
+  margin-bottom: 16px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.page-info {
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Card grid */
+.card-grid {
+  display: grid;
+  /* Tile min-width scales with the viewport (140px on phones for a reliable
+     2-up, 180px on desktop), and min(100%, …) guards against overflow when a
+     single track is wider than the container (folded phones, split views). */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(140px, 22vw, 180px)), 1fr));
+  gap: 20px;
+}
+
+.card-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.card-item:hover {
+  border-color: var(--text-h);
+  box-shadow: var(--shadow);
+}
+
+.card-info { text-align: center; width: 100%; }
+.card-price { color: var(--accent); font-weight: 600; font-size: 14px; }
+/* Source label after an eBay-sold estimate (the price itself renders in the
+   normal mint .card-price) — muted so the tag, not the number, marks the source */
+.est-badge { color: var(--text); font-weight: 500; font-size: 11px; margin-left: 5px; }

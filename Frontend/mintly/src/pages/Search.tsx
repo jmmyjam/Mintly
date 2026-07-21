@@ -8,11 +8,13 @@ import {
   type Card,
   type CardSet,
 } from "../api";
+import CardImage from "../components/CardImage";
 import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard } from "../hooks";
 import { money } from "../format";
+import styles from "./Search.module.css";
 
 const RARITIES = [
   "Common",
@@ -176,7 +178,7 @@ export default function Search() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const pager = totalPages > 1 && cards.length > 0 && !error && (
-    <div className="pagination">
+    <div className={styles.pagination}>
       <button
         className="btn-outline btn-sm"
         disabled={page <= 1 || loading}
@@ -184,7 +186,7 @@ export default function Search() {
       >
         ← Prev
       </button>
-      <span className="page-info">
+      <span className={styles.pageInfo}>
         Page {page} of {totalPages} · {totalCount.toLocaleString()} cards
       </span>
       <button
@@ -200,12 +202,12 @@ export default function Search() {
   return (
     <div className="page">
       <h1>Search Cards</h1>
-      <form onSubmit={handleSearch} className="search-form">
+      <form onSubmit={handleSearch} className={styles.searchForm}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name (e.g. Charizard)"
-          className="search-input"
+          className={styles.searchInput}
         />
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? "Searching..." : "Search"}
@@ -253,7 +255,7 @@ export default function Search() {
           value={number}
           onChange={(e) => setNumber(e.target.value)}
           placeholder="Card #"
-          className="filter-select filter-number"
+          className={`filter-select ${styles.filterNumber}`}
         />
         {hasFilters && (
           <button className="btn-outline btn-sm" onClick={clearFilters}>
@@ -265,7 +267,7 @@ export default function Search() {
       {error && <p className="error">{error}</p>}
 
       {resultsLabel && !loading && !error && (
-        <h2 className="results-label">{resultsLabel}</h2>
+        <h2 className={styles.resultsLabel}>{resultsLabel}</h2>
       )}
 
       {!loading &&
@@ -280,35 +282,30 @@ export default function Search() {
 
       {pager}
 
-      <div className="card-grid">
+      <div className={styles.cardGrid}>
         {cards.map((card) => {
           const price = getCardPrice(card);
           const isAdding = adding === card.id;
           const status = addStatus?.id === card.id ? addStatus : null;
 
           return (
-            <div key={card.id} className="card-item">
+            <div key={card.id} className={styles.cardItem}>
               <Link to={`/card/${card.id}`} className="card-link">
-                <img
-                  src={card.images.small}
-                  alt={card.name}
-                  className="card-image"
-                  loading="lazy"
-                />
-                <div className="card-info">
+                <CardImage src={card.images.small} alt={card.name} />
+                <div className={styles.cardInfo}>
                   <p className="card-name">{card.name}</p>
                   <p className="card-set">{card.set.name}</p>
                   {price != null ? (
-                    <p className="card-price">
+                    <p className={styles.cardPrice}>
                       {money(price)}
                       {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
                     </p>
                   ) : card.estimate ? (
                     // No TCGPlayer price — recent-eBay-sold estimate, styled
                     // like a normal price with the source named beside it
-                    <p className="card-price">
+                    <p className={styles.cardPrice}>
                       {money(card.estimate.value)}
-                      <span className="est-badge">eBay est.</span>
+                      <span className={styles.estBadge}>eBay est.</span>
                       {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
                     </p>
                   ) : null}

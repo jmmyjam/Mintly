@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getCardHistory, type PricePoint } from '../api'
 import { money } from '../format'
+import styles from './PriceHistoryChart.module.css'
 
 // Ranges the user can scope the history to; "All" spans the full ~5-year window
 const RANGES: { key: string; label: string; days: number | null }[] = [
@@ -51,7 +52,7 @@ export default function PriceHistoryChart({ cardId }: { cardId: string }) {
 
   if (loading) {
     return (
-      <div className="price-history">
+      <div className={styles.priceHistory}>
         <h2>Price History</h2>
         <p className="prices-note">Loading price history…</p>
       </div>
@@ -62,7 +63,7 @@ export default function PriceHistoryChart({ cardId }: { cardId: string }) {
   // store only grows as the card is viewed over time.
   if (points.length < 2) {
     return (
-      <div className="price-history">
+      <div className={styles.priceHistory}>
         <h2>Price History</h2>
         <p className="prices-note">
           Not enough history yet — Mintly records one price point per day, so this
@@ -75,14 +76,14 @@ export default function PriceHistoryChart({ cardId }: { cardId: string }) {
   const chartData = days == null || visible.length >= 2 ? visible : points
 
   return (
-    <div className="price-history">
-      <div className="price-history-head">
+    <div className={styles.priceHistory}>
+      <div className={styles.priceHistoryHead}>
         <h2>Price History</h2>
-        <div className="range-toggle">
+        <div className={styles.rangeToggle}>
           {RANGES.map(r => (
             <button
               key={r.key}
-              className={`range-btn${range === r.key ? ' active' : ''}`}
+              className={`${styles.rangeBtn}${range === r.key ? ' ' + styles.active : ''}`}
               onClick={() => setRange(r.key)}
             >
               {r.label}
