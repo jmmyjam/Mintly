@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.auth import router as auth_router
 from app.routers.cards import router as cards_router
+from app.routers.health import router as health_router
 from app.routers.portfolio import router as portfolio_router
 
 load_dotenv()
@@ -32,3 +33,4 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(portfolio_router)
 app.include_router(cards_router)
+app.include_router(health_router)
