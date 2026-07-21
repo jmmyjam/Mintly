@@ -10,6 +10,7 @@ from app.models import User, PortfolioCard, PasswordResetToken, utcnow
 from app.services import mailer
 from app.services.rate_limit import rate_limit
 import hashlib
+import html
 import logging
 import os
 import re
@@ -209,6 +210,58 @@ def change_password(body: ChangePasswordRequest,
     return {"message": "Password updated"}
 
 
+def reset_email_html(username: str, link: str) -> str:
+    # The HTML alternative for the reset email, styled to the app's dark
+    # palette (index.css tokens, inlined — email clients strip <style>).
+    # Table layout + no images: renders everywhere, nothing to block.
+    # Username is user-controlled — escape it.
+    name = html.escape(username)
+    return f"""\
+<div style="margin:0;padding:0;background-color:#0a0a0b;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+         style="background-color:#0a0a0b;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="max-width:440px;background-color:#1e1e21;border:1px solid #303037;border-radius:18px;">
+        <tr><td style="padding:36px 36px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <p style="margin:0 0 24px;font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#f2eee3;">
+            <span style="color:#56cf9e;">&#9679;</span>&nbsp;Mintly
+          </p>
+          <h1 style="margin:0 0 10px;font-size:23px;font-weight:700;letter-spacing:-0.02em;color:#f2f2ef;">
+            Reset your password
+          </h1>
+          <p style="margin:0 0 26px;font-size:14px;line-height:1.6;color:#9c9ca4;">
+            Hi {name}, someone asked to reset the password for your Mintly
+            account. If that was you, choose a new password below &mdash; the
+            link works for {RESET_TOKEN_TTL_MINUTES} minutes.
+          </p>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="background-color:#f2eee3;border-radius:999px;">
+              <a href="{link}"
+                 style="display:inline-block;padding:12px 28px;font-family:inherit;font-size:14px;font-weight:600;color:#0a0a0b;text-decoration:none;border-radius:999px;">
+                Choose a new password
+              </a>
+            </td>
+          </tr></table>
+          <p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#9c9ca4;">
+            If you didn't ask for this, you can ignore this email &mdash; your
+            password is unchanged.
+          </p>
+          <p style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#9c9ca4;">
+            Button not working? Copy this link:<br>
+            <a href="{link}" style="color:#56cf9e;word-break:break-all;">{link}</a>
+          </p>
+        </td></tr>
+      </table>
+      <p style="margin:18px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#9c9ca4;">
+        Mintly &mdash; Pok&eacute;mon TCG portfolio tracker
+      </p>
+    </td></tr>
+  </table>
+</div>
+"""
+
+
 # The response is identical whether or not the email has an account — only the
 # inbox learns the difference (account enumeration). Rate-limited tighter than
 # login because every valid hit sends an email (inbox-bombing vector).
@@ -229,6 +282,7 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
             expires_at=utcnow() + timedelta(minutes=RESET_TOKEN_TTL_MINUTES),
         ))
         db.commit()
+        link = f"{FRONTEND_BASE_URL}/reset-password?token={raw}"
         try:
             mailer.send_email(
                 to=user.email,
@@ -238,10 +292,11 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
                     f"Someone asked to reset the password for your Mintly account. "
                     f"If that was you, open this link within {RESET_TOKEN_TTL_MINUTES} minutes "
                     f"to choose a new password:\n\n"
-                    f"{FRONTEND_BASE_URL}/reset-password?token={raw}\n\n"
+                    f"{link}\n\n"
                     f"If you didn't ask for this, you can ignore this email — "
                     f"your password is unchanged.\n"
                 ),
+                html=reset_email_html(user.username, link),
             )
         except Exception:
             # A send failure must not change the response (that would leak

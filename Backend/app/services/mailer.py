@@ -35,7 +35,7 @@ def is_configured() -> bool:
     return bool(SMTP_HOST and MAIL_FROM)
 
 
-def send_email(to: str, subject: str, body: str) -> None:
+def send_email(to: str, subject: str, body: str, html: str | None = None) -> None:
     if not is_configured():
         print(f"[mailer] SMTP not configured — printing instead of sending\n"
               f"To: {to}\nSubject: {subject}\n\n{body}", flush=True)
@@ -45,6 +45,10 @@ def send_email(to: str, subject: str, body: str) -> None:
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
+    if html:
+        # multipart/alternative: clients render the HTML, everything else
+        # (and spam filters) still gets the plain-text part
+        msg.add_alternative(html, subtype="html")
     if SMTP_PORT == 465:
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
             if SMTP_USER:

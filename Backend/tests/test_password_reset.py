@@ -19,10 +19,11 @@ def sent(monkeypatch):
     """Capture outbound emails instead of sending (auth.py resolves
     mailer.send_email at call time, so patching the module attr works)."""
     messages: list[dict] = []
-    monkeypatch.setattr(
-        mailer, "send_email",
-        lambda to, subject, body: messages.append(
-            {"to": to, "subject": subject, "body": body}))
+
+    def capture(to, subject, body, html=None):
+        messages.append({"to": to, "subject": subject, "body": body, "html": html})
+
+    monkeypatch.setattr(mailer, "send_email", capture)
     return messages
 
 
@@ -53,6 +54,9 @@ class TestForgotPassword:
         assert len(sent) == 1
         assert sent[0]["to"] == "ash@example.com"
         assert "/reset-password?token=" in sent[0]["body"]
+        # the HTML alternative carries the same link
+        assert "/reset-password?token=" in sent[0]["html"]
+        assert token_from(sent) in sent[0]["html"]
 
     def test_unknown_email_same_response_no_email(self, client, sent):
         register(client)
@@ -82,9 +86,16 @@ class TestForgotPassword:
         assert reset(client, old).status_code == 400
         assert reset(client, new).status_code == 200
 
+    def test_username_escaped_in_html(self, client, sent):
+        client.post("/auth/register", json={**REGISTER, "email": "ash2@example.com",
+                                            "username": "<b>ash</b>"})
+        request_reset(client, email="ash2@example.com")
+        assert "<b>ash</b>" not in sent[-1]["html"]
+        assert "&lt;b&gt;ash&lt;/b&gt;" in sent[-1]["html"]
+
     def test_send_failure_keeps_generic_response(self, client, monkeypatch):
         register(client)
-        def boom(to, subject, body):
+        def boom(to, subject, body, html=None):
             raise RuntimeError("smtp down")
         monkeypatch.setattr(mailer, "send_email", boom)
         res = request_reset(client)
