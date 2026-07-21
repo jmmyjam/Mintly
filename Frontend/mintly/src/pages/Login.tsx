@@ -149,6 +149,11 @@ export default function Login() {
             required
             className={styles.formInput}
           />
+          {mode === 'login' && (
+            <p className={styles.forgotRow}>
+              <Link to="/reset-password" className={styles.forgotLink}>Forgot password?</Link>
+            </p>
+          )}
           {mode === 'register' && (
             <p className={styles.formHint}>At least 8 characters, with a letter and a number.</p>
           )}

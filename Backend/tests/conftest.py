@@ -16,6 +16,9 @@ os.environ.setdefault("CARD_CACHE_DIR", tempfile.mkdtemp(prefix="mintly-test-cac
 # a dev .env may set this for deploy testing; the suite asserts the untrusted
 # default, so pin it before rate_limit.py reads it at import
 os.environ.setdefault("RATE_LIMIT_TRUST_FORWARDED", "0")
+# a dev .env may hold real SMTP creds — pin the mailer to its unconfigured
+# (print-to-console) mode so the suite can never send actual email
+os.environ.setdefault("SMTP_HOST", "")
 
 import pytest
 from fastapi.testclient import TestClient

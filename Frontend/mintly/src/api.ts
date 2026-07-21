@@ -250,6 +250,34 @@ export async function changePassword(current_password: string, new_password: str
   }
 }
 
+// Request a password-reset email. The backend answers identically whether or
+// not the address has an account (anti-enumeration), so the returned message
+// is always the generic "if that email has an account…" line.
+export async function forgotPassword(email: string): Promise<string> {
+  const res = await fetch(`${BASE}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  const data = await res.json().catch(() => ({}))
+  // the only real failure is the 429 rate limit — surface its detail
+  if (!res.ok) throw new Error(data.detail || 'Failed to request a reset link')
+  return data.message
+}
+
+// Set a new password using the token from a reset email (single-use, 30 min)
+export async function resetPassword(token: string, new_password: string): Promise<void> {
+  const res = await fetch(`${BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, new_password }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to reset password')
+  }
+}
+
 // Permanently delete the logged-in user's account and all their portfolio data.
 // Clears the local token on success (the account it points at no longer exists).
 export async function deleteAccount(): Promise<void> {

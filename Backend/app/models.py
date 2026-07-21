@@ -21,6 +21,19 @@ class User(Base):
     accepted_terms_at = Column(DateTime, nullable=True)
     portfolio = relationship("PortfolioCard", back_populates="owner")
 
+class PasswordResetToken(Base):
+    # A pending "forgot password" link. Only the sha256 of the emailed token is
+    # stored — a DB leak must not hand out working reset links. One live row per
+    # user (a new request deletes the old ones); a consumed row keeps used_at so
+    # the link can't be replayed. Cleared on account deletion (no FK cascade).
+    __tablename__ = "password_reset_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    token_hash = Column(String, unique=True)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime)
+    used_at = Column(DateTime, nullable=True)
+
 class PortfolioCard(Base):
     __tablename__ = "portfolio_cards"
     id = Column(Integer, primary_key=True)

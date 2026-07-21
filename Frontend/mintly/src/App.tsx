@@ -8,6 +8,7 @@ import Portfolio from './pages/Portfolio'
 import Profile from './pages/Profile'
 import CardDetail from './pages/CardDetail'
 import Login from './pages/Login'
+import ResetPassword from './pages/ResetPassword'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import './App.css'
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/card/:cardId" element={<CardDetail />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
         </Routes>

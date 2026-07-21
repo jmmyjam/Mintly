@@ -201,6 +201,20 @@
   margin-top: -6px;
 }
 
+/* "Forgot password?" under the password field, kept quiet until hovered */
+.forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 0;
+}
+
+.forgot-link {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.forgot-link:hover { color: var(--text-h); }
+
 .terms-row {
   display: flex;
   align-items: flex-start;

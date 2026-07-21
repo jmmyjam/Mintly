@@ -6,19 +6,29 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, PortfolioCard, utcnow
+from app.models import User, PortfolioCard, PasswordResetToken, utcnow
+from app.services import mailer
 from app.services.rate_limit import rate_limit
+import hashlib
+import logging
 import os
 import re
+import secrets
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 # ----- Configuration ---------------------------------------------------------
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
+
+# Where password-reset links point (the deployed frontend's origin)
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
+RESET_TOKEN_TTL_MINUTES = 30
 
 
 # ----- Global state ----------------------------------------------------------
@@ -48,6 +58,15 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
 # ----- Helpers ----------------------------------------------------------------
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -70,6 +89,11 @@ def password_error(password: str) -> str | None:
     if not re.search(r"\d", password):
         return "Password must contain at least one number"
     return None
+
+
+def hash_token(raw: str) -> str:
+    # Reset tokens are stored hashed — a DB leak must not yield working links
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def valid_email(email: str) -> bool:
@@ -185,14 +209,86 @@ def change_password(body: ChangePasswordRequest,
     return {"message": "Password updated"}
 
 
+# The response is identical whether or not the email has an account — only the
+# inbox learns the difference (account enumeration). Rate-limited tighter than
+# login because every valid hit sends an email (inbox-bombing vector).
+@router.post("/forgot-password",
+             dependencies=[Depends(rate_limit("forgot", times=5, seconds=3600,
+                                              what="password reset requests"))])
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == body.email.strip()).first()
+    if user:
+        # One live link per account: a new request supersedes any outstanding one
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id
+        ).delete(synchronize_session=False)
+        raw = secrets.token_urlsafe(32)
+        db.add(PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_token(raw),
+            expires_at=utcnow() + timedelta(minutes=RESET_TOKEN_TTL_MINUTES),
+        ))
+        db.commit()
+        try:
+            mailer.send_email(
+                to=user.email,
+                subject="Reset your Mintly password",
+                body=(
+                    f"Hi {user.username},\n\n"
+                    f"Someone asked to reset the password for your Mintly account. "
+                    f"If that was you, open this link within {RESET_TOKEN_TTL_MINUTES} minutes "
+                    f"to choose a new password:\n\n"
+                    f"{FRONTEND_BASE_URL}/reset-password?token={raw}\n\n"
+                    f"If you didn't ask for this, you can ignore this email — "
+                    f"your password is unchanged.\n"
+                ),
+            )
+        except Exception:
+            # A send failure must not change the response (that would leak
+            # whether the address exists); the user can simply request again
+            logger.warning("password reset email failed", exc_info=True)
+    return {"message": "If that email has an account, a reset link is on its way."}
+
+
+# Shares the "password" budget with the authed change-password route — both are
+# password-setting attempts. Token guessing is hopeless anyway (256-bit values).
+@router.post("/reset-password",
+             dependencies=[Depends(rate_limit("password", times=10, seconds=300,
+                                              what="password changes"))])
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    invalid = HTTPException(
+        status_code=400,
+        detail="This reset link is invalid or has expired — request a new one")
+    token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token_hash == hash_token(body.token)
+    ).first()
+    if not token or token.used_at is not None or token.expires_at < utcnow():
+        raise invalid
+    error = password_error(body.new_password)
+    if error:
+        # The token stays live — a typo'd new password shouldn't burn the link
+        raise HTTPException(status_code=400, detail=error)
+    user = db.get(User, token.user_id)
+    if not user:
+        raise invalid
+    user.hashed_password = pwd_context.hash(body.new_password)
+    token.used_at = utcnow()
+    db.commit()
+    return {"message": "Password updated"}
+
+
 @router.delete("/me")
 def delete_account(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Remove the user's portfolio lots first — the FK has no ON DELETE cascade,
-    # so Postgres would reject deleting a user who still holds cards. The shared
-    # per-card price snapshots aren't tied to a user (Privacy §5), so they stay.
+    # Remove the user's portfolio lots and any pending reset tokens first —
+    # neither FK has an ON DELETE cascade, so Postgres would reject deleting a
+    # parent row they still reference. The shared per-card price snapshots
+    # aren't tied to a user (Privacy §5), so they stay.
     db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).delete(
         synchronize_session=False
     )
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == current_user.id
+    ).delete(synchronize_session=False)
     db.delete(current_user)
     db.commit()
     return {"message": "Account deleted"}
