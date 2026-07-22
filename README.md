@@ -1,23 +1,32 @@
 # Mintly
 
-A Pokemon TCG portfolio tracker. Search cards, monitor live market prices, and track your collection's value over time.
+[![Live](https://img.shields.io/badge/live-mintlytcg.com-00c893)](https://mintlytcg.com)
+![React 19](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169e1?logo=postgresql&logoColor=white)
+![Tests](https://img.shields.io/badge/backend_tests-226_passing-2ea44f)
+
+**Live at [mintlytcg.com](https://mintlytcg.com).** A Pokemon TCG portfolio tracker: search cards, monitor live market prices, and track your collection's value over time.
 
 ## Stack
 
-- **Backend** — FastAPI, PostgreSQL, SQLAlchemy, JWT auth
-- **Frontend** — React, TypeScript, Vite, React Router
+- **Backend** — FastAPI, PostgreSQL, SQLAlchemy, Alembic migrations, JWT auth
+- **Frontend** — React 19, TypeScript, Vite, React Router, Recharts
+- **Production** — Docker Compose (Postgres + API + Caddy) behind a Cloudflare Tunnel
 
 ## Features
 
-- Search cards by name, set, or card number
-- Live prices pulled from TCGPlayer via the Pokemon TCG API
-- Real TCGplayer prices for brand-new sets the Pokemon TCG API hasn't priced yet, filled daily from [TCGCSV](https://tcgcsv.com) (a nightly mirror of TCGplayer's price data) — variant-accurate, so a 5¢ common shows as 5¢
-- eBay sold-listings estimate as the last resort for cards neither source can price (shown on the card page, and used by the daily snapshot job so those cards get history too)
-- Per-card price history chart and daily price-change chips, built from Mintly's own daily snapshots
-- Portfolio tracking with gain/loss per card and a value-over-time chart
-- User accounts with JWT authentication
-- Backend response cache (6-hour TTL) for fast repeated searches
-- Debounced search-as-you-type on the frontend
+- **Smart search** — natural-language queries ("charizard 4 base set") parsed into name/number/set filters, with set-name recognition, word-drop fallback, and debounced search-as-you-type
+- **Catalog-first browsing** — a daily crawl mirrors the full card catalog (~20k cards) into Postgres, so search/browse answer in milliseconds and keep working through upstream API outages
+- **Three price sources in accuracy order** — TCGPlayer prices via the Pokemon TCG API; real TCGplayer prices from [TCGCSV](https://tcgcsv.com) for brand-new sets the API hasn't priced yet (variant-accurate, so a 5¢ common shows as 5¢); eBay sold-listings median as the last resort, so even unpriced cards show an estimate
+- **Price history charts** (1M/6M/1Y/All) built from Mintly's own daily snapshots — no upstream history API exists — with one colored line per variant on multi-variant cards and daily price-change chips wherever a price appears
+- **Portfolio tracking by purchase lot** — per-lot gain/loss, daily change, filters and sorting, and a value-over-time chart
+- **Full account lifecycle** — JWT auth, profile editing (email/username/password), password reset by email (single-use, hashed, 30-minute tokens), and self-service account deletion
+- **Accessibility preferences** — reduce motion, high contrast, underlined links, and text size; applied instantly and stored per device
+- **Hardened public API** — per-IP sliding-window rate limits sized for humans, an uptime `/health` probe, and anti-enumeration password-reset responses
+- **SEO-ready** — JSON-LD structured data, robots.txt, and a catalog-driven sitemap covering every card page
+- **Tiered history storage** — recent dailies in Postgres, older months compacted to monthly closes with the full dailies archived to gzipped CSV (offloaded, never deleted)
 
 ## Getting Started
 
@@ -66,6 +75,30 @@ A Pokemon TCG portfolio tracker. Search cards, monitor live market prices, and t
 
    App runs at `http://localhost:5173`.
 
+## Production & deploying
+
+The live site is **https://mintlytcg.com** — Docker Compose on a home server (`pikachuserver`): Caddy serves the built frontend and proxies `/api/*` to the FastAPI container, behind a Cloudflare Tunnel (HTTPS terminates at Cloudflare's edge; no ports are opened at home). Full architecture: HANDOFF.md "Production deployment".
+
+To deploy a new commit:
+
+```bash
+git push                       # from the dev machine
+
+ssh pika                       # then, on the server:
+cd ~/apps/mintly
+git pull
+cd Frontend/mintly && npm ci && npm run build && cd ../..   # if frontend files changed
+docker compose up -d --build                                # if backend files changed
+docker compose restart caddy                                # if the Caddyfile changed
+```
+
+- **Frontend-only change** → just the npm build; Caddy serves the `dist/` bind mount, so the new build is live immediately, no restart.
+- **Backend change** → `docker compose up -d --build` rebuilds the api image and restarts the container.
+- **Caddyfile change** → needs the explicit `restart caddy`: the file is bind-mounted, so compose won't recreate the container on its own.
+- **DB schema change** → also run `docker compose exec api alembic upgrade head` once the new image is up.
+
+Verify after any deploy: `curl https://mintlytcg.com/api/health` → `{"status":"ok"}`.
+
 ## Price history & the daily snapshot job
 
 Mintly builds its own price history — there is no upstream history API. One row per card per UTC day lands in `card_price_snapshot`, written by `Backend/scripts/snapshot_all.py`, which runs in four phases:
@@ -86,15 +119,18 @@ venv/bin/python scripts/snapshot_all.py --max-pages 2 --max-ebay 0 --no-tcgcsv  
 #        --no-compact      skip the cold-storage step
 ```
 
-It's scheduled daily at **1:00pm local** by a launchd LaunchAgent (`~/Library/LaunchAgents/com.mintly.daily-snapshot.plist`) — just after TCGCSV's daily 20:00 UTC refresh, so the fill reads same-day prices — logging to `~/Library/Logs/mintly-daily-snapshot.log`. Postgres must be running; if the Mac is asleep at 1pm it runs on the next wake. The Python binary in the plist needs **Full Disk Access** because the repo lives under `~/Documents` — see HANDOFF.md "Daily snapshot job" if runs fail with "Operation not permitted".
+In production it's scheduled by cron on the server at **20:00 UTC** — right at TCGCSV's daily 20:00 UTC refresh, and the crawl's first ~30 minutes of paging run before the TCGCSV fill reads anything, so the fill sees same-day prices. It runs inside the api container and logs to `~/logs/mintly-snapshot.log`:
 
 ```bash
-launchctl load   ~/Library/LaunchAgents/com.mintly.daily-snapshot.plist   # enable
-launchctl unload ~/Library/LaunchAgents/com.mintly.daily-snapshot.plist   # disable
-launchctl kickstart gui/$(id -u)/com.mintly.daily-snapshot                # run now
-launchctl list | grep mintly                                              # status
-tail -f ~/Library/Logs/mintly-daily-snapshot.log                          # watch a run
+# on the server, from ~/apps/mintly (compose commands need the compose file's directory)
+docker compose exec -T api python scripts/snapshot_all.py   # the command cron runs (flags above work here too)
+tail -f ~/logs/mintly-snapshot.log                          # watch a run / read the last summary
+docker compose top api                                      # a "python scripts/snapshot_all.py" line = crawl in progress
+journalctl -u cron --since today | grep -i mintly           # confirm cron fired it
+crontab -l                                                  # the schedule (snapshot + nightly backup + rotation)
 ```
+
+A healthy run ends with a summary block (pages ok, cards priced, tcgcsv/ebay fill counts, snapshots written). The occasional dropped page is routine upstream flakiness — its cards are recovered from TCGCSV the same run, and anything missed is caught the next day. A dev machine can run the same script directly against its local DB: `cd Backend && venv/bin/python scripts/snapshot_all.py`.
 
 ### Tiered history storage (stock-chart style)
 
@@ -111,6 +147,16 @@ cd Backend
 venv/bin/python scripts/archive_history.py                    # compact eligible months now
 venv/bin/python scripts/archive_history.py --list             # what's archived, with sizes
 venv/bin/python scripts/archive_history.py --restore 2026-05  # load a month's dailies back into the DB
+```
+
+## Testing
+
+Backend tests run offline (in-memory SQLite + fake upstream APIs — no network, no Postgres needed):
+
+```bash
+cd Backend
+venv/bin/pip install -r requirements-dev.txt
+venv/bin/pytest tests/ -q     # 226 tests, ~30s
 ```
 
 ## API Endpoints
@@ -131,3 +177,11 @@ venv/bin/python scripts/archive_history.py --restore 2026-05  # load a month's d
 | POST | `/portfolio/add` | Add card to portfolio (auth required) |
 | PATCH | `/portfolio/{id}` | Edit a lot's price/quantity (auth required) |
 | DELETE | `/portfolio/{id}` | Remove card from portfolio (auth required) |
+| GET | `/health` | Uptime probe: 200 when app + DB answer, 503 otherwise |
+| GET | `/sitemap.xml` | XML sitemap for crawlers (static pages + every catalog card) |
+
+Password reset (`POST /auth/forgot-password`, `POST /auth/reset-password`), profile management (`GET`/`PATCH /auth/me`, `POST /auth/me/password`), and account deletion (`DELETE /auth/me`) round out the auth surface — see HANDOFF.md for the full endpoint reference.
+
+## Disclaimer
+
+Mintly is an unofficial fan project, not affiliated with, endorsed, or sponsored by Nintendo, The Pokémon Company, TCGplayer, or eBay. Pokémon and all card images are trademarks of their respective owners. Prices shown are third-party market figures and estimates, provided for informational purposes only — not offers to buy or sell.
