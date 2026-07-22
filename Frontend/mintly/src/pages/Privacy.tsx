@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 21, 2026</p>
+      <p className="legal-updated">Last updated: July 22, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -44,7 +44,10 @@ export default function Privacy() {
         of these services — only the card name, number, or set needed to find
         results and prices. Password-reset emails are delivered through an
         email provider, which processes your email address solely to deliver
-        that message.
+        that message. The site itself is served through Cloudflare, which sits
+        between your browser and our server to route traffic securely and
+        protect against attacks; to do this it processes connection metadata
+        such as your IP address, subject to its own privacy policy.
       </p>
 
       <h2>5. Your data</h2>

@@ -8,6 +8,7 @@ from app.routers.auth import router as auth_router
 from app.routers.cards import router as cards_router
 from app.routers.health import router as health_router
 from app.routers.portfolio import router as portfolio_router
+from app.routers.sitemap import router as sitemap_router
 
 load_dotenv()
 
@@ -34,3 +35,4 @@ app.include_router(auth_router)
 app.include_router(portfolio_router)
 app.include_router(cards_router)
 app.include_router(health_router)
+app.include_router(sitemap_router)

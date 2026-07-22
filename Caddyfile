@@ -4,6 +4,11 @@
 	handle_path /api/* {
 		reverse_proxy api:8000
 	}
+	# Crawler-facing sitemap lives on the backend (built from card_catalog);
+	# robots.txt points here, so it must serve from the site root.
+	handle /sitemap.xml {
+		reverse_proxy api:8000
+	}
 	handle {
 		root * /srv
 		file_server
