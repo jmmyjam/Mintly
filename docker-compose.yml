@@ -35,6 +35,7 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
+      # LAN/Tailscale access; public traffic arrives via the tunnel instead
       - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -42,6 +43,18 @@ services:
       - caddy_data:/data
     depends_on:
       - api
+
+  # Public route: mintlytcg.com -> Cloudflare edge (HTTPS) -> outbound tunnel
+  # -> caddy. No router port-forwarding; TUNNEL_TOKEN comes from the
+  # Cloudflare Zero Trust dashboard and lives in .env.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - caddy
 
 volumes:
   pgdata:
