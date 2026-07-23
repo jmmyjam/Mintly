@@ -250,24 +250,25 @@ def candidates_for_group(group_id: int) -> dict[str, list[dict]]:
         for entry in product.get("extendedData") or []:
             if entry.get("name") == "Number" and entry.get("value"):
                 joined.setdefault(norm_number(entry["value"]), []).append(
-                    {"name": product.get("name") or "", "prices": prices})
+                    {"name": product.get("name") or "", "prices": prices,
+                     "image": product.get("imageUrl")})
                 break
 
     _prices_cache[group_id] = joined
     return joined
 
 
-def pick_product(candidates: list[dict] | None, card_name: str | None = None,
-                 require_name: bool = False) -> dict | None:
-    """The prices block of the product that IS the asked-for card, from the
-    candidates sharing its number. Product names look like "Charizard -
-    SWSH066 (Prerelease) [Staff]": prefer the ones whose base name (before the
-    " - <number>" tail) matches the card's, then the ones without a bracketed
-    qualifier (the [Staff]/[Winner] stamps are different, rarer physical cards),
-    then the shortest name — so the plain version wins deterministically
-    instead of whichever product the price file listed first. `require_name`
-    returns None when no candidate matches the card name — for callers about
-    to OVERRIDE a real price, where a number-only match isn't evidence enough."""
+def pick_candidate(candidates: list[dict] | None, card_name: str | None = None,
+                   require_name: bool = False) -> dict | None:
+    """The product that IS the asked-for card, from the candidates sharing its
+    number. Product names look like "Charizard - SWSH066 (Prerelease)
+    [Staff]": prefer the ones whose base name (before the " - <number>" tail)
+    matches the card's, then the ones without a bracketed qualifier (the
+    [Staff]/[Winner] stamps are different, rarer physical cards), then the
+    shortest name — so the plain version wins deterministically instead of
+    whichever product the price file listed first. `require_name` returns None
+    when no candidate matches the card name — for callers about to OVERRIDE
+    real data, where a number-only match isn't evidence enough."""
     if not candidates:
         return None
     pool = candidates
@@ -281,7 +282,33 @@ def pick_product(candidates: list[dict] | None, card_name: str | None = None,
             return None
     plain = [c for c in pool if "[" not in c["name"]]
     pool = plain or pool
-    return min(pool, key=lambda c: (len(c["name"]), c["name"]))["prices"]
+    return min(pool, key=lambda c: (len(c["name"]), c["name"]))
+
+
+def pick_product(candidates: list[dict] | None, card_name: str | None = None,
+                 require_name: bool = False) -> dict | None:
+    """The prices block of pick_candidate's choice, or None."""
+    chosen = pick_candidate(candidates, card_name, require_name)
+    return chosen["prices"] if chosen else None
+
+
+# The products file lists each product's small rendition ("..._200w.jpg");
+# swapping the suffix asks the CDN for its largest. Old promo products only
+# have ~200px scans — the CDN then serves that original size, which is soft on
+# the detail page but honest.
+_IMAGE_SUFFIX_RE = re.compile(r"_[0-9]+w\.jpg$")
+
+
+def product_images(candidate: dict | None) -> dict | None:
+    """A pokemontcg.io-shaped `images` block for a picked product, or None if
+    it carries no image. `source` marks the block as substituted, so the
+    request-path catalog refresh keeps it over upstream's dead URLs and the
+    next crawl knows to re-arbitrate it (see upsert_cards / image_fill)."""
+    url = (candidate or {}).get("image")
+    if not url:
+        return None
+    return {"small": url, "large": _IMAGE_SUFFIX_RE.sub("_in_1000x1000.jpg", url),
+            "source": "tcgplayer"}
 
 
 def prices_for_group(group_id: int) -> dict[str, dict]:

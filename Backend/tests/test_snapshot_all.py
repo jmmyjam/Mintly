@@ -109,6 +109,9 @@ def run_main(monkeypatch):
     # check off the network; fake_tcgcsv re-patches this for its one set
     monkeypatch.setattr(snapshot_all.tcgcsv, "group_id_for_set",
                         lambda name, set_id=None: None)
+    # every image URL verifies clean by default — keeps the image check off
+    # the network; the image-check tests re-patch this
+    monkeypatch.setattr(snapshot_all, "_head_image", lambda url: 200)
 
     def run(extra_args: list[str] = [], fail_first: dict[int, int] = {},
             pages: dict[int, list] | None = None):
@@ -308,7 +311,8 @@ def fake_tcgcsv(monkeypatch):
         snapshot_all.tcgcsv, "candidates_for_group",
         lambda gid: {"188": [{"name": "Mega Card ex - 188/132",
                               "prices": {"holofoil": {"market": 250.0,
-                                                      "mid": 260.0}}}]})
+                                                      "mid": 260.0}},
+                              "image": "https://cdn.example/product/9_200w.jpg"}]})
 
 
 def test_tcgcsv_fill_injects_prices_and_shrinks_the_ebay_set(fake_tcgcsv):
@@ -546,6 +550,150 @@ def test_sanity_corrected_price_lands_in_catalog_and_history(run_main, fake_tcgc
         assert snap.price == 250.0
     finally:
         db.close()
+
+
+# ---- Image check: dead upstream image URLs swapped for TCGplayer scans ------
+# The upstream image CDN answers a missing card image with HTTP 404 whose body
+# is a card-back PNG, which a browser <img> renders as if it were the artwork.
+# image_fill HEAD-checks each URL once (a 200 stamps `verified`, skipped on
+# later runs) and re-points 404ing cards at the TCGplayer product scan.
+
+def imaged_card(card_id: str = "me9-1") -> dict:
+    """A mega_card (Mega Set / number 188) carrying an images block."""
+    card = mega_card(card_id)
+    card["images"] = {"small": f"https://img.example/{card_id}/small",
+                      "large": f"https://img.example/{card_id}/large"}
+    return card
+
+
+@pytest.fixture
+def fake_heads(monkeypatch):
+    """_head_image stand-in: statuses keyed by URL (default 200), calls recorded."""
+    class FakeHead:
+        def __init__(self):
+            self.statuses: dict[str, int | None] = {}
+            self.calls: list[str] = []
+
+        def __call__(self, url):
+            self.calls.append(url)
+            return self.statuses.get(url, 200)
+
+    fake = FakeHead()
+    monkeypatch.setattr(snapshot_all, "_head_image", fake)
+    return fake
+
+
+def image_fill_on(*cards: dict) -> "snapshot_all.ImageFill":
+    db = TestingSessionLocal()
+    try:
+        return snapshot_all.image_fill(db, snapshot_all.Crawl(cards=list(cards)))
+    finally:
+        db.close()
+
+
+def test_live_image_urls_get_the_verified_stamp(fake_heads):
+    card = imaged_card()
+    fill = image_fill_on(card)
+
+    assert card["images"]["verified"] is True
+    assert fill.checked == 1 and fill.substituted == {} and fill.missing == []
+
+
+def test_dead_image_swapped_for_the_tcgplayer_scan(fake_heads, fake_tcgcsv):
+    card = imaged_card()
+    fake_heads.statuses["https://img.example/me9-1/small"] = 404
+    fill = image_fill_on(card)
+
+    assert card["images"] == {
+        "small": "https://cdn.example/product/9_200w.jpg",
+        "large": "https://cdn.example/product/9_in_1000x1000.jpg",
+        "source": "tcgplayer",
+    }
+    assert fill.substituted == {"me9-1": "https://cdn.example/product/9_200w.jpg"}
+
+
+def test_dead_image_without_a_substitute_left_alone(fake_heads, monkeypatch):
+    # no TCGCSV match: upstream's URLs stay (the frontend detects the card-back
+    # and shows its placeholder) and, unstamped, get re-checked next run
+    monkeypatch.setattr(snapshot_all.tcgcsv, "group_id_for_set",
+                        lambda name, set_id=None: None)
+    card = imaged_card()
+    fake_heads.statuses["https://img.example/me9-1/small"] = 404
+    fill = image_fill_on(card)
+
+    assert card["images"]["small"] == "https://img.example/me9-1/small"
+    assert "verified" not in card["images"]
+    assert fill.missing == ["me9-1"]
+
+
+def test_verified_urls_are_not_rechecked_on_later_runs(fake_heads):
+    stamped = imaged_card()
+    stamped["images"]["verified"] = True
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(db, [stamped])
+    db.close()
+
+    fresh = imaged_card()  # same URL, unstamped — as upstream serves it
+    fill = image_fill_on(fresh)
+
+    assert fake_heads.calls == [] and fill.checked == 0
+    assert fresh["images"]["verified"] is True  # stamp carried through the upsert
+
+
+def test_substituted_card_heals_back_when_upstream_grows_a_scan(fake_heads):
+    # the stored block is tcgplayer-sourced, not verified — so the fresh
+    # upstream URL is checked again, passes, and upstream's images win back
+    swapped = mega_card()
+    swapped["images"] = {"small": "https://cdn.example/product/9_200w.jpg",
+                         "large": "https://cdn.example/product/9_in_1000x1000.jpg",
+                         "source": "tcgplayer"}
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(db, [swapped])
+    db.close()
+
+    fresh = imaged_card()
+    fill = image_fill_on(fresh)
+
+    assert fake_heads.calls == ["https://img.example/me9-1/small"]
+    assert fresh["images"]["small"] == "https://img.example/me9-1/small"
+    assert fresh["images"]["verified"] is True
+    assert fill.substituted == {}
+
+
+def test_flaky_check_leaves_the_card_unstamped_for_next_run(fake_heads):
+    card = imaged_card()
+    fake_heads.statuses["https://img.example/me9-1/small"] = None  # network flake
+    fill = image_fill_on(card)
+
+    assert "verified" not in card["images"] and "source" not in card["images"]
+    assert fill.errors == 1
+
+
+def test_swapped_images_land_in_the_catalog(run_main, fake_tcgcsv, monkeypatch):
+    # end-to-end: the 404ing card comes out of the run serving the scan
+    monkeypatch.setattr(
+        snapshot_all, "_head_image",
+        lambda url: 404 if url == "https://img.example/me9-1/small" else 200)
+    pages = three_pages()
+    pages[2][0] = imaged_card()
+    assert run_main(pages=pages) == 0
+
+    db = TestingSessionLocal()
+    try:
+        stored = card_catalog.get_card(db, "me9-1").data
+        assert stored["images"]["small"] == "https://cdn.example/product/9_200w.jpg"
+        assert stored["images"]["source"] == "tcgplayer"
+    finally:
+        db.close()
+
+
+def test_no_tcgcsv_flag_skips_the_image_check(run_main, monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        snapshot_all, "image_fill",
+        lambda db, crawl: called.append(1) or snapshot_all.ImageFill())
+    assert run_main(["--no-tcgcsv"]) == 0
+    assert called == []
 
 
 # ---- Fossilized catalog prices clear on an authoritative crawl --------------

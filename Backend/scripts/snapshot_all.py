@@ -14,6 +14,9 @@ Cards upstream DOES price are cross-checked against the same TCGCSV mirror
 (`price_sanity_check`): a ≥3x divergence on a name-and-number-matched product
 means upstream's block maps the wrong product (e.g. a [Staff] promo) or holds
 a junk figure, and TCGplayer's own number wins.
+Card image URLs are HEAD-checked once each (`image_fill`): where upstream's
+image CDN 404s (it answers with a card-back PNG browsers render as artwork),
+the card is re-pointed at the TCGplayer product scan from the same mirror.
 Every crawled card is also mirrored into the `card_catalog` table the app
 serves browsing from (a complete crawl stamps the sync marker that lets list
 endpoints trust the catalog).
@@ -42,6 +45,7 @@ import logging
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import certifi
@@ -122,6 +126,16 @@ class SanityFill:
     TCGplayer figure from the TCGCSV mirror where the two wildly disagree."""
     replaced: dict[str, float] = field(default_factory=dict)
     sets_checked: int = 0
+
+
+@dataclass
+class ImageFill:
+    """What the image check did: upstream image URLs verified, and cards whose
+    image the upstream CDN doesn't have re-pointed at the TCGplayer scan."""
+    checked: int = 0      # HEAD requests actually sent this run
+    substituted: dict[str, str] = field(default_factory=dict)  # id -> new small URL
+    missing: list[str] = field(default_factory=list)  # 404 and no substitute either
+    errors: int = 0       # network flakes — those cards get re-checked next run
 
 
 @dataclass
@@ -367,6 +381,97 @@ def price_sanity_check(crawl: Crawl) -> SanityFill:
     return fill
 
 
+_IMAGE_TIMEOUT = (5, 15)
+_IMAGE_WORKERS = 8   # concurrent HEADs; the image CDN is Cloudflare-cached
+
+# Plain session for the image CDN — no API key, no upstream headers
+_image_session = requests.Session()
+_image_session.verify = certifi.where()
+
+
+def _head_image(url: str) -> int | None:
+    """The image URL's HTTP status, or None when the check itself failed."""
+    try:
+        return _image_session.head(url, timeout=_IMAGE_TIMEOUT).status_code
+    except requests.RequestException:
+        return None
+
+
+def image_fill(db, crawl: Crawl) -> ImageFill:
+    """Swap dead card-image URLs for the TCGplayer product scan.
+
+    The upstream image CDN answers a MISSING card image with HTTP 404 whose
+    body is a generic card-back PNG — a browser <img> renders that back as if
+    it were the artwork (every card of the 2014/15/17/18 McDonald's sets, for
+    example). Each crawled card's small-image URL is HEAD-checked: on 200 the
+    images block is stamped `verified` (the stamp rides the catalog row, and
+    upsert_cards carries it through request-path refreshes, so every URL is
+    checked once ever, not once per run); on 404 the whole block is replaced
+    with the TCGplayer scan of the same product match the price fills trust,
+    marked `source: tcgplayer`. Substituted cards fail the verified test on
+    the next crawl and get re-checked, so a card whose scan upstream later
+    adds heals back to upstream's (better) images automatically."""
+    fill = ImageFill()
+    # {card_id: the upstream small URL a previous run verified}
+    verified: dict[str, str] = {}
+    ids = [c["id"] for c in crawl.cards if c.get("id")]
+    for i in range(0, len(ids), _DEDUPE_CHUNK):
+        rows = (db.query(CatalogCard.card_id, CatalogCard.data)
+                  .filter(CatalogCard.card_id.in_(ids[i:i + _DEDUPE_CHUNK])))
+        for card_id, data in rows:
+            images = (data or {}).get("images") or {}
+            if images.get("verified") and images.get("small"):
+                verified[card_id] = images["small"]
+
+    to_check: list[dict] = []
+    for card in crawl.cards:
+        images = card.get("images") or {}
+        if not images.get("small"):
+            continue
+        if verified.get(card.get("id")) == images["small"]:
+            images["verified"] = True  # carry the stamp through this upsert
+        else:
+            to_check.append(card)
+    if not to_check:
+        return fill
+
+    log.info("---- image check: %s new/changed image URL(s) to verify ----",
+             f"{len(to_check):,}")
+    with ThreadPoolExecutor(max_workers=_IMAGE_WORKERS) as pool:
+        statuses = list(pool.map(
+            lambda c: _head_image(c["images"]["small"]), to_check))
+
+    for card, status in zip(to_check, statuses):
+        fill.checked += 1
+        if status == 200:
+            card["images"]["verified"] = True
+            continue
+        if status != 404:
+            fill.errors += 1  # flake or odd status — try again next run
+            continue
+        card_set = card.get("set") or {}
+        try:
+            group_id = tcgcsv.group_id_for_set(card_set.get("name"),
+                                               card_set.get("id"))
+            candidates = tcgcsv.candidates_for_group(group_id) if group_id else {}
+            images = tcgcsv.product_images(tcgcsv.pick_candidate(
+                candidates.get(tcgcsv.norm_number(card.get("number") or "")),
+                card.get("name")))
+        except Exception as exc:  # best-effort service, but never trust that
+            log.warning("  images %-18s lookup error: %s", card.get("id"), exc)
+            images = None
+        if images:
+            card["images"] = images
+            fill.substituted[card["id"]] = images["small"]
+            log.info("  images %-18s upstream 404 — using the TCGplayer scan",
+                     card["id"])
+        else:
+            # leave upstream's URLs in place: the frontend detects the 404
+            # card-back and shows its placeholder, and a later run re-checks
+            fill.missing.append(card["id"])
+    return fill
+
+
 def _estimate_one(card: dict) -> dict | None:
     """eBay sold-listings summary for one card, or None when the fetch itself
     failed (bot block / network). Callers must treat None differently from a
@@ -563,6 +668,16 @@ def main() -> int:
             # same-day re-record refreshes the corrected cards' rows in place
             recorded += _record_chunked(db, sanity.replaced)
 
+        # Swap dead image URLs for TCGplayer scans BEFORE the catalog upsert,
+        # so the fixed blocks land in the rows the app serves. Gated with the
+        # other TCGCSV passes: substitutes come from the same mirror.
+        ifill = ImageFill()
+        if not args.no_tcgcsv:
+            try:
+                ifill = image_fill(db, crawl)
+            except Exception as exc:  # best-effort like the fills
+                log.warning("image check failed: %s — image URLs kept as-is", exc)
+
         # Per-variant history for multi-variant cards (their headline row only
         # covers the preferred variant). After the TCGCSV fill, so injected
         # variant blocks get their series too.
@@ -665,6 +780,10 @@ def main() -> int:
         log.info("  sanity check      %d upstream price(s) overridden from "
                  "TCGplayer  (%d sets compared)",
                  len(sanity.replaced), sanity.sets_checked)
+        log.info("  image check       %s URL(s) checked, %d swapped to the "
+                 "TCGplayer scan, %d without an image anywhere, %d check "
+                 "errors", f"{ifill.checked:,}", len(ifill.substituted),
+                 len(ifill.missing), ifill.errors)
     if args.max_ebay > 0:
         log.info("  ebay fill         %d priced of %d tried  (%s eligible, "
                  "%d without recent sales, %d failed fetches)%s",

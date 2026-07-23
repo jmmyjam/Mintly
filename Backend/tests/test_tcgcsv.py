@@ -17,6 +17,7 @@ GROUPS = [
 
 PRODUCTS = [
     {"productId": 1, "name": "Tropius",
+     "imageUrl": "https://cdn.example/product/1_200w.jpg",
      "extendedData": [{"name": "Rarity", "value": "Common"},
                       {"name": "Number", "value": "001/084"}]},
     {"productId": 2, "name": "Lurantis ex",
@@ -164,8 +165,10 @@ class TestPricesForGroup:
 # outright different cards (the EX Trainer Kit half-decks both have a "4/12").
 DUP_PRODUCTS = [
     {"productId": 10, "name": "Charizard - SWSH066 (Prerelease) [Staff]",
+     "imageUrl": "https://cdn.example/product/10_200w.jpg",
      "extendedData": [{"name": "Number", "value": "SWSH066"}]},
     {"productId": 11, "name": "Charizard - SWSH066 (Prerelease)",
+     "imageUrl": "https://cdn.example/product/11_200w.jpg",
      "extendedData": [{"name": "Number", "value": "SWSH066"}]},
     {"productId": 12, "name": "Meowth - 4/12",
      "extendedData": [{"name": "Number", "value": "4/12"}]},
@@ -220,6 +223,41 @@ class TestPickProduct:
     def test_card_prices_uses_the_card_name(self):
         assert tcgcsv.card_prices("tk2a", "Base Set", "4/12",
                                   card_name="Chimecho")["normal"]["market"] == 2.5
+
+    def test_pick_candidate_keeps_image_with_its_product(self):
+        # image substitution must use the SAME product the price pick would
+        # choose — never the [Staff] stamp's scan
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        chosen = tcgcsv.pick_candidate(cands, "Charizard")
+        assert chosen["prices"]["holofoil"]["market"] == 98.49
+        assert chosen["image"] == "https://cdn.example/product/11_200w.jpg"
+
+
+class TestProductImages:
+    def test_join_carries_the_product_image(self):
+        cands = tcgcsv.candidates_for_group(24380)["1"]
+        assert cands[0]["image"] == "https://cdn.example/product/1_200w.jpg"
+
+    def test_images_block_shapes_small_and_large(self):
+        images = tcgcsv.product_images(
+            {"name": "Tropius", "prices": {},
+             "image": "https://cdn.example/product/1_200w.jpg"})
+        assert images == {
+            "small": "https://cdn.example/product/1_200w.jpg",
+            "large": "https://cdn.example/product/1_in_1000x1000.jpg",
+            "source": "tcgplayer",
+        }
+
+    def test_none_without_an_image(self):
+        assert tcgcsv.product_images({"name": "x", "prices": {}}) is None
+        assert tcgcsv.product_images(
+            {"name": "x", "prices": {}, "image": None}) is None
+        assert tcgcsv.product_images(None) is None
+
+    def test_unexpected_url_shape_reused_for_both_sizes(self):
+        images = tcgcsv.product_images(
+            {"name": "x", "prices": {}, "image": "https://cdn.example/odd.png"})
+        assert images["small"] == images["large"] == "https://cdn.example/odd.png"
 
 
 class TestCardPrices:

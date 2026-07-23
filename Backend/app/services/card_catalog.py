@@ -49,7 +49,9 @@ def upsert_cards(db: Session, cards: list[dict], commit: bool = True,
     crawl passes False: it re-arbitrates every card's price source with fresh
     data in hand, and its verdict must land verbatim — including clearing a
     stored block for a card no source prices any more, which would otherwise
-    fossilize forever."""
+    fossilize forever. The flag guards the job-arbitrated images block the
+    same way (TCGplayer scans substituted for dead upstream URLs, and the
+    verified stamp that spares re-checking live ones — see image_fill)."""
     now = utcnow()
     by_id = {c["id"]: c for c in cards if c.get("id")}
     if not by_id:
@@ -80,6 +82,18 @@ def upsert_cards(db: Session, cards: list[dict], commit: bool = True,
                     not (data.get("tcgplayer") or {}).get("prices")
                     or stored_tcg.get("priceSource") == "tcgcsv"):
                 data["tcgplayer"] = stored_tcg
+            # The daily job also arbitrates the images block (see image_fill):
+            # a TCGplayer-substituted block must survive this refresh (upstream
+            # still serves the dead URLs it replaced), and an unchanged
+            # upstream URL keeps its `verified` stamp so the next crawl
+            # doesn't HEAD-check it again. The crawl itself passes False and
+            # re-arbitrates both.
+            stored_images = row.data.get("images") or {}
+            if (stored_images.get("source") == "tcgplayer"
+                    or (stored_images.get("verified")
+                        and stored_images.get("small")
+                        == (data.get("images") or {}).get("small"))):
+                data["images"] = stored_images
         row.data = data
         row.price_updated_at = now
     if commit:

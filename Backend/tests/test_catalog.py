@@ -157,6 +157,79 @@ def test_authoritative_upsert_clears_fossilized_prices():
         db.close()
 
 
+def substituted_images_card(card_id: str, name: str) -> dict:
+    # how a card looks after the daily job swapped its dead upstream image
+    # URLs for the TCGplayer product scan (see snapshot_all.image_fill)
+    card = catalog_card(card_id, name)
+    card["images"] = {"small": "https://cdn.example/product/9_200w.jpg",
+                      "large": "https://cdn.example/product/9_in_1000x1000.jpg",
+                      "source": "tcgplayer"}
+    return card
+
+
+def test_upsert_keeps_substituted_images_over_upstreams_dead_urls():
+    # upstream still serves the 404ing URLs the daily job replaced — the
+    # request-path 6h price refresh must not put them back
+    seed_catalog([substituted_images_card("mcd14-3", "Fennekin")])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(db, [catalog_card("mcd14-3", "Fennekin")])
+        stored = card_catalog.get_card(db, "mcd14-3")
+        assert stored.data["images"]["source"] == "tcgplayer"
+        assert stored.data["images"]["small"] == "https://cdn.example/product/9_200w.jpg"
+    finally:
+        db.close()
+
+
+def test_upsert_carries_the_verified_stamp_through_a_refresh():
+    # an unchanged, once-verified URL keeps its stamp, so the next crawl's
+    # image check doesn't HEAD the same URL again
+    stamped = catalog_card("me5-3", "Swirlix")
+    stamped["images"]["verified"] = True
+    seed_catalog([stamped])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(db, [catalog_card("me5-3", "Swirlix")])
+        stored = card_catalog.get_card(db, "me5-3")
+        assert stored.data["images"]["verified"] is True
+    finally:
+        db.close()
+
+
+def test_upsert_drops_the_stamp_when_upstream_moves_the_image():
+    # a NEW upstream URL is unproven — it must arrive unstamped so the next
+    # crawl checks it
+    stamped = catalog_card("me5-4", "Bunnelby")
+    stamped["images"]["verified"] = True
+    seed_catalog([stamped])
+    db = TestingSessionLocal()
+    try:
+        moved = catalog_card("me5-4", "Bunnelby")
+        moved["images"] = {"small": "https://img.example/me5-4/NEW",
+                           "large": "https://img.example/me5-4/NEW-l"}
+        card_catalog.upsert_cards(db, [moved])
+        stored = card_catalog.get_card(db, "me5-4")
+        assert stored.data["images"]["small"] == "https://img.example/me5-4/NEW"
+        assert "verified" not in stored.data["images"]
+    finally:
+        db.close()
+
+
+def test_authoritative_upsert_replaces_substituted_images():
+    # the daily crawl re-arbitrates images too — its verdict lands verbatim
+    # (image_fill has already swapped the block back in if still needed)
+    seed_catalog([substituted_images_card("mcd14-3", "Fennekin")])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(db, [catalog_card("mcd14-3", "Fennekin")],
+                                  keep_stored_prices=False)
+        stored = card_catalog.get_card(db, "mcd14-3")
+        assert stored.data["images"]["small"] == "https://img.example/mcd14-3/s"
+        assert "source" not in stored.data["images"]
+    finally:
+        db.close()
+
+
 def test_name_search_is_case_insensitive_substring():
     seed_catalog([catalog_card("b1-1", "Pikachu VMAX"),
                   catalog_card("b1-2", "Raichu")])
