@@ -19,7 +19,7 @@ serves browsing from (a complete crawl stamps the sync marker that lets list
 endpoints trust the catalog).
 
 Cards on pages pokemontcg.io *couldn't serve at all* (a page that failed both
-the inline retries and the end-of-run retry pass — `crawl.dropped`) are a
+the inline retries and every end-of-run retry pass — `crawl.dropped`) are a
 separate gap from cards it served with no price: they never reach the fills
 above. A final `recover_dropped` stage recovers those cards' metadata from the
 catalog (any card the catalog holds that this run didn't crawl) and prices them
@@ -76,7 +76,8 @@ _PAGE_SIZE = 250            # upstream max
 _PAGE_PAUSE = 0.5          # be gentle on the upstream API between pages
 _DEDUPE_CHUNK = 1000       # keep the per-day dedupe IN() clause reasonable
 _MAX_RETRIES = 3           # upstream flakes with transient 404s/timeouts
-_RETRY_PASS_PAUSE = 30     # cool-down before re-trying failed pages at the end
+_RETRY_PASSES = 3          # end-of-run sweeps over still-failing pages
+_RETRY_PASS_PAUSE = 30     # cool-down before the first sweep; doubles each pass
 
 # The full frontend field set (mirrors _CARD_FIELDS in app/routers/cards.py):
 # the crawl now feeds the card_catalog table too, so browsing is served from
@@ -99,7 +100,7 @@ class Crawl:
     unpriced: list[dict] = field(default_factory=list)  # no TCGPlayer price — eBay-fill candidates
     total_pages: int = 0
     recovered: list[int] = field(default_factory=list)  # failed the sweep, saved by the retry pass
-    dropped: list[int] = field(default_factory=list)    # failed both passes
+    dropped: list[int] = field(default_factory=list)    # failed every retry pass
 
     @property
     def complete(self) -> bool:
@@ -187,8 +188,9 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
     """Every card's current price, keyed by card id. A transient failure on one
     page never aborts the crawl (the upstream flakes often enough that one bad
     page shouldn't cost the other ~80): failed pages are remembered and re-tried
-    in a second pass at the end, when the flake has usually passed; a page is
-    dropped (crawl incomplete) only after failing BOTH passes."""
+    in up to _RETRY_PASSES end-of-run sweeps with doubling cool-downs, when the
+    flake has usually passed; a page is dropped (crawl incomplete) only after
+    failing every sweep too."""
     crawl = Crawl()
     first = _get_page(1)
     if first is None:
@@ -216,22 +218,32 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
         log.info("page %*d/%d  ok      %7s priced",
                  width, page, crawl.total_pages, f"{len(crawl.prices):,}")
 
-    if failed:
-        log.info("---- retry pass: %d page(s) failed the sweep, cooling down %ds ----",
-                 len(failed), _RETRY_PASS_PAUSE)
-        time.sleep(_RETRY_PASS_PAUSE)
+    # Up to _RETRY_PASSES end-of-run sweeps with doubling cool-downs: a flake
+    # burst that outlives one 30s pause rarely outlives three minutes, and a
+    # page is only dropped (run incomplete) after failing every sweep too
+    cooldown = _RETRY_PASS_PAUSE
+    for sweep in range(1, _RETRY_PASSES + 1):
+        if not failed:
+            break
+        log.info("---- retry pass %d/%d: %d page(s) still failing, cooling "
+                 "down %ds ----", sweep, _RETRY_PASSES, len(failed), cooldown)
+        time.sleep(cooldown)
+        cooldown *= 2
+        still_failing: list[int] = []
         for page in failed:
             time.sleep(_PAGE_PAUSE)
             payload = _get_page(page)
             if payload is None:
-                crawl.dropped.append(page)
-                log.warning("page %*d     STILL FAILING — dropped this run",
-                            width, page)
+                still_failing.append(page)
                 continue
             crawl.recovered.append(page)
             _collect(payload, crawl)
             log.info("page %*d     recovered   %7s priced",
                      width, page, f"{len(crawl.prices):,}")
+        failed = still_failing
+    for page in failed:
+        crawl.dropped.append(page)
+        log.warning("page %*d     STILL FAILING — dropped this run", width, page)
     return crawl
 
 

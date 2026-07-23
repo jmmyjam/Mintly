@@ -79,12 +79,21 @@ def test_failed_page_recovered_by_end_of_run_retry(crawl):
     assert "c2-0" in result.prices
 
 
-def test_page_failing_both_passes_marks_incomplete(crawl):
+def test_page_failing_every_pass_marks_incomplete(crawl):
     result = crawl({3: 99})  # page 3 never succeeds
     assert not result.complete
     assert result.dropped == [3]
     assert len(result.prices) == 4  # the other pages were still collected
     assert "c3-0" not in result.prices
+
+
+def test_page_recovered_by_a_later_retry_sweep(crawl):
+    # fails the 3 inline attempts AND the first end-of-run sweep, then succeeds
+    # on the second sweep — a longer flake burst still mustn't drop the page
+    result = crawl({2: snapshot_all._MAX_RETRIES + 1})
+    assert result.complete
+    assert result.recovered == [2]
+    assert "c2-0" in result.prices
 
 
 # ---- Catalog upsert + sync marker -------------------------------------------
