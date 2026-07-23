@@ -105,6 +105,58 @@ def test_upsert_real_prices_still_overwrite():
         db.close()
 
 
+def tcgcsv_priced_card(card_id: str, name: str, price: float) -> dict:
+    card = catalog_card(card_id, name, price=price)
+    card["tcgplayer"]["priceSource"] = "tcgcsv"
+    return card
+
+
+def test_upsert_keeps_tcgcsv_sourced_prices_over_upstreams():
+    # The daily job replaced upstream's figure with TCGplayer's own (wrong
+    # product mapped upstream) — the request-path 6h refresh re-fetches
+    # upstream and must NOT put the bad figure back
+    seed_catalog([tcgcsv_priced_card("swshp-1", "Charizard", 98.49)])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(
+            db, [catalog_card("swshp-1", "Charizard", price=580.92)])
+        stored = card_catalog.get_card(db, "swshp-1")
+        assert stored.data["tcgplayer"]["prices"]["holofoil"]["market"] == 98.49
+        assert stored.data["tcgplayer"]["priceSource"] == "tcgcsv"
+        assert stored.price_updated_at is not None  # refresh loop still stops
+    finally:
+        db.close()
+
+
+def test_authoritative_upsert_replaces_tcgcsv_sourced_prices():
+    # the daily crawl re-arbitrates sources — its verdict lands verbatim
+    seed_catalog([tcgcsv_priced_card("swshp-1", "Charizard", 98.49)])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(
+            db, [catalog_card("swshp-1", "Charizard", price=101.0)],
+            keep_stored_prices=False)
+        stored = card_catalog.get_card(db, "swshp-1")
+        assert stored.data["tcgplayer"]["prices"]["holofoil"]["market"] == 101.0
+        assert "priceSource" not in stored.data["tcgplayer"]
+    finally:
+        db.close()
+
+
+def test_authoritative_upsert_clears_fossilized_prices():
+    # no source prices the card any more (upstream retracted a bad figure):
+    # the crawl's price-less dict must clear the stored block, not keep it
+    seed_catalog([catalog_card("mcd16-5", "Totodile", price=96.66)])
+    db = TestingSessionLocal()
+    try:
+        gone = catalog_card("mcd16-5", "Totodile", price=None)
+        card_catalog.upsert_cards(db, [gone], keep_stored_prices=False)
+        stored = card_catalog.get_card(db, "mcd16-5")
+        assert not (stored.data.get("tcgplayer") or {}).get("prices")
+    finally:
+        db.close()
+
+
 def test_name_search_is_case_insensitive_substring():
     seed_catalog([catalog_card("b1-1", "Pikachu VMAX"),
                   catalog_card("b1-2", "Raichu")])

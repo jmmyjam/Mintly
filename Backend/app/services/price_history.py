@@ -211,6 +211,31 @@ def attach_estimates(db: Session, cards: list[dict]) -> None:
                 card["priceChange"] = price_change(price, prev_price, since)
 
 
+def change_baselines(db: Session, current: dict[str, float],
+                     ) -> dict[str, tuple[float, date]]:
+    """The comparison point for each card's daily-change chip, given the
+    current prices: normally the most recent prior-day snapshot. But a day's
+    snapshot is refreshed in place to the last price seen that day, so right
+    after a UTC rollover yesterday's close equals the current price for the
+    whole stretch of the new day until fresh price data lands (the daily crawl
+    runs at 20:00 UTC — only 4h before the boundary) — which would pin every
+    chip at a meaningless $0.00 most of the day. When yesterday's close equals
+    the current price exactly, step one more day back, so the chip keeps
+    showing the most recent real move (`since` carries the older date, so the
+    chip stays honest about what it's comparing against)."""
+    prev = previous_prices(db, list(current))
+    flat = [card_id for card_id, (price, _) in prev.items()
+            if price == current.get(card_id)]
+    by_day: dict[date, list[str]] = {}
+    for card_id in flat:
+        by_day.setdefault(prev[card_id][1], []).append(card_id)
+    for day, ids in by_day.items():
+        older = previous_prices(
+            db, ids, before=datetime.combine(day, datetime.min.time()))
+        prev.update(older)  # cards with no older day keep the flat baseline
+    return prev
+
+
 def price_change(current: float, prev: float, since: date) -> dict:
     return {
         "amount": round(current - prev, 2),
@@ -221,8 +246,8 @@ def price_change(current: float, prev: float, since: date) -> dict:
 
 def annotate_price_changes(db: Session, cards: list[dict]) -> None:
     """Record today's snapshots for priced cards (headline + per-variant) and
-    attach `priceChange` (vs each card's most recent prior snapshot) to the
-    card dicts in place."""
+    attach `priceChange` (vs each card's daily-change baseline — see
+    change_baselines) to the card dicts in place."""
     prices: dict[str, float] = {}
     for card in cards:
         price = extract_price(card)
@@ -232,7 +257,7 @@ def annotate_price_changes(db: Session, cards: list[dict]) -> None:
         return
     record_snapshots(db, prices)
     record_variant_snapshots(db, cards)
-    prev = previous_prices(db, list(prices))
+    prev = change_baselines(db, prices)
     for card in cards:
         card_id = card.get("id")
         if card_id in prices and card_id in prev:

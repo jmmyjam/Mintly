@@ -151,6 +151,38 @@ class TestPriceChangeAnnotation:
         assert card["priceChange"]["amount"] == 10.0
         assert card["priceChange"]["percent"] == 10.0
 
+    def test_flat_close_steps_back_to_the_prior_real_move(self, client, cards_upstream):
+        # Yesterday's close was refreshed in place all day, so right after the
+        # UTC rollover it equals the current price — the chip must reach one
+        # day further back and show the latest real move, not a stuck $0.00
+        cards_upstream.add(make_card("sv1-30", price=110.0))
+        seed_prior_snapshot("sv1-30", 110.0, days_ago=1)   # yesterday == current
+        seed_prior_snapshot("sv1-30", 100.0, days_ago=2)
+        card = client.get("/cards/sv1-30").json()
+        assert card["priceChange"]["amount"] == 10.0
+        assert card["priceChange"]["since"] == (
+            (utcnow() - timedelta(days=2)).date().isoformat())
+
+    def test_flat_close_with_no_older_day_stays_flat(self, client, cards_upstream):
+        # only one prior day and it matches the current price — honestly $0.00
+        cards_upstream.add(make_card("sv1-31", price=110.0))
+        seed_prior_snapshot("sv1-31", 110.0, days_ago=1)
+        card = client.get("/cards/sv1-31").json()
+        assert card["priceChange"]["amount"] == 0.0
+        assert card["priceChange"]["since"] == (
+            (utcnow() - timedelta(days=1)).date().isoformat())
+
+    def test_moved_price_still_compares_against_yesterday(self, client, cards_upstream):
+        # fresh price data landed today: the normal baseline applies even
+        # though an older, further-off close exists
+        cards_upstream.add(make_card("sv1-32", price=120.0))
+        seed_prior_snapshot("sv1-32", 110.0, days_ago=1)
+        seed_prior_snapshot("sv1-32", 100.0, days_ago=2)
+        card = client.get("/cards/sv1-32").json()
+        assert card["priceChange"]["amount"] == 10.0
+        assert card["priceChange"]["since"] == (
+            (utcnow() - timedelta(days=1)).date().isoformat())
+
     def test_no_change_without_prior_snapshot(self, client, cards_upstream):
         cards_upstream.add(make_card("sv1-4", price=110.0))
         card = client.get("/cards/sv1-4").json()

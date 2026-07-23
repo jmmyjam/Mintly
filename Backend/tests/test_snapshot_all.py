@@ -96,6 +96,10 @@ def run_main(monkeypatch):
     monkeypatch.setattr(snapshot_all, "_PAGE_SIZE", 2)
     monkeypatch.setattr(snapshot_all.time, "sleep", lambda s: None)
     monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+    # no set resolves by default — keeps the tcgcsv fill and the price sanity
+    # check off the network; fake_tcgcsv re-patches this for its one set
+    monkeypatch.setattr(snapshot_all.tcgcsv, "group_id_for_set",
+                        lambda name, set_id=None: None)
 
     def run(extra_args: list[str] = [], fail_first: dict[int, int] = {},
             pages: dict[int, list] | None = None):
@@ -292,8 +296,10 @@ def fake_tcgcsv(monkeypatch):
         snapshot_all.tcgcsv, "group_id_for_set",
         lambda name, set_id=None: 24380 if name == "Mega Set" else None)
     monkeypatch.setattr(
-        snapshot_all.tcgcsv, "prices_for_group",
-        lambda gid: {"188": {"holofoil": {"market": 250.0, "mid": 260.0}}})
+        snapshot_all.tcgcsv, "candidates_for_group",
+        lambda gid: {"188": [{"name": "Mega Card ex - 188/132",
+                              "prices": {"holofoil": {"market": 250.0,
+                                                      "mid": 260.0}}}]})
 
 
 def test_tcgcsv_fill_injects_prices_and_shrinks_the_ebay_set(fake_tcgcsv):
@@ -301,8 +307,10 @@ def test_tcgcsv_fill_injects_prices_and_shrinks_the_ebay_set(fake_tcgcsv):
     crawl = crawl_with(card)
     result = snapshot_all.tcgcsv_fill(crawl)
 
-    # real prices injected into the full card dict (what the catalog stores)
+    # real prices injected into the full card dict (what the catalog stores),
+    # marked so the request-path refresh can't overwrite them with upstream's
     assert card["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+    assert card["tcgplayer"]["priceSource"] == "tcgcsv"
     # snapshot price is extract_price of the injected block
     assert result.prices == {"me9-1": 250.0}
     assert result.sets_matched == 1 and result.sets_unmatched == []
@@ -460,3 +468,118 @@ def test_no_tcgcsv_flag_also_skips_dropped_recovery(run_main, monkeypatch):
     db.close()
     assert run_main(["--no-tcgcsv"], fail_first={3: 99}) == 0
     assert called == []
+
+
+# ---- Price sanity check against the TCGCSV mirror ---------------------------
+# Upstream sometimes serves the WRONG product's price (a [Staff] promo mapped
+# onto the regular card) or a junk figure; a >=3x divergence from TCGplayer's
+# own mirror, on a name-and-number match, means TCGplayer wins.
+
+def priced_card(card_id: str, price: float, name: str = "Mega Card ex",
+                number: str = "188") -> dict:
+    card = mega_card(card_id, number=number, name=name)
+    card["tcgplayer"] = {"prices": {"holofoil": {"market": price}}}
+    return card
+
+
+def priced_crawl(*cards: dict) -> "snapshot_all.Crawl":
+    from app.services.price_history import extract_price
+    return snapshot_all.Crawl(
+        cards=list(cards),
+        prices={c["id"]: extract_price(c) for c in cards})
+
+
+def test_sanity_check_overrides_wildly_diverging_upstream_price(fake_tcgcsv):
+    # upstream says $900 for a card TCGplayer's own mirror prices at $250
+    card = priced_card("me9-1", 900.0)
+    crawl = priced_crawl(card)
+    result = snapshot_all.price_sanity_check(crawl)
+
+    assert result.replaced == {"me9-1": 250.0}
+    assert crawl.prices["me9-1"] == 250.0            # the snapshot follows
+    assert card["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+    assert card["tcgplayer"]["priceSource"] == "tcgcsv"
+
+
+def test_sanity_check_leaves_agreeing_prices_alone(fake_tcgcsv):
+    card = priced_card("me9-1", 260.0)               # ~4% off — normal lag
+    crawl = priced_crawl(card)
+    result = snapshot_all.price_sanity_check(crawl)
+
+    assert result.replaced == {}
+    assert crawl.prices["me9-1"] == 260.0
+    assert "priceSource" not in card["tcgplayer"]
+
+
+def test_sanity_check_requires_a_name_match(fake_tcgcsv):
+    # same set + number but a different card name: a number-only match is not
+    # enough evidence to override a real price (merged groups reuse numbers)
+    card = priced_card("me9-9", 900.0, name="Some Other Card")
+    crawl = priced_crawl(card)
+    result = snapshot_all.price_sanity_check(crawl)
+
+    assert result.replaced == {}
+    assert crawl.prices["me9-9"] == 900.0
+
+
+def test_sanity_corrected_price_lands_in_catalog_and_history(run_main, fake_tcgcsv):
+    pages = three_pages()
+    pages[2][0] = priced_card("me9-1", 900.0)
+    assert run_main(pages=pages) == 0
+
+    db = TestingSessionLocal()
+    try:
+        stored = card_catalog.get_card(db, "me9-1").data
+        assert stored["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+        assert stored["tcgplayer"]["priceSource"] == "tcgcsv"
+        snap = (db.query(CardPriceSnapshot)
+                  .filter(CardPriceSnapshot.card_id == "me9-1").one())
+        assert snap.price == 250.0
+    finally:
+        db.close()
+
+
+# ---- Fossilized catalog prices clear on an authoritative crawl --------------
+# A stored prices block whose card now crawls price-less with no TCGCSV match
+# has no source backing it (upstream retracted the data); the crawl's upsert
+# must clear it so the card degrades to its estimate instead of showing a
+# price nobody quotes.
+
+def test_crawl_clears_stored_prices_no_source_backs(run_main):
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(
+        db, [{**mega_card("c2-0", number="0", name="Test Card"),
+              "tcgplayer": {"prices": {"holofoil": {"market": 96.66}}}}])
+    db.close()
+
+    pages = three_pages()
+    pages[2][0] = mega_card("c2-0", number="0", name="Test Card")  # now price-less
+    assert run_main(pages=pages) == 0
+
+    db = TestingSessionLocal()
+    try:
+        stored = card_catalog.get_card(db, "c2-0").data
+        assert not (stored.get("tcgplayer") or {}).get("prices")
+    finally:
+        db.close()
+
+
+def test_no_tcgcsv_run_keeps_stored_prices(run_main):
+    # without the fill, "no prices in this crawl" isn't proof of anything —
+    # the protective keep-rule stays on
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(
+        db, [{**mega_card("c2-0", number="0", name="Test Card"),
+              "tcgplayer": {"prices": {"holofoil": {"market": 96.66}}}}])
+    db.close()
+
+    pages = three_pages()
+    pages[2][0] = mega_card("c2-0", number="0", name="Test Card")
+    assert run_main(["--no-tcgcsv"], pages=pages) == 0
+
+    db = TestingSessionLocal()
+    try:
+        stored = card_catalog.get_card(db, "c2-0").data
+        assert stored["tcgplayer"]["prices"]["holofoil"]["market"] == 96.66
+    finally:
+        db.close()

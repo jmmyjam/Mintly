@@ -87,17 +87,25 @@ export default function CardDetail() {
   )
 
   // Daily change for one variant: its live price vs its most recent prior-day
-  // snapshot — the same rule the headline DayChange chip follows
+  // snapshot — the same rule the headline DayChange chip follows. A day's
+  // snapshot is refreshed in place to the last price seen, so right after a
+  // UTC rollover yesterday's close equals the live price; step one more day
+  // back then (mirroring the backend's change_baselines) so the chip shows
+  // the most recent real move instead of a meaningless $0.00.
   const variantDayChange = (variant: string, prices: PriceVariant): PriceChange | null => {
     const current = prices.market ?? prices.mid
     const series = variantSeries[variant]
     if (current == null || !series || series.length === 0) return null
     const today = new Date().toISOString().slice(0, 10)
     let prior: { date: string; price: number } | undefined
+    let older: { date: string; price: number } | undefined
     for (const p of series) {
-      if (p.date < today) prior = p
-      else break
+      if (p.date < today) {
+        older = prior
+        prior = p
+      } else break
     }
+    if (prior && prior.price === current && older) prior = older
     if (!prior || prior.price === 0) return null
     return {
       amount: Math.round((current - prior.price) * 100) / 100,

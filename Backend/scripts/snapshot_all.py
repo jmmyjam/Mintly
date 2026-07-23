@@ -10,6 +10,10 @@ the catalog stores them like any other TCGplayer price; `--no-tcgcsv` skips),
 then an eBay sold-listings estimate for whatever TCGCSV couldn't match (the
 same estimator CardDetail's fallback uses), newest sets first, paced
 (`--ebay-pause`) and capped (`--max-ebay`) so the job can't hammer eBay.
+Cards upstream DOES price are cross-checked against the same TCGCSV mirror
+(`price_sanity_check`): a ≥3x divergence on a name-and-number-matched product
+means upstream's block maps the wrong product (e.g. a [Staff] promo) or holds
+a junk figure, and TCGplayer's own number wins.
 Every crawled card is also mirrored into the `card_catalog` table the app
 serves browsing from (a complete crawl stamps the sync marker that lets list
 endpoints trust the catalog).
@@ -109,6 +113,14 @@ class TcgcsvFill:
     prices: dict[str, float] = field(default_factory=dict)
     sets_matched: int = 0
     sets_unmatched: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SanityFill:
+    """What the price sanity check did: upstream prices replaced with the
+    TCGplayer figure from the TCGCSV mirror where the two wildly disagree."""
+    replaced: dict[str, float] = field(default_factory=dict)
+    sets_checked: int = 0
 
 
 @dataclass
@@ -247,31 +259,99 @@ def tcgcsv_fill(crawl: Crawl) -> TcgcsvFill:
             by_set.items(), key=lambda kv: kv[0][1] or ""):
         try:
             group_id = tcgcsv.group_id_for_set(set_name, set_id)
-            group_prices = tcgcsv.prices_for_group(group_id) if group_id else {}
+            candidates = tcgcsv.candidates_for_group(group_id) if group_id else {}
         except Exception as exc:  # the service is best-effort, but never trust that
             log.warning("  tcgcsv %-24s lookup error: %s", set_name, exc)
-            group_prices = {}
-        if not group_prices:
+            candidates = {}
+        if not candidates:
             fill.sets_unmatched.append(set_name or "?")
             continue
         fill.sets_matched += 1
         before = len(fill.prices)
         for card in cards_in_set:
-            prices = group_prices.get(tcgcsv.norm_number(card.get("number") or ""))
+            # The card name picks the right product when several share a
+            # number (regular vs [Staff] promos, merged Trainer Kit decks)
+            prices = tcgcsv.pick_product(
+                candidates.get(tcgcsv.norm_number(card.get("number") or "")),
+                card.get("name"))
             full = by_id.get(card["id"])
             if not prices or full is None:
                 continue
             price = extract_price({"tcgplayer": {"prices": prices}})
             if price is None:
                 continue  # no variant the app reads — leave the card untouched
-            # Preserve any existing url/updatedAt alongside the injected prices
-            full.setdefault("tcgplayer", {})["prices"] = prices
+            # Preserve any existing url/updatedAt alongside the injected prices;
+            # the priceSource mark keeps the request-path catalog refresh from
+            # overwriting this block with upstream's figure (see upsert_cards)
+            block = full.setdefault("tcgplayer", {})
+            block["prices"] = prices
+            block["priceSource"] = "tcgcsv"
             fill.prices[card["id"]] = price
         log.info("  tcgcsv %-24s %d/%d cards priced",
                  set_name, len(fill.prices) - before, len(cards_in_set))
     if fill.sets_unmatched:
         log.info("  tcgcsv: no match for set(s): %s — those cards fall through "
                  "to the eBay pass", ", ".join(fill.sets_unmatched))
+    return fill
+
+
+# A priced card's upstream figure and TCGplayer's own current figure for the
+# same product should be near-identical (upstream mirrors TCGplayer with a few
+# days' lag). Divergence past this factor means upstream's block points at the
+# wrong product or carries a junk figure — observed live July 23, 2026:
+# swshp-SWSH066 served at the [Staff] promo's $580.92 against the regular
+# card's $98.49 market, and neo4-107 (Shining Charizard) at a $19.99 outlier
+# against a $3,998.99 market.
+_SANITY_RATIO = 3.0
+
+
+def price_sanity_check(crawl: Crawl) -> SanityFill:
+    """Cross-check every upstream-priced card against the TCGplayer figure the
+    TCGCSV mirror reports for the same set + number + NAME; where they diverge
+    by ≥ _SANITY_RATIO, TCGplayer's own data wins: the card dict's prices block
+    is replaced (marked priceSource so the request-path refresh can't undo it)
+    and crawl.prices corrected, so the snapshot, catalog row, and variant rows
+    that follow all record the sane figure. The name match is required — for a
+    number several products share, overriding a real price on a number-only
+    match would risk pricing the wrong card entirely."""
+    fill = SanityFill()
+    by_set: dict[tuple, list[dict]] = {}
+    for card in crawl.cards:
+        if card.get("id") in crawl.prices and card.get("name"):
+            card_set = card.get("set") or {}
+            by_set.setdefault(
+                (card_set.get("id"), card_set.get("name")), []).append(card)
+
+    for (set_id, set_name), cards_in_set in sorted(
+            by_set.items(), key=lambda kv: kv[0][1] or ""):
+        try:
+            group_id = tcgcsv.group_id_for_set(set_name, set_id)
+            candidates = tcgcsv.candidates_for_group(group_id) if group_id else {}
+        except Exception as exc:
+            log.warning("  sanity %-24s lookup error: %s", set_name, exc)
+            continue
+        if not candidates:
+            continue
+        fill.sets_checked += 1
+        for card in cards_in_set:
+            prices = tcgcsv.pick_product(
+                candidates.get(tcgcsv.norm_number(card.get("number") or "")),
+                card["name"], require_name=True)
+            tcgplayer_price = (
+                extract_price({"tcgplayer": {"prices": prices}}) if prices else None)
+            upstream_price = crawl.prices[card["id"]]
+            if not tcgplayer_price or not upstream_price:
+                continue
+            if (upstream_price < tcgplayer_price * _SANITY_RATIO
+                    and tcgplayer_price < upstream_price * _SANITY_RATIO):
+                continue
+            block = card.setdefault("tcgplayer", {})
+            block["prices"] = prices
+            block["priceSource"] = "tcgcsv"
+            crawl.prices[card["id"]] = tcgplayer_price
+            fill.replaced[card["id"]] = tcgplayer_price
+            log.info("  sanity %-18s upstream $%.2f vs TCGplayer $%.2f — "
+                     "using TCGplayer", card["id"], upstream_price, tcgplayer_price)
     return fill
 
 
@@ -446,15 +526,30 @@ def main() -> int:
         # in the catalog rows) and BEFORE the eBay pass (so eBay only sees the
         # cards TCGCSV couldn't match).
         tfill = TcgcsvFill()
+        fill_ran = not args.no_tcgcsv and not crawl.unpriced
         if not args.no_tcgcsv and crawl.unpriced:
             log.info("---- TCGCSV fill: %s cards have no TCGPlayer price ----",
                      f"{len(crawl.unpriced):,}")
             try:
                 tfill = tcgcsv_fill(crawl)
+                fill_ran = True
             except Exception as exc:  # best-effort — never costs the day's snapshots
                 log.warning("tcgcsv fill failed: %s — unpriced cards fall "
                             "through to the eBay pass", exc)
             recorded += _record_chunked(db, tfill.prices)
+
+        # Cross-check the upstream prices against TCGplayer's own mirror; a
+        # wild divergence (wrong product mapped upstream, junk figure) is
+        # corrected before the variant rows and catalog upsert read the dicts.
+        sanity = SanityFill()
+        if not args.no_tcgcsv:
+            try:
+                sanity = price_sanity_check(crawl)
+            except Exception as exc:  # best-effort like the fill
+                log.warning("price sanity check failed: %s — upstream prices "
+                            "kept as-is", exc)
+            # same-day re-record refreshes the corrected cards' rows in place
+            recorded += _record_chunked(db, sanity.replaced)
 
         # Per-variant history for multi-variant cards (their headline row only
         # covers the preferred variant). After the TCGCSV fill, so injected
@@ -467,10 +562,18 @@ def main() -> int:
         # Best-effort: a catalog failure never costs the day's snapshots. The
         # sync marker (which lets list endpoints trust the catalog) is stamped
         # only by a complete, un-truncated crawl — never a --max-pages smoke run.
+        # When the TCGCSV fill ran, this upsert is authoritative
+        # (keep_stored_prices=False): every card here carries fresh upstream
+        # data plus the fill's arbitration, so a card that STILL has no prices
+        # block has no priceable source left, and its stored block (a price no
+        # source backs any more — upstream retracts bad data) must clear
+        # rather than fossilize.
         upserted = 0
         try:
             for i in range(0, len(crawl.cards), _DEDUPE_CHUNK):
-                upserted += card_catalog.upsert_cards(db, crawl.cards[i:i + _DEDUPE_CHUNK])
+                upserted += card_catalog.upsert_cards(
+                    db, crawl.cards[i:i + _DEDUPE_CHUNK],
+                    keep_stored_prices=not fill_ran)
             if crawl.complete and not args.max_pages:
                 card_catalog.mark_full_sync(db)
         except Exception as exc:
@@ -506,9 +609,12 @@ def main() -> int:
             for i in range(0, len(dfill.cards), _DEDUPE_CHUNK):
                 variant_rows += record_variant_snapshots(
                     db, dfill.cards[i:i + _DEDUPE_CHUNK])
-            try:  # refresh the recovered cards' catalog price too
+            try:  # refresh the recovered cards' catalog price too — the dicts
+                #    are the stored rows themselves plus the fresh TCGCSV fill,
+                #    so writing them verbatim (no keep-rule) can only refresh
                 for i in range(0, len(dfill.cards), _DEDUPE_CHUNK):
-                    card_catalog.upsert_cards(db, dfill.cards[i:i + _DEDUPE_CHUNK])
+                    card_catalog.upsert_cards(db, dfill.cards[i:i + _DEDUPE_CHUNK],
+                                              keep_stored_prices=False)
             except Exception as exc:
                 db.rollback()
                 log.warning("catalog upsert (recovery) failed: %s — recovered "
@@ -544,6 +650,9 @@ def main() -> int:
         log.info("  tcgcsv fill       %s cards priced  (%d sets matched, "
                  "%d unmatched)", f"{len(tfill.prices):,}",
                  tfill.sets_matched, len(tfill.sets_unmatched))
+        log.info("  sanity check      %d upstream price(s) overridden from "
+                 "TCGplayer  (%d sets compared)",
+                 len(sanity.replaced), sanity.sets_checked)
     if args.max_ebay > 0:
         log.info("  ebay fill         %d priced of %d tried  (%s eligible, "
                  "%d without recent sales, %d failed fetches)%s",

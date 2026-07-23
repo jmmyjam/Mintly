@@ -34,10 +34,22 @@ def _escape_like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def upsert_cards(db: Session, cards: list[dict], commit: bool = True) -> int:
+def upsert_cards(db: Session, cards: list[dict], commit: bool = True,
+                 keep_stored_prices: bool = True) -> int:
     """Insert or update catalog rows from upstream card dicts; returns how many
     were written. Stamps price_updated_at — callers only pass freshly fetched
-    upstream data, never catalog reads."""
+    upstream data, never catalog reads.
+
+    `keep_stored_prices` (the request-path default) protects a stored prices
+    block from the two ways an upstream refetch can degrade it: a price-less
+    response wiping a TCGCSV-filled block (upstream lags months behind on new
+    sets), and upstream's own figure overwriting a block the daily job sourced
+    from TCGCSV (`tcgplayer.priceSource == "tcgcsv"` — set when the job judged
+    upstream's price wrong, e.g. mapped to a [Staff] promo product). The daily
+    crawl passes False: it re-arbitrates every card's price source with fresh
+    data in hand, and its verdict must land verbatim — including clearing a
+    stored block for a card no source prices any more, which would otherwise
+    fossilize forever."""
     now = utcnow()
     by_id = {c["id"]: c for c in cards if c.get("id")}
     if not by_id:
@@ -60,13 +72,13 @@ def upsert_cards(db: Session, cards: list[dict], commit: bool = True) -> int:
         row.types = f"|{'|'.join(types)}|" if types else None
         row.release_date = card_set.get("releaseDate")
         data = {k: card[k] for k in _KEEP if k in card}
-        # Upstream can lag behind a TCGCSV-filled price (the newest sets arrive
-        # from pokemontcg.io with an empty prices block for months): never let
-        # a price-less refetch wipe a real stored prices block. The fresh
-        # price_updated_at still counts — the upstream check IS the refresh.
-        if row.data:
+        # The fresh price_updated_at still counts when the stored block is
+        # kept — the upstream check IS the refresh.
+        if row.data and keep_stored_prices:
             stored_tcg = row.data.get("tcgplayer") or {}
-            if stored_tcg.get("prices") and not (data.get("tcgplayer") or {}).get("prices"):
+            if stored_tcg.get("prices") and (
+                    not (data.get("tcgplayer") or {}).get("prices")
+                    or stored_tcg.get("priceSource") == "tcgcsv"):
                 data["tcgplayer"] = stored_tcg
         row.data = data
         row.price_updated_at = now

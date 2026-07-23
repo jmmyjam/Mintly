@@ -14,7 +14,7 @@ from app.models import PortfolioCard, CardPriceSnapshot
 from app.routers.auth import get_current_user
 from app.services import card_catalog
 from app.services.price_history import (
-    extract_price, record_snapshots, previous_prices, price_change, latest_prices,
+    extract_price, record_snapshots, change_baselines, price_change, latest_prices,
 )
 from app.services.rate_limit import rate_limit
 
@@ -222,8 +222,9 @@ def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(
 
     prices, images = fetch_prices([c.card_id for c in cards], db)
     record_snapshots(db, prices)
-    # Yesterday's (or the most recent prior) snapshot per card, for daily change
-    prev = previous_prices(db, [c.card_id for c in cards])
+    # Each card's daily-change baseline (the most recent prior-day snapshot,
+    # stepping past a close that already equals the current price)
+    prev = change_baselines(db, prices)
 
     result = []
     for c in cards:

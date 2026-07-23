@@ -12,6 +12,7 @@ GROUPS = [
     {"groupId": 7, "name": "Base Set"},
     {"groupId": 1428, "name": "XY - Ancient Origins"},
     {"groupId": 1364, "name": "Diamond and Pearl"},
+    {"groupId": 3064, "name": "Pokemon GO"},
 ]
 
 PRODUCTS = [
@@ -75,6 +76,10 @@ class TestGroupMatching:
     def test_and_and_ampersand_are_interchangeable(self):
         # pokemontcg.io says "Diamond & Pearl"; TCGplayer says "Diamond and Pearl"
         assert tcgcsv.group_id_for_set("Diamond & Pearl") == 1364
+
+    def test_accents_are_folded(self):
+        # pokemontcg.io says "Pokémon GO"; TCGplayer says "Pokemon GO"
+        assert tcgcsv.group_id_for_set("Pokémon GO") == 3064
 
     def test_unknown_set_returns_none(self):
         assert tcgcsv.group_id_for_set("Not A Real Set") is None
@@ -152,6 +157,69 @@ class TestPricesForGroup:
         tcgcsv.prices_for_group(24380)
         tcgcsv.prices_for_group(24380)
         assert calls == [24380]
+
+
+# Two products sharing one number: the regular prerelease promo and its
+# [Staff] stamp (a different, rarer physical card) — plus, in merged groups,
+# outright different cards (the EX Trainer Kit half-decks both have a "4/12").
+DUP_PRODUCTS = [
+    {"productId": 10, "name": "Charizard - SWSH066 (Prerelease) [Staff]",
+     "extendedData": [{"name": "Number", "value": "SWSH066"}]},
+    {"productId": 11, "name": "Charizard - SWSH066 (Prerelease)",
+     "extendedData": [{"name": "Number", "value": "SWSH066"}]},
+    {"productId": 12, "name": "Meowth - 4/12",
+     "extendedData": [{"name": "Number", "value": "4/12"}]},
+    {"productId": 13, "name": "Chimecho - 4/12",
+     "extendedData": [{"name": "Number", "value": "4/12"}]},
+]
+
+DUP_PRICES = [
+    {"productId": 10, "subTypeName": "Holofoil", "marketPrice": 580.92,
+     "midPrice": 5299.99},
+    {"productId": 11, "subTypeName": "Holofoil", "marketPrice": 98.49,
+     "midPrice": 169.47},
+    {"productId": 12, "subTypeName": "Normal", "marketPrice": 1.06},
+    {"productId": 13, "subTypeName": "Normal", "marketPrice": 2.5},
+]
+
+
+class TestPickProduct:
+    @pytest.fixture(autouse=True)
+    def duplicate_products(self, monkeypatch):
+        monkeypatch.setattr(tcgcsv, "_fetch_products", lambda gid: DUP_PRODUCTS)
+        monkeypatch.setattr(tcgcsv, "_fetch_prices", lambda gid: DUP_PRICES)
+
+    def test_bracket_qualified_products_lose_to_the_base_version(self):
+        # the [Staff] stamp must never price the regular promo
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        assert len(cands) == 2
+        assert tcgcsv.pick_product(cands, "Charizard")["holofoil"]["market"] == 98.49
+        # even with no name to go on, the pick is the deterministic base
+        assert tcgcsv.pick_product(cands)["holofoil"]["market"] == 98.49
+
+    def test_card_name_disambiguates_shared_numbers(self):
+        cands = tcgcsv.candidates_for_group(2545)["4"]
+        assert tcgcsv.pick_product(cands, "Chimecho")["normal"]["market"] == 2.5
+        assert tcgcsv.pick_product(cands, "Meowth")["normal"]["market"] == 1.06
+
+    def test_unrecognized_name_falls_back_to_the_base_pick(self):
+        # a formatting mismatch (Nidoran♀-style) mustn't cost the fill a price
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        assert tcgcsv.pick_product(cands, "Nidoran♀") is not None
+
+    def test_require_name_returns_none_without_a_match(self):
+        # override paths must NOT settle for a number-only match
+        cands = tcgcsv.candidates_for_group(2545)["4"]
+        assert tcgcsv.pick_product(cands, "Pikachu", require_name=True) is None
+        assert tcgcsv.pick_product(cands, "Meowth",
+                                   require_name=True)["normal"]["market"] == 1.06
+
+    def test_prices_for_group_resolves_duplicates_to_the_base_product(self):
+        assert tcgcsv.prices_for_group(2545)["swsh66"]["holofoil"]["market"] == 98.49
+
+    def test_card_prices_uses_the_card_name(self):
+        assert tcgcsv.card_prices("tk2a", "Base Set", "4/12",
+                                  card_name="Chimecho")["normal"]["market"] == 2.5
 
 
 class TestCardPrices:
