@@ -10,6 +10,15 @@ interface CardImageProps {
   eager?: boolean
 }
 
+// images.pokemontcg.io answers a missing image with HTTP 404 whose body is
+// still a PNG — the generic Pokémon card back (all of mcd14/15/17/18, for
+// example). The <img> decodes it fine, so onError never fires and the back
+// would render as if it were the artwork. That body is one fixed 640×892 file
+// while genuine images are 245×342 (small) or 734×1024 (_hires), and the CDN
+// sends no CORS header on 404s, so natural size is the only client-side tell.
+const isMissingImageBack = (img: HTMLImageElement) =>
+  img.naturalWidth === 640 && img.naturalHeight === 892
+
 // One card-artwork element for the whole site. Reserves the 5:7 card ratio so
 // the layout never shifts, and keeps a muted placeholder frame behind the image
 // so a slow, missing, or failed load shows a card-shaped box (or an "image
@@ -17,11 +26,13 @@ interface CardImageProps {
 export default function CardImage({ src, alt, size = 'tile', eager = false }: CardImageProps) {
   const [failed, setFailed] = useState(false)
 
-  // A cached image can finish (or fail) before React attaches onError, so also
-  // check `complete` when the node mounts — otherwise a failed cached image
-  // would never swap to the placeholder.
+  // A cached image can finish (or fail) before React attaches onError/onLoad,
+  // so also check `complete` when the node mounts — otherwise a failed cached
+  // image would never swap to the placeholder.
   const imgRef = useCallback((node: HTMLImageElement | null) => {
-    if (node && node.complete && node.naturalWidth === 0) setFailed(true)
+    if (node && node.complete && (node.naturalWidth === 0 || isMissingImageBack(node))) {
+      setFailed(true)
+    }
   }, [])
 
   const showImg = !!src && !failed
@@ -39,6 +50,7 @@ export default function CardImage({ src, alt, size = 'tile', eager = false }: Ca
           className={styles.img}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
+          onLoad={(e) => { if (isMissingImageBack(e.currentTarget)) setFailed(true) }}
           onError={() => setFailed(true)}
         />
       )}
