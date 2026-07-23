@@ -3,11 +3,11 @@
 Configured entirely by env vars in Backend/.env, so switching providers is a
 .env edit, not a code change:
 
-    SMTP_HOST=smtp.gmail.com     # unset = "dev mode": messages print to the console
+    SMTP_HOST=smtp.resend.com    # unset = "dev mode": messages print to the console
     SMTP_PORT=587                # 587 = STARTTLS (default); 465 = implicit TLS
-    SMTP_USER=you@gmail.com
-    SMTP_PASSWORD=app-password
-    MAIL_FROM=you@gmail.com      # defaults to SMTP_USER
+    SMTP_USER=resend             # Resend's SMTP username is the literal string "resend"
+    SMTP_PASSWORD=api-key
+    MAIL_FROM="Mintly <noreply@mintlytcg.com>"   # defaults to SMTP_USER
 
 With no SMTP_HOST set, send_email prints the full message to the server console
 instead of sending — the reset flow stays testable offline (grab the link from
