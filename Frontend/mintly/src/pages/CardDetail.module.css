@@ -113,7 +113,7 @@
 .buy-form :global(.edit-field) { flex: 1; }
 .buy-form :global(.mini-qty) { max-width: 84px; }
 
-/* outbound "Buy on TCGplayer" link below the add form */
+/* outbound "Buy on TCGplayer" / "Search on eBay" links below the add form */
 .buy-outbound {
   margin-top: 12px;
   padding-top: 12px;
@@ -122,6 +122,12 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+}
+
+.buy-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .affiliate-note {

@@ -13,7 +13,7 @@ import PriceQtyForm from '../components/PriceQtyForm'
 import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
-import { tcgplayerBuyLink } from '../affiliate'
+import { tcgplayerBuyLink, ebayBuyLink } from '../affiliate'
 import { money } from '../format'
 import { PRICE_PREFERENCE, mergeHeadline, variantLabel } from '../variants'
 import styles from './CardDetail.module.css'
@@ -194,6 +194,7 @@ export default function CardDetail() {
   const market = getCardPrice(card)
   const hasMarket = market != null
   const buy = tcgplayerBuyLink(card)
+  const ebayBuy = ebayBuyLink(card)
 
   // Primary TCGPlayer variant (drives the tile row); eBay value prefers the
   // freshly-scraped median, falling back to the stored snapshot for an instant
@@ -294,17 +295,27 @@ export default function CardDetail() {
               />
             )}
             <div className={styles.buyOutbound}>
-              <a
-                href={buy.href}
-                target="_blank"
-                rel={buy.affiliate ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}
-                className="btn-outline btn-sm"
-              >
-                Buy on TCGplayer ↗
-              </a>
-              {buy.affiliate && (
+              <div className={styles.buyLinks}>
+                <a
+                  href={buy.href}
+                  target="_blank"
+                  rel={buy.affiliate ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}
+                  className="btn-outline btn-sm"
+                >
+                  Buy on TCGplayer ↗
+                </a>
+                <a
+                  href={ebayBuy.href}
+                  target="_blank"
+                  rel={ebayBuy.affiliate ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}
+                  className="btn-outline btn-sm"
+                >
+                  Search on eBay ↗
+                </a>
+              </div>
+              {(buy.affiliate || ebayBuy.affiliate) && (
                 <p className={styles.affiliateNote}>
-                  Mintly may earn a commission from purchases made through this link.
+                  Mintly may earn a commission from purchases made through these links.
                 </p>
               )}
             </div>
