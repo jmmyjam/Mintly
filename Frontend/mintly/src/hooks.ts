@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addCard, getToken, SessionExpiredError } from './api'
+import { addCard, errorMessage, getToken, SessionExpiredError } from './api'
 
 // The one notice Login.tsx displays when an authed call 401s — every redirect must
 // use this exact flow, so new authed features should reuse this hook.
@@ -42,7 +42,7 @@ export function useAddCard() {
         redirectToLogin()
         return
       }
-      const msg = err instanceof Error ? err.message : 'Failed to add card'
+      const msg = errorMessage(err, "We couldn't add that card. Please try again.")
       setStatus({ id: cardId, msg, ok: false })
       setTimeout(() => setStatus(null), 4000)
     } finally {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { forgotPassword, resetPassword } from '../api'
+import { errorMessage, forgotPassword, resetPassword } from '../api'
 import styles from './ResetPassword.module.css'
 
 // Mirrors the backend rules in auth.py so users get instant feedback
@@ -39,7 +39,7 @@ export default function ResetPassword() {
     try {
       setSentMessage(await forgotPassword(email.trim()))
     } catch (err) {
-      setRequestError(err instanceof Error ? err.message : 'Something went wrong')
+      setRequestError(errorMessage(err, 'Something went wrong. Please try again.'))
     } finally {
       setRequesting(false)
     }
@@ -59,7 +59,7 @@ export default function ResetPassword() {
         state: { notice: 'Your password has been updated — log in with your new password.' },
       })
     } catch (err) {
-      setResetError(err instanceof Error ? err.message : 'Something went wrong')
+      setResetError(errorMessage(err, 'Something went wrong. Please try again.'))
       setResetting(false)
     }
   }

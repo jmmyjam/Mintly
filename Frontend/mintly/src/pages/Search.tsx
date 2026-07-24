@@ -143,12 +143,15 @@ export default function Search() {
       setPage(p);
       setTotalCount(results.totalCount);
       setPageSize(results.pageSize || 50);
-      if (results.totalCount === 0 && !isDefaultView) setError("No cards found.");
+      if (results.totalCount === 0 && !isDefaultView)
+        setError(
+          "No cards found. Check the spelling, or try a shorter search like just the card's name.",
+        );
     } catch {
       setError(
         isDefaultView
-          ? "Failed to load cards. Make sure the server is running."
-          : "Search failed. Make sure the server is running.",
+          ? "We couldn't load cards right now. Check your internet connection and try again in a moment."
+          : "We couldn't complete that search. Check your internet connection and try again in a moment.",
       );
     } finally {
       setLoading(false);

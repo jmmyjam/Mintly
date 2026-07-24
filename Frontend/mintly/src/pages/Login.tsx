@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { login, register, getCardImageUrl } from '../api'
+import { errorMessage, login, register, getCardImageUrl } from '../api'
 import type { PriceChange } from '../api'
 import { money } from '../format'
 import CardImage from '../components/CardImage'
@@ -74,7 +74,7 @@ export default function Login() {
       await login(username, password)
       navigate('/portfolio')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setError(errorMessage(err, 'Something went wrong. Please try again.'))
     } finally {
       setLoading(false)
     }

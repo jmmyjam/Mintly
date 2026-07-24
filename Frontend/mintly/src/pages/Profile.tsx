@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   getMe, updateProfile, changePassword, getToken, clearToken,
-  SessionExpiredError, type UserProfile,
+  CONNECTION_ERROR, errorMessage, SessionExpiredError, type UserProfile,
 } from '../api'
 import { useAccessibility, type TextSize } from '../accessibility'
 import { useSessionRedirect } from '../hooks'
@@ -97,7 +97,11 @@ export default function Profile() {
           redirectToLogin()
           return
         }
-        setLoadError('Failed to load your profile.')
+        setLoadError(
+          err instanceof TypeError
+            ? CONNECTION_ERROR
+            : "We couldn't load your profile right now. Please try again in a moment.",
+        )
         setLoading(false)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -124,7 +128,7 @@ export default function Profile() {
       flashInfo(true, 'Profile updated.')
     } catch (err) {
       if (err instanceof SessionExpiredError) { redirectToLogin(); return }
-      flashInfo(false, err instanceof Error ? err.message : 'Failed to update profile.')
+      flashInfo(false, errorMessage(err, "We couldn't save your changes. Please try again."))
     } finally {
       setSavingInfo(false)
     }
@@ -149,7 +153,7 @@ export default function Profile() {
       flashPw(true, 'Password updated.')
     } catch (err2) {
       if (err2 instanceof SessionExpiredError) { redirectToLogin(); return }
-      flashPw(false, err2 instanceof Error ? err2.message : 'Failed to change password.')
+      flashPw(false, errorMessage(err2, "We couldn't change your password. Please try again."))
     } finally {
       setSavingPw(false)
     }

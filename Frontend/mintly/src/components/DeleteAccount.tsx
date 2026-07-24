@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { deleteAccount, SessionExpiredError } from '../api'
+import { CONNECTION_ERROR, deleteAccount, SessionExpiredError } from '../api'
 import { useSessionRedirect } from '../hooks'
 import StatusMessage from './StatusMessage'
 import styles from './DeleteAccount.module.css'
@@ -32,7 +32,11 @@ export default function DeleteAccount() {
         redirectToLogin()
         return
       }
-      setError('Failed to delete your account. Please try again.')
+      setError(
+        err instanceof TypeError
+          ? CONNECTION_ERROR
+          : "We couldn't delete your account. Please try again.",
+      )
       setBusy(false)
     }
   }

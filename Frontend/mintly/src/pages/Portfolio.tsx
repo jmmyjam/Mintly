@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, SessionExpiredError, type PortfolioCard, type HistoryPoint, type PriceChange } from '../api'
+import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, CONNECTION_ERROR, SessionExpiredError, type PortfolioCard, type HistoryPoint, type PriceChange } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
@@ -117,7 +117,11 @@ export default function Portfolio() {
           redirectToLogin()
           return
         }
-        setError(err instanceof Error ? err.message : 'Failed to load portfolio.')
+        setError(
+          err instanceof TypeError
+            ? CONNECTION_ERROR
+            : "We couldn't load your portfolio right now. Please try again in a moment.",
+        )
         setLoading(false)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,7 +143,10 @@ export default function Portfolio() {
         redirectToLogin()
         return
       }
-      showLotError(id, 'Failed to remove card.')
+      showLotError(
+        id,
+        err instanceof TypeError ? CONNECTION_ERROR : "We couldn't remove that card. Please try again.",
+      )
     }
   }
 
@@ -173,7 +180,10 @@ export default function Portfolio() {
         redirectToLogin()
         return
       }
-      showLotError(lot.id, 'Failed to update card.')
+      showLotError(
+        lot.id,
+        err instanceof TypeError ? CONNECTION_ERROR : "We couldn't save those changes. Please try again.",
+      )
     }
   }
 

@@ -169,6 +169,17 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   return res
 }
 
+// A request that never reached the server rejects with the browser's TypeError
+// ("Failed to fetch" / "Load failed") — wording meant for developers. Show this
+// instead; messages the API itself returned already read as user-facing text.
+export const CONNECTION_ERROR =
+  "We couldn't connect. Check your internet connection and try again in a moment."
+
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof TypeError) return CONNECTION_ERROR
+  return err instanceof Error && err.message ? err.message : fallback
+}
+
 export function getCardImageUrl(cardId: string): string {
   const [setId, number] = cardId.split('-')
   return `https://images.pokemontcg.io/${setId}/${number}.png`
@@ -214,7 +225,7 @@ export async function register(email: string, username: string, password: string
   })
   if (!res.ok) {
     const data = await res.json()
-    throw new Error(data.detail || 'Registration failed')
+    throw new Error(data.detail || "We couldn't create your account. Please try again.")
   }
 }
 
@@ -233,7 +244,7 @@ export async function updateProfile(updates: { email?: string; username?: string
     body: JSON.stringify(updates),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.detail || 'Failed to update profile')
+  if (!res.ok) throw new Error(data.detail || "We couldn't save your changes. Please try again.")
   return data
 }
 
@@ -246,7 +257,7 @@ export async function changePassword(current_password: string, new_password: str
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Failed to change password')
+    throw new Error(data.detail || "We couldn't change your password. Please try again.")
   }
 }
 
@@ -261,7 +272,7 @@ export async function forgotPassword(email: string): Promise<string> {
   })
   const data = await res.json().catch(() => ({}))
   // the only real failure is the 429 rate limit — surface its detail
-  if (!res.ok) throw new Error(data.detail || 'Failed to request a reset link')
+  if (!res.ok) throw new Error(data.detail || "We couldn't send the reset link. Please try again.")
   return data.message
 }
 
@@ -274,7 +285,7 @@ export async function resetPassword(token: string, new_password: string): Promis
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Failed to reset password')
+    throw new Error(data.detail || "We couldn't reset your password. Please try again.")
   }
 }
 
@@ -354,7 +365,7 @@ export async function addCard(card_id: string, purchase_price: number | null, qu
     body: JSON.stringify({ card_id, purchase_price, quantity }),
   })
   const data = await res.json()
-  if (!res.ok) throw new Error(data.detail || 'Failed to add card')
+  if (!res.ok) throw new Error(data.detail || "We couldn't add that card. Please try again.")
   return data.message || 'Added to portfolio!'
 }
 

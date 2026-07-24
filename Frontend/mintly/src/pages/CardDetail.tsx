@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
-  getCard, getCardPrice, getEbayEstimate,
+  CONNECTION_ERROR, getCard, getCardPrice, getEbayEstimate,
   type Card, type CardHistory, type EbayEstimate as Estimate,
   type PriceChange, type PriceVariant,
 } from '../api'
@@ -160,8 +160,13 @@ export default function CardDetail() {
             timer = setTimeout(() => load(attempt + 1), 3000)
           }
         })
-        .catch(() => {
-          if (!cancelled && attempt === 0) setError('Card not found.')
+        .catch(err => {
+          if (!cancelled && attempt === 0)
+            setError(
+              err instanceof TypeError
+                ? CONNECTION_ERROR
+                : "We couldn't find that card. It may have been removed — try searching for it by name.",
+            )
         })
         .finally(() => {
           if (!cancelled && attempt === 0) setLoading(false)
@@ -180,7 +185,7 @@ export default function CardDetail() {
   if (error || !card) {
     return (
       <PageMessage action={{ to: '/search', label: 'Back to Search' }}>
-        <p className="error">{error || 'Card not found.'}</p>
+        <p className="error">{error || "We couldn't find that card."}</p>
       </PageMessage>
     )
   }
