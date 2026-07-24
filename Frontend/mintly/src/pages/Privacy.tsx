@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 22, 2026</p>
+      <p className="legal-updated">Last updated: July 24, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -32,7 +32,9 @@ export default function Privacy() {
         signed in for up to 7 days, along with your display and accessibility
         preferences (such as reduced motion or larger text), which stay on your
         device and are never sent to our servers. No third-party tracking
-        cookies are used.
+        cookies are used on Mintly itself. If you follow an outbound link to
+        TCGplayer or eBay, that retailer or its affiliate network may set its
+        own cookies after you leave Mintly, governed by their privacy policies.
       </p>
 
       <h2>4. Third parties</h2>
@@ -47,7 +49,12 @@ export default function Privacy() {
         that message. The site itself is served through Cloudflare, which sits
         between your browser and our server to route traffic securely and
         protect against attacks; to do this it processes connection metadata
-        such as your IP address, subject to its own privacy policy.
+        such as your IP address, subject to its own privacy policy. Some
+        outbound links to TCGplayer and eBay are affiliate links: following one
+        tells the retailer or its affiliate network that the visit came from
+        Mintly, so Mintly can earn a commission on qualifying purchases. These
+        links contain only the card being looked up — never your account
+        details.
       </p>
 
       <h2>5. Your data</h2>

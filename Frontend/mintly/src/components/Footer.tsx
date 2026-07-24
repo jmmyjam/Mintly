@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import styles from './Footer.module.css'
+import { Link } from "react-router-dom";
+import styles from "./Footer.module.css";
 
 export default function Footer() {
   return (
@@ -15,16 +15,25 @@ export default function Footer() {
             <Link to="/portfolio">Portfolio</Link>
             <Link to="/terms">Terms</Link>
             <Link to="/privacy">Privacy</Link>
+            <a
+              href="https://buymeacoffee.com/mintlytcg"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Buy me a coffee
+            </a>
           </nav>
         </div>
         <p className={styles.footerDisclaimer}>
           Mintly is an unofficial fan project and is not affiliated with,
-          endorsed, or sponsored by Nintendo, The Pokémon Company, TCGplayer,
-          or eBay. Pokémon names and card images are trademarks and copyrights
-          of their respective owners. Card data is provided by the Pokémon TCG
-          API, with some estimates drawn from recent eBay sold listings; all
-          prices are informational estimates only and do not constitute
-          financial advice.
+          endorsed, or sponsored by Nintendo, The Pokémon Company, TCGplayer, or
+          eBay. Pokémon names and card images are trademarks and copyrights of
+          their respective owners. Card data is provided by the Pokémon TCG API,
+          with some estimates drawn from recent eBay sold listings; all prices
+          are informational estimates only and do not constitute financial
+          advice. Some links to TCGplayer and eBay may be affiliate links,
+          meaning Mintly may earn a small commission on qualifying purchases at
+          no additional cost to you.
         </p>
         <div className={styles.footerBottom}>
           <span>© {new Date().getFullYear()} Mintly. All rights reserved.</span>
@@ -32,5 +41,5 @@ export default function Footer() {
         </div>
       </div>
     </footer>
-  )
+  );
 }

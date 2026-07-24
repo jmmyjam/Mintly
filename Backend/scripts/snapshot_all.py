@@ -261,6 +261,19 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
     return crawl
 
 
+def _apply_tcgcsv_block(card: dict, candidate: dict) -> None:
+    """Inject a picked TCGCSV product's prices into a card dict. The
+    priceSource mark keeps the request-path catalog refresh from overwriting
+    the block with upstream's figure (see upsert_cards); any existing
+    url/updatedAt survives alongside — a direct TCGplayer product url is added
+    only when the card has none (the buy links on CardDetail read it)."""
+    block = card.setdefault("tcgplayer", {})
+    block["prices"] = candidate["prices"]
+    block["priceSource"] = "tcgcsv"
+    if not block.get("url") and candidate.get("productId"):
+        block["url"] = f"https://www.tcgplayer.com/product/{candidate['productId']}"
+
+
 def tcgcsv_fill(crawl: Crawl) -> TcgcsvFill:
     """First fallback for cards pokemontcg.io can't price: real TCGplayer
     prices from the TCGCSV nightly mirror, matched by set + card number.
@@ -297,21 +310,16 @@ def tcgcsv_fill(crawl: Crawl) -> TcgcsvFill:
         for card in cards_in_set:
             # The card name picks the right product when several share a
             # number (regular vs [Staff] promos, merged Trainer Kit decks)
-            prices = tcgcsv.pick_product(
+            candidate = tcgcsv.pick_candidate(
                 candidates.get(tcgcsv.norm_number(card.get("number") or "")),
                 card.get("name"))
             full = by_id.get(card["id"])
-            if not prices or full is None:
+            if candidate is None or not candidate["prices"] or full is None:
                 continue
-            price = extract_price({"tcgplayer": {"prices": prices}})
+            price = extract_price({"tcgplayer": {"prices": candidate["prices"]}})
             if price is None:
                 continue  # no variant the app reads — leave the card untouched
-            # Preserve any existing url/updatedAt alongside the injected prices;
-            # the priceSource mark keeps the request-path catalog refresh from
-            # overwriting this block with upstream's figure (see upsert_cards)
-            block = full.setdefault("tcgplayer", {})
-            block["prices"] = prices
-            block["priceSource"] = "tcgcsv"
+            _apply_tcgcsv_block(full, candidate)
             fill.prices[card["id"]] = price
         log.info("  tcgcsv %-24s %d/%d cards priced",
                  set_name, len(fill.prices) - before, len(cards_in_set))
@@ -360,20 +368,19 @@ def price_sanity_check(crawl: Crawl) -> SanityFill:
             continue
         fill.sets_checked += 1
         for card in cards_in_set:
-            prices = tcgcsv.pick_product(
+            candidate = tcgcsv.pick_candidate(
                 candidates.get(tcgcsv.norm_number(card.get("number") or "")),
                 card["name"], require_name=True)
             tcgplayer_price = (
-                extract_price({"tcgplayer": {"prices": prices}}) if prices else None)
+                extract_price({"tcgplayer": {"prices": candidate["prices"]}})
+                if candidate else None)
             upstream_price = crawl.prices[card["id"]]
             if not tcgplayer_price or not upstream_price:
                 continue
             if (upstream_price < tcgplayer_price * _SANITY_RATIO
                     and tcgplayer_price < upstream_price * _SANITY_RATIO):
                 continue
-            block = card.setdefault("tcgplayer", {})
-            block["prices"] = prices
-            block["priceSource"] = "tcgcsv"
+            _apply_tcgcsv_block(card, candidate)
             crawl.prices[card["id"]] = tcgplayer_price
             fill.replaced[card["id"]] = tcgplayer_price
             log.info("  sanity %-18s upstream $%.2f vs TCGplayer $%.2f — "

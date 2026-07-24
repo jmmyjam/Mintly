@@ -312,7 +312,8 @@ def fake_tcgcsv(monkeypatch):
         lambda gid: {"188": [{"name": "Mega Card ex - 188/132",
                               "prices": {"holofoil": {"market": 250.0,
                                                       "mid": 260.0}},
-                              "image": "https://cdn.example/product/9_200w.jpg"}]})
+                              "image": "https://cdn.example/product/9_200w.jpg",
+                              "productId": 9}]})
 
 
 def test_tcgcsv_fill_injects_prices_and_shrinks_the_ebay_set(fake_tcgcsv):
@@ -324,11 +325,25 @@ def test_tcgcsv_fill_injects_prices_and_shrinks_the_ebay_set(fake_tcgcsv):
     # marked so the request-path refresh can't overwrite them with upstream's
     assert card["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
     assert card["tcgplayer"]["priceSource"] == "tcgcsv"
+    # a direct product url rides along — the CardDetail buy link reads it
+    assert card["tcgplayer"]["url"] == "https://www.tcgplayer.com/product/9"
     # snapshot price is extract_price of the injected block
     assert result.prices == {"me9-1": 250.0}
     assert result.sets_matched == 1 and result.sets_unmatched == []
     # the eBay candidate computation drops the matched card
     assert [c for c in crawl.unpriced if c["id"] not in result.prices] == []
+
+
+def test_tcgcsv_fill_preserves_an_existing_url(fake_tcgcsv):
+    # upstream's own url (the prices.pokemontcg.io redirect) wins when present —
+    # the fill only adds a product url to cards that have none
+    card = mega_card()
+    card["tcgplayer"] = {"url": "https://prices.pokemontcg.io/tcgplayer/me9-1"}
+    snapshot_all.tcgcsv_fill(crawl_with(card))
+
+    assert card["tcgplayer"]["url"] == "https://prices.pokemontcg.io/tcgplayer/me9-1"
+    assert card["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+    assert card["tcgplayer"]["priceSource"] == "tcgcsv"
 
 
 def test_tcgcsv_fill_misses_leave_cards_for_ebay(fake_tcgcsv):
@@ -368,6 +383,8 @@ def test_tcgcsv_priced_card_lands_in_catalog_and_history(run_main, fake_tcgcsv):
     try:
         stored = card_catalog.get_card(db, "me9-1").data
         assert stored["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+        # the injected product url lands in the catalog with the prices
+        assert stored["tcgplayer"]["url"] == "https://www.tcgplayer.com/product/9"
         snap = (db.query(CardPriceSnapshot)
                   .filter(CardPriceSnapshot.card_id == "me9-1").one())
         assert snap.price == 250.0
@@ -422,6 +439,9 @@ def test_recover_dropped_prices_uncrawled_catalog_cards_via_tcgcsv(fake_tcgcsv):
         assert result.candidates == 1              # only me9-2 was uncrawled
         assert result.prices == {"me9-2": 250.0}   # priced from the TCGCSV mirror
         assert "me9-1" not in result.prices        # the crawled card is left alone
+        # dropped-page cards get the product url injected too
+        recovered = next(c for c in result.cards if c["id"] == "me9-2")
+        assert recovered["tcgplayer"]["url"] == "https://www.tcgplayer.com/product/9"
     finally:
         db.close()
 

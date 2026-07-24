@@ -2,7 +2,7 @@ export default function Terms() {
   return (
     <div className="page legal-page">
       <h1>Terms of Service</h1>
-      <p className="legal-updated">Last updated: July 21, 2026</p>
+      <p className="legal-updated">Last updated: July 24, 2026</p>
 
       <h2>1. The service</h2>
       <p>
@@ -35,7 +35,10 @@ export default function Terms() {
         estimates — they can be delayed, incomplete, or wrong, and may be
         missing entirely for some cards or sets. Nothing on Mintly is financial,
         investment, or purchasing advice; portfolio and price values shown are
-        informational only.
+        informational only. Links to product pages or search results on
+        TCGplayer and eBay may be affiliate links; Mintly may earn a commission
+        on qualifying purchases made through them, at no additional cost to
+        you. This never affects which prices or estimates are shown.
       </p>
 
       <h2>4. Intellectual property</h2>

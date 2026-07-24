@@ -19,6 +19,9 @@ os.environ.setdefault("RATE_LIMIT_TRUST_FORWARDED", "0")
 # a dev .env may hold real SMTP creds — pin the mailer to its unconfigured
 # (print-to-console) mode so the suite can never send actual email
 os.environ.setdefault("SMTP_HOST", "")
+# a dev .env may carry a real eBay Partner Network campaign id — pin the
+# untagged default so the suite's source_url assertions hold
+os.environ.setdefault("EBAY_EPN_CAMPAIGN_ID", "")
 
 import pytest
 from fastapi.testclient import TestClient

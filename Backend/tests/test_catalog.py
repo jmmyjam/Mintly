@@ -128,6 +128,25 @@ def test_upsert_keeps_tcgcsv_sourced_prices_over_upstreams():
         db.close()
 
 
+def test_upsert_keeps_tcgcsv_injected_product_url():
+    # the daily job stores a direct tcgplayer.com/product url alongside its
+    # prices — the whole stored block (url included) must survive the
+    # request-path refresh, or the CardDetail buy link would flip back and
+    # forth between refreshes
+    seeded = tcgcsv_priced_card("me9-1", "Mega Card ex", 250.0)
+    seeded["tcgplayer"]["url"] = "https://www.tcgplayer.com/product/9"
+    seed_catalog([seeded])
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(
+            db, [catalog_card("me9-1", "Mega Card ex", price=260.0)])
+        stored = card_catalog.get_card(db, "me9-1")
+        assert stored.data["tcgplayer"]["url"] == "https://www.tcgplayer.com/product/9"
+        assert stored.data["tcgplayer"]["prices"]["holofoil"]["market"] == 250.0
+    finally:
+        db.close()
+
+
 def test_authoritative_upsert_replaces_tcgcsv_sourced_prices():
     # the daily crawl re-arbitrates sources — its verdict lands verbatim
     seed_catalog([tcgcsv_priced_card("swshp-1", "Charizard", 98.49)])

@@ -13,6 +13,7 @@ import PriceQtyForm from '../components/PriceQtyForm'
 import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
+import { tcgplayerBuyLink } from '../affiliate'
 import { money } from '../format'
 import { PRICE_PREFERENCE, mergeHeadline, variantLabel } from '../variants'
 import styles from './CardDetail.module.css'
@@ -187,6 +188,7 @@ export default function CardDetail() {
   const priceEntries = Object.entries(card.tcgplayer?.prices ?? {})
   const market = getCardPrice(card)
   const hasMarket = market != null
+  const buy = tcgplayerBuyLink(card)
 
   // Primary TCGPlayer variant (drives the tile row); eBay value prefers the
   // freshly-scraped median, falling back to the stored snapshot for an instant
@@ -255,12 +257,12 @@ export default function CardDetail() {
                 <p className={styles.disclaimer}>
                   Estimated from {ebay.count} recent eBay sold listings
                   {ebay.since && ebay.until ? ` · ${dateRange(ebay.since, ebay.until)}` : ''} · informational only.{' '}
-                  <a href={ebay.source_url} target="_blank" rel="noopener noreferrer">View on eBay</a>
+                  <a href={ebay.source_url} target="_blank" rel={ebay.source_url.includes('campid=') ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}>View on eBay</a>
                 </p>
               ) : ebay && ebay.count === 0 ? (
                 <p className={styles.disclaimer}>
                   No recent eBay sales found for this card.{' '}
-                  <a href={ebay.source_url} target="_blank" rel="noopener noreferrer">Search eBay</a>
+                  <a href={ebay.source_url} target="_blank" rel={ebay.source_url.includes('campid=') ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}>Search eBay</a>
                 </p>
               ) : (
                 <p className={styles.disclaimer}>Estimating value from recent eBay sold listings…</p>
@@ -286,6 +288,21 @@ export default function CardDetail() {
                 busy={addBusy}
               />
             )}
+            <div className={styles.buyOutbound}>
+              <a
+                href={buy.href}
+                target="_blank"
+                rel={buy.affiliate ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}
+                className="btn-outline btn-sm"
+              >
+                Buy on TCGplayer ↗
+              </a>
+              {buy.affiliate && (
+                <p className={styles.affiliateNote}>
+                  Mintly may earn a commission from purchases made through this link.
+                </p>
+              )}
+            </div>
           </div>
 
           {tiles.length > 0 && (

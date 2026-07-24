@@ -9,6 +9,7 @@ This is best-effort and deliberately fault-tolerant — eBay markup changes and 
 checks are expected, so every failure path returns an empty estimate rather than
 raising, and callers treat "no estimate" as normal.
 """
+import os
 import re
 import time
 from datetime import datetime
@@ -16,12 +17,22 @@ from statistics import mean, median
 
 import certifi
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ----- Configuration ---------------------------------------------------------
 
 # Completed + sold, sorted by most-recently-ended, 60 per page
 _SEARCH_URL = "https://www.ebay.com/sch/i.html"
 _SEARCH_PARAMS = {"LH_Complete": "1", "LH_Sold": "1", "_sop": "13", "_ipg": "60"}
+
+# eBay Partner Network click tagging — appended to every source_url the
+# frontend renders as "View on eBay"/"Search eBay". Unset/empty = untagged
+# plain URLs (the pre-affiliate behavior).
+_EPN_CAMPAIGN_ID = os.getenv("EBAY_EPN_CAMPAIGN_ID", "").strip()
+_EPN_PARAMS = {"mkcid": "1", "mkrid": "711-53200-19255-0",  # US ebay.com rotation
+               "siteid": "0", "mkevt": "1", "toolid": "10001"}
 
 # The user asked for recent sales, not old ones: only the newest N sold comps feed
 # the estimate (eBay already returns them newest-first).
@@ -108,7 +119,10 @@ def _fetch_sold_html(query: str) -> str | None:
 
 def search_url(query: str) -> str:
     from urllib.parse import urlencode
-    return f"{_SEARCH_URL}?{urlencode({'_nkw': query, **_SEARCH_PARAMS})}"
+    params = {"_nkw": query, **_SEARCH_PARAMS}
+    if _EPN_CAMPAIGN_ID:
+        params.update(_EPN_PARAMS, campid=_EPN_CAMPAIGN_ID)
+    return f"{_SEARCH_URL}?{urlencode(params)}"
 
 
 # ----- Parse & summarize -----------------------------------------------------

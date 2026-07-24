@@ -36,6 +36,29 @@ class TestBuildQuery:
         assert q == "Pikachu Base Set -psa -bgs -cgc"
 
 
+class TestSearchUrl:
+    def test_untagged_without_campaign_id(self, monkeypatch):
+        monkeypatch.setattr(ebay_prices, "_EPN_CAMPAIGN_ID", "")
+        url = ebay_prices.search_url("pikachu 58/102")
+        assert "campid" not in url and "mkcid" not in url
+        assert "_nkw=pikachu+58%2F102" in url and "LH_Sold=1" in url
+
+    def test_epn_params_appended_with_campaign_id(self, monkeypatch):
+        monkeypatch.setattr(ebay_prices, "_EPN_CAMPAIGN_ID", "5338000000")
+        url = ebay_prices.search_url("pikachu")
+        for param in ("campid=5338000000", "mkcid=1", "mkrid=711-53200-19255-0",
+                      "siteid=0", "mkevt=1", "toolid=10001"):
+            assert param in url
+        # the original search params must survive the tagging
+        assert "_nkw=pikachu" in url and "LH_Sold=1" in url and "LH_Complete=1" in url
+
+    def test_summarize_source_url_carries_the_tag(self, monkeypatch):
+        monkeypatch.setattr(ebay_prices, "_EPN_CAMPAIGN_ID", "5338000000")
+        result = ebay_prices.summarize([], "pikachu")
+        assert result["count"] == 0
+        assert "campid=5338000000" in result["source_url"]
+
+
 class TestParseSold:
     def test_extracts_date_price_title(self):
         sales = ebay_prices.parse_sold(page(card_html("Mega Lucario ex 188", "Jul 14, 2026", "$260.00")))

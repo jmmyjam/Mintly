@@ -232,11 +232,21 @@ class TestPickProduct:
         assert chosen["prices"]["holofoil"]["market"] == 98.49
         assert chosen["image"] == "https://cdn.example/product/11_200w.jpg"
 
+    def test_pick_candidate_keeps_product_id_with_its_product(self):
+        # the snapshot job builds tcgplayer.com/product/{id} buy links from it —
+        # it must be the base product's id, never the [Staff] stamp's
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        assert tcgcsv.pick_candidate(cands, "Charizard")["productId"] == 11
+
 
 class TestProductImages:
     def test_join_carries_the_product_image(self):
         cands = tcgcsv.candidates_for_group(24380)["1"]
         assert cands[0]["image"] == "https://cdn.example/product/1_200w.jpg"
+
+    def test_join_carries_the_product_id(self):
+        cands = tcgcsv.candidates_for_group(24380)["1"]
+        assert cands[0]["productId"] == 1
 
     def test_images_block_shapes_small_and_large(self):
         images = tcgcsv.product_images(

@@ -113,6 +113,24 @@
 .buy-form :global(.edit-field) { flex: 1; }
 .buy-form :global(.mini-qty) { max-width: 84px; }
 
+/* outbound "Buy on TCGplayer" link below the add form */
+.buy-outbound {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--accent-border);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.affiliate-note {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.85;
+  margin: 0;
+}
+
 /* ---- KPI stat tiles ------------------------------------------------------ */
 .tiles {
   display: grid;

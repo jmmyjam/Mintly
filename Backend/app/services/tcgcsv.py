@@ -210,7 +210,8 @@ def group_id_for_set(set_name: str | None, set_id: str | None = None) -> int | N
 
 def candidates_for_group(group_id: int) -> dict[str, list[dict]]:
     """One group's card products joined product×price, keyed by normalized
-    card number: {number: [{"name": product name, "prices": {variant: {...}}}]}.
+    card number: {number: [{"name": product name, "prices": {variant: {...}},
+    "image": scan URL, "productId": TCGplayer product id}]}.
     A number can carry several products — TCGplayer sells "[Staff]" prerelease
     stamps beside the regular promo under the same number, and merged groups
     (the EX Trainer Kit half-decks, WoTC promos) reuse numbers across different
@@ -251,7 +252,8 @@ def candidates_for_group(group_id: int) -> dict[str, list[dict]]:
             if entry.get("name") == "Number" and entry.get("value"):
                 joined.setdefault(norm_number(entry["value"]), []).append(
                     {"name": product.get("name") or "", "prices": prices,
-                     "image": product.get("imageUrl")})
+                     "image": product.get("imageUrl"),
+                     "productId": product.get("productId")})
                 break
 
     _prices_cache[group_id] = joined
