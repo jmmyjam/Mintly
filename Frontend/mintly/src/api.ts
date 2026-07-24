@@ -130,6 +130,21 @@ export interface UserProfile {
   username: string
   created_at: string
   accepted_terms_at: string | null
+  // True when this account is on the backend's ADMIN_EMAILS list — shows the
+  // admin-dashboard link on the Profile page
+  is_admin: boolean
+}
+
+// Site-wide stats for the admin dashboard (GET /admin/stats, admins only)
+export interface AdminStats {
+  generated_at: string
+  users: { total: number; new_7d: number; new_30d: number; with_portfolio: number }
+  signups_by_day: { date: string; count: number }[]
+  recent_users: { id: number; username: string; email: string; created_at: string; lots: number }[]
+  portfolio: { lots: number; distinct_cards: number; total_quantity: number }
+  catalog: { cards: number; stale_prices: number; last_full_sync: string | null }
+  snapshots: { rows: number; today: number; latest: string | null }
+  db_size_bytes: number | null
 }
 
 // Thrown on 401 so pages can redirect to /login instead of showing a generic error
@@ -137,6 +152,15 @@ export class SessionExpiredError extends Error {
   constructor() {
     super('Session expired — please log in again.')
     this.name = 'SessionExpiredError'
+  }
+}
+
+// Thrown when /admin/stats answers 404 — this account isn't on the admin list
+// (the backend deliberately hides the endpoint's existence from non-admins)
+export class NotAdminError extends Error {
+  constructor() {
+    super('Not found')
+    this.name = 'NotAdminError'
   }
 }
 
@@ -295,6 +319,16 @@ export async function deleteAccount(): Promise<void> {
   const res = await authedFetch('/auth/me', { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete account')
   clearToken()
+}
+
+// ----- Admin calls (admin accounts only) -------------------------------------------
+
+// Site-wide stats for the admin dashboard. 404 = this account isn't an admin.
+export async function getAdminStats(): Promise<AdminStats> {
+  const res = await authedFetch('/admin/stats')
+  if (res.status === 404) throw new NotAdminError()
+  if (!res.ok) throw new Error('Failed to load site stats')
+  return res.json()
 }
 
 // ----- Card calls ----------------------------------------------------------------

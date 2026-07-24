@@ -89,7 +89,7 @@ _RETRY_PASS_PAUSE = 30     # cool-down before the first sweep; doubles each pass
 _SELECT = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
 _EBAY_PAUSE = 3.0          # be gentle on eBay between scrapes (--ebay-pause overrides)
 _EBAY_GIVEUP = 5           # consecutive FAILED fetches — blocked or offline, stop
-_EBAY_MAX = 500           # default --max-ebay: above the priceless count, so all get tried
+_EBAY_MAX = 500           # default --max-ebay: caps the eBay pass per run (--max-ebay overrides)
 
 session = requests.Session()
 session.verify = certifi.where()

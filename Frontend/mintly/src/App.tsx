@@ -6,11 +6,13 @@ import Home from './pages/Home'
 import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
 import Profile from './pages/Profile'
+import Admin from './pages/Admin'
 import CardDetail from './pages/CardDetail'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
+import NotFound from './pages/NotFound'
 import './App.css'
 
 // Site-level structured data, on every route. Built from the page's own origin
@@ -70,11 +72,13 @@ export default function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="/card/:cardId" element={<CardDetail />} />
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
       <Footer />

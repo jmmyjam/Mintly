@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, PortfolioCard, PasswordResetToken, utcnow
 from app.services import mailer
+from app.services.admin_access import is_admin
 from app.services.rate_limit import rate_limit
 import hashlib
 import html
@@ -104,12 +105,14 @@ def valid_email(email: str) -> bool:
 
 
 def user_info(user: User) -> dict:
-    # The account fields the profile page reads — never the password hash
+    # The account fields the profile page reads — never the password hash.
+    # is_admin lets the frontend show the admin-dashboard link to admins only.
     return {
         "email": user.email,
         "username": user.username,
         "created_at": user.created_at,
         "accepted_terms_at": user.accepted_terms_at,
+        "is_admin": is_admin(user),
     }
 
 

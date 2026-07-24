@@ -22,6 +22,9 @@ os.environ.setdefault("SMTP_HOST", "")
 # a dev .env may carry a real eBay Partner Network campaign id — pin the
 # untagged default so the suite's source_url assertions hold
 os.environ.setdefault("EBAY_EPN_CAMPAIGN_ID", "")
+# a dev .env may name a real admin account — pin "no admins" so the suite's
+# 404/is_admin assertions hold (tests grant admin by monkeypatching the set)
+os.environ.setdefault("ADMIN_EMAILS", "")
 
 import pytest
 from fastapi.testclient import TestClient

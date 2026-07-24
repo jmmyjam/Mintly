@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
 from app.routers.cards import router as cards_router
 from app.routers.health import router as health_router
@@ -36,3 +37,4 @@ app.include_router(portfolio_router)
 app.include_router(cards_router)
 app.include_router(health_router)
 app.include_router(sitemap_router)
+app.include_router(admin_router)

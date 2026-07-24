@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   getMe, updateProfile, changePassword, getToken, clearToken,
   CONNECTION_ERROR, errorMessage, SessionExpiredError, type UserProfile,
@@ -186,7 +186,12 @@ export default function Profile() {
     <div className="page">
       <div className={styles.pageHeader}>
         <h1>Profile</h1>
-        <button className="btn-outline btn-sm" onClick={handleLogout}>Log out</button>
+        <div className={styles.headerActions}>
+          {profile?.is_admin && (
+            <Link to="/admin" className="btn-outline btn-sm">Admin</Link>
+          )}
+          <button className="btn-outline btn-sm" onClick={handleLogout}>Log out</button>
+        </div>
       </div>
 
       {/* ----- Account details ----- */}
