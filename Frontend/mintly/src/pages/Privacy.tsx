@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 24, 2026</p>
+      <p className="legal-updated">Last updated: July 25, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -37,7 +37,19 @@ export default function Privacy() {
         own cookies after you leave Mintly, governed by their privacy policies.
       </p>
 
-      <h2>4. Third parties</h2>
+      <h2>4. Card scanning</h2>
+      <p>
+        The optional card scanner uses your device&apos;s camera to identify a
+        card. Recognition runs entirely in your browser: on-device text
+        recognition reads only the card&apos;s name and number from the camera
+        image, and that image is never uploaded to Mintly or stored anywhere.
+        Mintly then looks up the recognized name and number through the same
+        card catalog used by search (see section 5) — only that text is sent,
+        exactly as if you had typed it. The recognition software your browser
+        loads for this is cached on your device after first use.
+      </p>
+
+      <h2>5. Third parties</h2>
       <p>
         Card searches and price lookups are served through the Pokémon TCG API.
         For cards it cannot price, Mintly fetches TCGplayer price data from
@@ -57,7 +69,7 @@ export default function Privacy() {
         details.
       </p>
 
-      <h2>5. Your data</h2>
+      <h2>6. Your data</h2>
       <p>
         You can view and update your email, username, and password from your
         profile page, and remove cards from your portfolio at any time, which
@@ -70,13 +82,13 @@ export default function Privacy() {
         they remain after an account is deleted.
       </p>
 
-      <h2>6. Contact</h2>
+      <h2>7. Contact</h2>
       <p>
         Questions about this policy or a request about your data? Email us at{" "}
         <a href="mailto:mintlytcg@gmail.com">mintlytcg@gmail.com</a>.
       </p>
 
-      <h2>7. Changes</h2>
+      <h2>8. Changes</h2>
       <p>
         If this policy changes, the date above will be updated. Material changes
         will be noted on the site.

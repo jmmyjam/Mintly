@@ -36,6 +36,9 @@ export default function Navbar() {
         <Link to="/search" className={location.pathname === '/search' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
           Search
         </Link>
+        <Link to="/scan" className={location.pathname === '/scan' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+          Scan
+        </Link>
         <Link to="/portfolio" className={location.pathname === '/portfolio' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
           Portfolio
         </Link>

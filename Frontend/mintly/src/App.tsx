@@ -1,10 +1,15 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import StructuredData from './components/StructuredData'
+import PageMessage from './components/PageMessage'
 import Home from './pages/Home'
 import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
+// Lazy-loaded: the scanner pulls in the Tesseract OCR runtime, so it's split
+// into its own chunk that only downloads when someone opens /scan.
+const Scan = lazy(() => import('./pages/Scan'))
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
 import CardDetail from './pages/CardDetail'
@@ -70,6 +75,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
+          <Route
+            path="/scan"
+            element={
+              <Suspense fallback={<PageMessage>Loading…</PageMessage>}>
+                <Scan />
+              </Suspense>
+            }
+          />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<Admin />} />
