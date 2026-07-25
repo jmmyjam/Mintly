@@ -403,3 +403,26 @@ def test_half_crawled_set_proxies_until_complete(client, cards_upstream):
     second = client.get("/sets/b9/cards").json()  # upsert completed the set
     assert second["totalCount"] == 3
     assert len(cards_upstream.card_calls()) == 1
+
+
+# ---- Stamp/mark variety cards (catalog-only, synthetic ids) ------------------
+
+def test_variety_card_served_without_a_stale_refresh(client, cards_upstream, refreshes):
+    # A variety card lives only in the catalog; even with a stale price there's
+    # nothing upstream to refresh, so it's served plainly — no `refreshing` flag
+    # and no background fetch queued.
+    seed_catalog([catalog_card("swshp-SWSH006~v208260",
+                               "Rillaboom (Prerelease) [Staff]",
+                               number="6", set_id="swshp")])
+    age_price("swshp-SWSH006~v208260")
+    card = client.get("/cards/swshp-SWSH006~v208260").json()
+    assert card["name"] == "Rillaboom (Prerelease) [Staff]"
+    assert "refreshing" not in card
+    assert refreshes == []
+
+
+def test_unknown_variety_id_404s_without_proxying(client, cards_upstream):
+    # A synthetic variety id with no catalog row can't be answered by upstream,
+    # so 404 immediately instead of a pointless proxy round-trip.
+    assert client.get("/cards/base1-4~v999999").status_code == 404
+    assert cards_upstream.card_calls() == []

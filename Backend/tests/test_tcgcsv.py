@@ -309,3 +309,90 @@ class TestFailureModes:
         assert tcgcsv.prices_for_group(24380) == {}
         monkeypatch.setattr(tcgcsv, "_fetch_products", lambda gid: PRODUCTS)
         assert tcgcsv.prices_for_group(24380)["1"]["normal"]["market"] == 0.04
+
+
+class TestMatchingCandidates:
+    @pytest.fixture(autouse=True)
+    def duplicate_products(self, monkeypatch):
+        monkeypatch.setattr(tcgcsv, "_fetch_products", lambda gid: DUP_PRODUCTS)
+        monkeypatch.setattr(tcgcsv, "_fetch_prices", lambda gid: DUP_PRICES)
+
+    def test_matches_both_the_regular_and_stamped_products(self):
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        assert {c["productId"]
+                for c in tcgcsv.matching_candidates(cands, "Charizard")} == {10, 11}
+
+    def test_no_card_name_returns_all(self):
+        cands = tcgcsv.candidates_for_group(2545)["4"]
+        assert len(tcgcsv.matching_candidates(cands, None)) == 2
+
+    def test_trailing_qualifier_without_a_number_tail_still_matches(self):
+        # "Charizard (Black Dot Error)" has no " - <number>" tail; its trailing
+        # qualifier must still be stripped so it reduces to "Charizard"
+        cands = [{"productId": 99, "name": "Charizard (Black Dot Error)",
+                  "prices": {"holofoil": {"market": 5.0}}}]
+        assert tcgcsv.matching_candidates(cands, "Charizard")[0]["productId"] == 99
+
+    def test_a_number_disambiguator_is_stripped_too(self):
+        # "Mew (8)" — the "(8)" is the collector number, not a card-name part
+        cands = [{"productId": 7, "name": "Mew (8)", "prices": {"normal": {}}}]
+        assert tcgcsv.matching_candidates(cands, "Mew")[0]["productId"] == 7
+
+
+class TestVarietyCandidates:
+    """Stamp/mark products sharing a number fork into their own cards; finishes
+    and different cards colliding on a number never do."""
+
+    @pytest.fixture(autouse=True)
+    def duplicate_products(self, monkeypatch):
+        monkeypatch.setattr(tcgcsv, "_fetch_products", lambda gid: DUP_PRODUCTS)
+        monkeypatch.setattr(tcgcsv, "_fetch_prices", lambda gid: DUP_PRICES)
+
+    def test_staff_stamp_forks_from_the_regular_card(self):
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        varieties = tcgcsv.variety_candidates(cands, "Charizard")
+        assert [v["productId"] for v in varieties] == [10]  # the [Staff] stamp
+        assert varieties[0]["prices"]["holofoil"]["market"] == 580.92
+
+    def test_the_base_pick_is_never_its_own_variety(self):
+        cands = tcgcsv.candidates_for_group(2545)["swsh66"]
+        pids = {v["productId"] for v in tcgcsv.variety_candidates(cands, "Charizard")}
+        assert 11 not in pids  # 11 is the regular card = the base
+
+    def test_a_different_card_sharing_a_number_is_not_a_variety(self):
+        # Meowth and Chimecho collide on "4/12" in a merged group — neither forks
+        cands = tcgcsv.candidates_for_group(2545)["4"]
+        assert tcgcsv.variety_candidates(cands, "Meowth") == []
+        assert tcgcsv.variety_candidates(cands, "Chimecho") == []
+
+    def test_finishes_never_fork(self):
+        # one product with two finish rows stays on the base card — never a
+        # separate variety (finishes are sub-types of one productId)
+        cands = [{"productId": 1, "name": "Tropius", "image": None,
+                  "prices": {"normal": {"market": 0.04},
+                             "reverseHolofoil": {"market": 0.15}}}]
+        assert tcgcsv.variety_candidates(cands, "Tropius") == []
+
+
+class TestVarietyName:
+    def test_strips_number_tail_keeps_qualifier(self):
+        assert (tcgcsv.variety_name("Rillaboom - SWSH006 (Prerelease) [Staff]")
+                == "Rillaboom (Prerelease) [Staff]")
+
+    def test_no_number_tail_is_unchanged(self):
+        assert (tcgcsv.variety_name("Charizard (Black Dot Error)")
+                == "Charizard (Black Dot Error)")
+
+
+class TestVarietyIds:
+    def test_round_trip(self):
+        vid = tcgcsv.variety_id("swshp-SWSH006", 208260)
+        assert vid == "swshp-SWSH006~v208260"
+        assert tcgcsv.is_variety_id(vid)
+        assert tcgcsv.base_of(vid) == "swshp-SWSH006"
+
+    def test_real_ids_are_not_varieties(self):
+        assert not tcgcsv.is_variety_id("base1-4")
+        assert not tcgcsv.is_variety_id("swshp-SWSH066")
+        assert not tcgcsv.is_variety_id(None)
+        assert tcgcsv.base_of("base1-4") == "base1-4"

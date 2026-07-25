@@ -191,6 +191,18 @@ class TestPriceFallbackSources:
         [row] = client.get("/portfolio", headers=auth_headers).json()
         assert row["purchase_price"] == 18.0
 
+    def test_variety_card_is_holdable_and_priced_from_catalog(self, client, auth_headers, upstream):
+        # A stamp/mark variety lives only in the catalog (the daily job forks it);
+        # pokemontcg.io has no such id, so it must resolve without any upstream
+        # call — both the add lookup and the /portfolio price come from the catalog
+        seed_catalog_card(make_card("swshp-SWSH006~v208260", price=900.0))
+        assert add(client, auth_headers,
+                   card_id="swshp-SWSH006~v208260").status_code == 200
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["current_price"] == 900.0
+        assert row["purchase_price"] == 900.0  # auto-filled from the catalog price
+
 
 class TestHistory:
     def test_empty_without_cards(self, client, auth_headers):

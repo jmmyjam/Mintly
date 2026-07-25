@@ -260,6 +260,37 @@ def candidates_for_group(group_id: int) -> dict[str, list[dict]]:
     return joined
 
 
+# Trailing stamp/mark qualifiers and TCGplayer's collector-number disambiguator:
+# stripped when extracting the bare card name so "Charizard (Black Dot Error)",
+# "Kabuto [W Stamped]", "Mew (8)", and "Charizard" all reduce to the card name.
+_TRAILING_QUALIFIER_RE = re.compile(r"(\s*(\([^)]*\)|\[[^\]]*\]))+\s*$")
+
+
+def _product_card_name(name: str) -> str:
+    """The bare card name from a TCGplayer product name — the " - <number>" tail
+    and any trailing (..)/[..] qualifiers removed — so "Charizard - SWSH066
+    (Prerelease) [Staff]", "Charizard (Black Dot Error)", and "Charizard" all
+    compare equal to the pokemontcg.io card name "Charizard"."""
+    return _TRAILING_QUALIFIER_RE.sub("", name.split(" - ")[0]).strip()
+
+
+def matching_candidates(candidates: list[dict] | None,
+                        card_name: str | None) -> list[dict]:
+    """The candidates whose product name matches the asked-for card — the name
+    filter that tells a card's own products (regular plus any stamped/marked
+    siblings) from a DIFFERENT card that merely shares its number in a merged
+    group ("Mew" vs "Dark Gyarados"). The full list when card_name is falsy (no
+    filter), [] when nothing matches. Shared by pick_candidate and
+    variety_candidates so the two can't drift."""
+    if not candidates:
+        return []
+    if not card_name:
+        return list(candidates)
+    wanted = _norm_card_name(card_name)
+    return [c for c in candidates
+            if _norm_card_name(_product_card_name(c["name"])) == wanted]
+
+
 def pick_candidate(candidates: list[dict] | None, card_name: str | None = None,
                    require_name: bool = False) -> dict | None:
     """The product that IS the asked-for card, from the candidates sharing its
@@ -275,9 +306,7 @@ def pick_candidate(candidates: list[dict] | None, card_name: str | None = None,
         return None
     pool = candidates
     if card_name:
-        wanted = _norm_card_name(card_name)
-        named = [c for c in pool
-                 if _norm_card_name(c["name"].split(" - ")[0]) == wanted]
+        named = matching_candidates(candidates, card_name)
         if named:
             pool = named
         elif require_name:
@@ -292,6 +321,85 @@ def pick_product(candidates: list[dict] | None, card_name: str | None = None,
     """The prices block of pick_candidate's choice, or None."""
     chosen = pick_candidate(candidates, card_name, require_name)
     return chosen["prices"] if chosen else None
+
+
+# ----- Card varieties --------------------------------------------------------
+# A card number can carry several TCGplayer PRODUCTS (distinct productIds):
+# the regular card plus stamped/marked siblings — a "[Staff]" prerelease stamp,
+# "[W Stamped]", "(Black Dot Error)", "(Glossy Finish)". pick_candidate maps the
+# base pokemontcg.io card to the plain product and the daily job forks each
+# stamped sibling into its own catalog card. FINISHES (holo/reverse/normal/1st
+# edition) never appear here: TCGplayer models them as sub-types of ONE product
+# (one candidate, several price rows already merged into `prices`), so they
+# always stay on the base card.
+
+# A stamp/mark qualifier: a bracketed "[Staff]"/"[W Stamped]" or a parenthetical
+# "(Prerelease)"/"(Black Dot Error)". A bare "(8)" collector-number
+# disambiguator is NOT a qualifier — it doesn't mark a different physical card.
+_BRACKET_TOKEN_RE = re.compile(r"\[[^\]]+\]")
+_PAREN_TOKEN_RE = re.compile(r"\(([^)]*)\)")
+# TCGplayer's " - <number>" tail, for building a clean variety display name
+_NUMBER_TAIL_RE = re.compile(r"\s+-\s+\S+")
+
+# Synthetic-card id scheme for varieties: "<base_id>~v<productId>". "~v" is
+# URL-safe and never occurs in a real pokemontcg.io id, and the TCGplayer
+# productId keeps the id stable across daily runs.
+_VARIETY_SEP = "~v"
+
+
+def _qualifier_tokens(name: str) -> set[str]:
+    """The set of stamp/mark qualifiers in a product name, lowercased."""
+    tokens = {m.group(0).lower() for m in _BRACKET_TOKEN_RE.finditer(name)}
+    for m in _PAREN_TOKEN_RE.finditer(name):
+        content = m.group(1).strip()
+        if content and not content.isdigit():
+            tokens.add(f"({content.lower()})")
+    return tokens
+
+
+def variety_candidates(candidates: list[dict] | None,
+                       card_name: str | None) -> list[dict]:
+    """The stamp/mark varieties of a card among the products sharing its number:
+    same-name products (matching_candidates) that AREN'T the base pick_candidate
+    product and carry a qualifier the base lacks — a [Staff] stamp, [W Stamped],
+    (Black Dot Error), a prerelease stamp, etc. Empty when the card has no
+    separate stamped product. Finishes are never returned (one product = one
+    candidate) and a plain "(8)" disambiguator isn't a qualifier, so holo vs
+    non-holo is never split off."""
+    named = matching_candidates(candidates, card_name)
+    if not named:
+        return []
+    chosen = pick_candidate(candidates, card_name)
+    if chosen is None:
+        return []
+    chosen_pid = chosen.get("productId")
+    base_tokens = _qualifier_tokens(chosen.get("name") or "")
+    return [
+        c for c in named
+        if c.get("productId") != chosen_pid
+        and _qualifier_tokens(c.get("name") or "") - base_tokens
+    ]
+
+
+def variety_name(product_name: str) -> str:
+    """A clean display name for a variety: TCGplayer's " - <number>" tail
+    stripped, the stamp/mark qualifier kept ("Rillaboom - SWSH006 (Prerelease)
+    [Staff]" -> "Rillaboom (Prerelease) [Staff]")."""
+    return _NUMBER_TAIL_RE.sub("", product_name, count=1).strip() or product_name
+
+
+def variety_id(base_id: str, product_id) -> str:
+    return f"{base_id}{_VARIETY_SEP}{product_id}"
+
+
+def is_variety_id(card_id: str | None) -> bool:
+    return _VARIETY_SEP in (card_id or "")
+
+
+def base_of(card_id: str | None) -> str:
+    """The base pokemontcg.io id a synthetic variety id was minted from — the id
+    itself when it isn't a variety id."""
+    return (card_id or "").split(_VARIETY_SEP, 1)[0]
 
 
 # The products file lists each product's small rendition ("..._200w.jpg");

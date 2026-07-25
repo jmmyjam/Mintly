@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
-  CONNECTION_ERROR, getCard, getCardPrice, getEbayEstimate,
+  CONNECTION_ERROR, filterCards, getCard, getCardPrice, getEbayEstimate,
   type Card, type CardHistory, type EbayEstimate as Estimate,
   type PriceChange, type PriceVariant,
 } from '../api'
@@ -63,6 +63,10 @@ export default function CardDetail() {
   const [quantity, setQuantity] = useState('1')
   const [ebay, setEbay] = useState<Estimate | null>(null)
   const [history, setHistory] = useState<CardHistory | null>(null)
+  // Other cards sharing this card's set + number: the base card plus its
+  // stamp/mark varieties (a [Staff] stamp, error print, ...). Cross-links let
+  // you jump between them since each is its own searchable card.
+  const [versions, setVersions] = useState<Card[]>([])
   const { add, busy: addBusy, status: addStatus } = useAddCard()
 
   // Stable identity so the chart's fetch effect doesn't re-run per render
@@ -138,6 +142,15 @@ export default function CardDetail() {
             // drop any prior card's estimate/history (in a callback, not the effect body)
             setEbay(null)
             setHistory(null)
+            // Other versions sharing this set + number (base card + varieties)
+            setVersions([])
+            if (data.set?.id && data.number) {
+              filterCards({ set_id: data.set.id, number: data.number })
+                .then(page => {
+                  if (!cancelled) setVersions(page.data.filter(c => c.id !== data.id))
+                })
+                .catch(() => {})
+            }
           }
           const market = getCardPrice(data)
           if (market != null) {
@@ -234,7 +247,10 @@ export default function CardDetail() {
 
         <div className={styles.info}>
           <div>
-            <h1>{card.name}</h1>
+            <h1>
+              {card.name}{' '}
+              {card.varietyOf && <span className={styles.varietyBadge}>Variety</span>}
+            </h1>
             <p className={styles.meta}>
               {card.set.name}
               {card.set.series ? ` · ${card.set.series}` : ''}
@@ -348,6 +364,27 @@ export default function CardDetail() {
       </div>
 
       <div className={styles.below}>
+        {versions.length > 0 && (
+          <div className={styles.versions}>
+            <h2>Other versions{card.varietyOf ? '' : ' & varieties'}</h2>
+            <p className={styles.versionsNote}>
+              Cards sharing this number — the regular print and its stamped or marked varieties, each tracked separately.
+            </p>
+            <div className={styles.versionGrid}>
+              {versions.map(v => {
+                const vp = getCardPrice(v) ?? v.estimate?.value ?? null
+                return (
+                  <Link key={v.id} to={`/card/${v.id}`} className={styles.versionCard}>
+                    <CardImage src={v.images?.small} alt={v.name} size="tile" />
+                    <span className={styles.versionName}>{v.name}</span>
+                    <span className={styles.versionPrice}>{vp != null ? money(vp) : '—'}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <PriceHistoryChart
           key={card.id}
           cardId={card.id}

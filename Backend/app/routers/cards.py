@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from app.database import SessionLocal, get_db
-from app.services import card_catalog, ebay_prices
+from app.services import card_catalog, ebay_prices, tcgcsv
 from app.services.price_history import (
     annotate_price_changes, attach_estimates, card_history,
     card_variant_history, extract_price, record_snapshots,
@@ -293,6 +293,9 @@ def refresh_card_prices(db: Session, card_ids: list[str]) -> int:
     fetch for up to a page of ids, upserted into the catalog. Returns how many
     cards were refreshed (0 on any upstream failure — the stale rows just get
     another chance on the next view)."""
+    # Synthetic variety ids (a [Staff] stamp etc.) exist only in the catalog —
+    # pokemontcg.io has no such card — so never send them upstream.
+    card_ids = [cid for cid in card_ids if not tcgcsv.is_variety_id(cid)]
     if not card_ids:
         return 0
     q = " OR ".join(f'id:"{cid}"' for cid in card_ids)
@@ -535,13 +538,19 @@ def get_card(card_id: str, db: Session = Depends(get_db)):
     row = _catalog_row(db, card_id)
     if row is not None:
         card = card_catalog.card_payload(row)
-        if card_catalog.price_is_stale(row):
+        # A variety card (a [Staff] stamp etc.) lives only in the catalog —
+        # pokemontcg.io has no such id — so there's nothing upstream to refresh.
+        if card_catalog.price_is_stale(row) and not tcgcsv.is_variety_id(card_id):
             # Serve instantly anyway; a daemon thread re-fetches the price and
             # the frontend re-polls while `refreshing` is set
             card["refreshing"] = True
             _refresh_prices_in_background([card_id])
         _with_price_changes(db, {"data": [card]})
         return card
+    if tcgcsv.is_variety_id(card_id):
+        # A synthetic variety id with no catalog row doesn't exist; the upstream
+        # proxy can't answer for it, so 404 rather than round-trip pointlessly.
+        raise HTTPException(status_code=404, detail="Card not found")
     card = _fetch_card(card_id)
     _upsert_results(db, {"data": [card]})
     _with_price_changes(db, {"data": [card]})

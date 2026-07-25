@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from app.database import get_db
 from app.models import PortfolioCard, CardPriceSnapshot
 from app.routers.auth import get_current_user
-from app.services import card_catalog
+from app.services import card_catalog, tcgcsv
 from app.services.price_history import (
     extract_price, record_snapshots, change_baselines, price_change, latest_prices,
 )
@@ -117,9 +117,12 @@ def fetch_prices(card_ids: list[str], db: Session | None = None) -> tuple[dict[s
     resolved_images: dict[str, str] = {}
     reached: set[str] = set()  # cards upstream gave a definitive answer for
 
-    # 1) Live upstream — the freshest TCGplayer market price, one call per 100
-    for i in range(0, len(missing), 100):
-        chunk = missing[i:i + 100]
+    # 1) Live upstream — the freshest TCGplayer market price, one call per 100.
+    #    Synthetic variety ids (a [Staff] stamp etc.) aren't upstream cards, so
+    #    skip them here — the catalog/snapshot fallback in step 2 prices them.
+    upstream_ids = [cid for cid in missing if not tcgcsv.is_variety_id(cid)]
+    for i in range(0, len(upstream_ids), 100):
+        chunk = upstream_ids[i:i + 100]
         q = " OR ".join(f'id:"{card_id}"' for card_id in chunk)
         try:
             response = _session.get(
@@ -173,13 +176,21 @@ def fetch_prices(card_ids: list[str], db: Session | None = None) -> tuple[dict[s
 
 @router.post("/portfolio/add")
 def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    try:
-        response = _session.get(f"{BASE_URL}/cards/{body.card_id}", timeout=_TIMEOUT)
-    except requests.RequestException:
-        raise HTTPException(status_code=504, detail="Card lookup timed out — try again")
-    if response.status_code != 200:
-        raise HTTPException(status_code=404, detail="Card not found")
-    card_data = response.json().get("data", {})
+    if tcgcsv.is_variety_id(body.card_id):
+        # A stamp/mark variety exists only in the catalog — pokemontcg.io has no
+        # such id — so resolve it there, never upstream.
+        row = card_catalog.get_card(db, body.card_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+        card_data = card_catalog.card_payload(row)
+    else:
+        try:
+            response = _session.get(f"{BASE_URL}/cards/{body.card_id}", timeout=_TIMEOUT)
+        except requests.RequestException:
+            raise HTTPException(status_code=504, detail="Card lookup timed out — try again")
+        if response.status_code != 200:
+            raise HTTPException(status_code=404, detail="Card not found")
+        card_data = response.json().get("data", {})
     card_name = card_data.get("name", "Unknown")
 
     # Current market price: live upstream first, then the TCGCSV/eBay fallbacks

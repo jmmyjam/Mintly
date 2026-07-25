@@ -129,6 +129,16 @@ class SanityFill:
 
 
 @dataclass
+class VarietyFill:
+    """Stamp/mark varieties forked into their own synthetic catalog cards: a
+    [Staff] stamp, error print, etc. sharing a base card's number, tracked as
+    separate cards from the regular version (finishes never fork — they're
+    sub-types of one product and stay on the base card)."""
+    cards: list[dict] = field(default_factory=list)
+    prices: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class ImageFill:
     """What the image check did: upstream image URLs verified, and cards whose
     image the upstream CDN doesn't have re-pointed at the TCGplayer scan."""
@@ -326,6 +336,75 @@ def tcgcsv_fill(crawl: Crawl) -> TcgcsvFill:
     if fill.sets_unmatched:
         log.info("  tcgcsv: no match for set(s): %s — those cards fall through "
                  "to the eBay pass", ", ".join(fill.sets_unmatched))
+    return fill
+
+
+def _make_variety(base_card: dict, candidate: dict) -> dict | None:
+    """A synthetic catalog card for one stamp/mark variety of a base card,
+    priced from its own TCGplayer product. None if the product carries no price
+    the app can read. Metadata pokemontcg.io owns (rarity/artist/hp/types) is
+    left off — TCGCSV doesn't have it; the frontend renders those chips only
+    when present."""
+    pid = candidate.get("productId")
+    prices = candidate.get("prices") or {}
+    if pid is None or not prices:
+        return None
+    if extract_price({"tcgplayer": {"prices": prices}}) is None:
+        return None
+    variety = {
+        "id": tcgcsv.variety_id(base_card["id"], pid),
+        "name": tcgcsv.variety_name(candidate.get("name") or base_card.get("name") or ""),
+        "number": base_card.get("number"),
+        "set": base_card.get("set"),
+        "tcgplayer": {
+            "prices": prices,
+            "priceSource": "tcgcsv",
+            "url": f"https://www.tcgplayer.com/product/{pid}",
+        },
+        "varietyOf": base_card["id"],
+    }
+    # The TCGplayer product scan for the stamped card if there is one; else the
+    # base card's art (a [Staff] stamp is the same illustration), so the tile is
+    # never blank.
+    images = tcgcsv.product_images(candidate) or base_card.get("images")
+    if images:
+        variety["images"] = images
+    return variety
+
+
+def variety_fill(crawl: Crawl) -> VarietyFill:
+    """Fork every stamped/marked TCGplayer product sharing a base card's number
+    into its own synthetic catalog card (a [Staff] stamp, [W Stamped], a
+    (Black Dot Error), a prerelease stamp, ...), so each is searched, charted,
+    and held separately. Reuses the same TCGCSV group candidates the price/image
+    passes already warmed; matching is name-aware so a different card colliding
+    on a number is never forked, and finishes never fork (one product = one
+    candidate). Best-effort per card — a lookup failure just skips it."""
+    fill = VarietyFill()
+    for base in crawl.cards:
+        card_set = base.get("set") or {}
+        number, name = base.get("number"), base.get("name")
+        if not base.get("id") or not number or not name:
+            continue
+        try:
+            group_id = tcgcsv.group_id_for_set(card_set.get("name"), card_set.get("id"))
+            if group_id is None:
+                continue
+            candidates = tcgcsv.candidates_for_group(group_id).get(
+                tcgcsv.norm_number(number))
+            varieties = tcgcsv.variety_candidates(candidates, name)
+        except Exception as exc:  # the service is best-effort, but never trust that
+            log.warning("  variety lookup error for %s: %s", base.get("id"), exc)
+            continue
+        for cand in varieties:
+            card = _make_variety(base, cand)
+            if card is None:
+                continue
+            fill.cards.append(card)
+            fill.prices[card["id"]] = extract_price(card)
+    if fill.cards:
+        log.info("  varieties: %s stamped/marked cards forked into their own rows",
+                 f"{len(fill.cards):,}")
     return fill
 
 
@@ -715,6 +794,32 @@ def main() -> int:
             log.warning("catalog upsert failed: %s — browsing falls back to the "
                         "upstream proxy until the next run", exc)
 
+        # Fork stamped/marked TCGplayer products (a [Staff] stamp, error print,
+        # etc. sharing a base card's number) into their own synthetic catalog
+        # cards, snapshotted + upserted like any card. Runs after the base
+        # upsert and reuses the group candidates the passes above warmed; gated
+        # with the other TCGCSV work and best-effort (a failure never costs the
+        # base-card snapshots).
+        vfill = VarietyFill()
+        if not args.no_tcgcsv:
+            try:
+                vfill = variety_fill(crawl)
+            except Exception as exc:
+                log.warning("variety fill failed: %s — no varieties this run", exc)
+            recorded += _record_chunked(db, vfill.prices)
+            for i in range(0, len(vfill.cards), _DEDUPE_CHUNK):
+                variant_rows += record_variant_snapshots(
+                    db, vfill.cards[i:i + _DEDUPE_CHUNK])
+            try:  # authoritative like the base upsert — variety dicts are freshly
+                #    built from the mirror, so keep-rules would only get in the way
+                for i in range(0, len(vfill.cards), _DEDUPE_CHUNK):
+                    card_catalog.upsert_cards(db, vfill.cards[i:i + _DEDUPE_CHUNK],
+                                              keep_stored_prices=False)
+            except Exception as exc:
+                db.rollback()
+                log.warning("catalog upsert (varieties) failed: %s — variety "
+                            "prices still snapshotted", exc)
+
         remaining = [c for c in crawl.unpriced if c["id"] not in tfill.prices]
         fill = EbayFill()
         if args.max_ebay > 0 and remaining:
@@ -791,6 +896,8 @@ def main() -> int:
                  "TCGplayer scan, %d without an image anywhere, %d check "
                  "errors", f"{ifill.checked:,}", len(ifill.substituted),
                  len(ifill.missing), ifill.errors)
+        log.info("  varieties         %s stamped/marked cards forked into own rows",
+                 f"{len(vfill.cards):,}")
     if args.max_ebay > 0:
         log.info("  ebay fill         %d priced of %d tried  (%s eligible, "
                  "%d without recent sales, %d failed fetches)%s",

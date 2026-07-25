@@ -51,6 +51,10 @@ export interface Card {
   // For cards TCGPlayer can't price: the most recent snapshot (an eBay
   // sold-median from the daily job). Informational — never a market price.
   estimate?: { value: number; date: string }
+  // Set on synthetic "variety" cards — a stamped/marked TCGplayer product (a
+  // [Staff] stamp, error print, ...) forked from a base card that shares its
+  // number. Holds the base pokemontcg.io card id it was forked from.
+  varietyOf?: string
 }
 
 // One daily point in a card's price history (from Mintly's own snapshots)

@@ -23,9 +23,13 @@ PAGE_SIZE = 50  # same paged envelope as the upstream proxy path
 PRICE_TTL = timedelta(hours=6)
 
 # Only the fields the frontend uses — mirrors _CARD_FIELDS in the cards
-# router, so catalog hits and proxy fallbacks serve the same shape
+# router, so catalog hits and proxy fallbacks serve the same shape.
+# "varietyOf" isn't an upstream field: the daily job stamps it on synthetic
+# stamp/mark variety cards (see scripts/snapshot_all.py variety_fill) with the
+# base card's id; real upstream cards never carry it (the `if k in card` guard
+# below skips it), so it costs them nothing.
 _KEEP = ("id", "name", "number", "rarity", "artist", "hp", "types", "images",
-         "set", "tcgplayer")
+         "set", "tcgplayer", "varietyOf")
 
 _SYNC_KEY = "last_full_sync"
 

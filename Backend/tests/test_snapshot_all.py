@@ -420,6 +420,81 @@ def test_no_tcgcsv_flag_skips_the_fill(run_main, monkeypatch):
     assert called == []
 
 
+# ---- Stamp/mark varieties forked into their own cards -----------------------
+# A card number can carry several TCGplayer products (the regular card plus a
+# [Staff] stamp, error print, ...). variety_fill forks each stamped/marked
+# sibling into its own synthetic catalog card, searchable + snapshotted like any
+# card. Finishes (sub-types of one product) never fork.
+
+@pytest.fixture
+def fake_variety_mirror(monkeypatch):
+    """A one-set mirror where number 188 has the regular card AND a [Staff]
+    stamp under the same number."""
+    monkeypatch.setattr(
+        snapshot_all.tcgcsv, "group_id_for_set",
+        lambda name, set_id=None: 24380 if name == "Mega Set" else None)
+    monkeypatch.setattr(
+        snapshot_all.tcgcsv, "candidates_for_group",
+        lambda gid: {"188": [
+            {"name": "Mega Card ex - 188/132",
+             "prices": {"holofoil": {"market": 250.0, "mid": 260.0}},
+             "image": "https://cdn.example/product/9_200w.jpg", "productId": 9},
+            {"name": "Mega Card ex - 188/132 [Staff]",
+             "prices": {"holofoil": {"market": 900.0, "mid": 950.0}},
+             "image": "https://cdn.example/product/10_200w.jpg", "productId": 10},
+        ]})
+
+
+def test_variety_fill_forks_the_stamp(fake_variety_mirror):
+    base = mega_card()
+    result = snapshot_all.variety_fill(crawl_with(base))
+
+    assert len(result.cards) == 1
+    v = result.cards[0]
+    assert v["id"] == "me9-1~v10"                      # base id + productId
+    assert v["name"] == "Mega Card ex [Staff]"         # number tail stripped
+    assert v["varietyOf"] == "me9-1"
+    assert v["number"] == "188" and v["set"]["id"] == "me9"
+    assert v["tcgplayer"]["prices"]["holofoil"]["market"] == 900.0
+    assert v["tcgplayer"]["priceSource"] == "tcgcsv"
+    assert v["tcgplayer"]["url"] == "https://www.tcgplayer.com/product/10"
+    assert v["images"]["source"] == "tcgplayer"
+    assert result.prices == {"me9-1~v10": 900.0}
+    # variety_fill never touches the base card (tcgcsv_fill prices that)
+    assert "tcgplayer" not in base
+
+
+def test_variety_lands_in_catalog_search_and_history(run_main, fake_variety_mirror):
+    pages = three_pages()
+    pages[2][0] = mega_card()
+    assert run_main(pages=pages) == 0
+
+    db = TestingSessionLocal()
+    try:
+        row = card_catalog.get_card(db, "me9-1~v10")
+        assert row is not None and row.data["varietyOf"] == "me9-1"
+        assert row.data["name"] == "Mega Card ex [Staff]"
+        assert row.data["tcgplayer"]["prices"]["holofoil"]["market"] == 900.0
+        # both the base and its variety are searchable by the shared name
+        envelope, _ = card_catalog.search(db, name="Mega Card ex")
+        ids = {c["id"] for c in envelope["data"]}
+        assert {"me9-1", "me9-1~v10"} <= ids
+        # the variety gets its own daily snapshot
+        snap = (db.query(CardPriceSnapshot)
+                  .filter(CardPriceSnapshot.card_id == "me9-1~v10").one())
+        assert snap.price == 900.0
+    finally:
+        db.close()
+
+
+def test_no_tcgcsv_flag_skips_variety_fill(run_main, monkeypatch):
+    called = []
+    monkeypatch.setattr(snapshot_all, "variety_fill",
+                        lambda crawl: called.append(1) or snapshot_all.VarietyFill())
+    assert run_main(["--no-tcgcsv"]) == 0
+    assert called == []
+
+
 # ---- Dropped-page recovery via the catalog + TCGCSV --------------------------
 # A page pokemontcg.io couldn't serve even after the retry pass leaves its cards
 # out of the crawl entirely, so the tcgcsv/eBay fills (driven by crawl.unpriced)
