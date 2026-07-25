@@ -1,0 +1,46 @@
+# Backend — `Backend/`
+
+FastAPI + PostgreSQL + SQLAlchemy, JWT auth (python-jose + passlib/bcrypt). Global rules live in the repo-root `CLAUDE.md`. Per-directory detail loads automatically when you work in it: `app/routers/CLAUDE.md`, `app/services/CLAUDE.md`, `scripts/CLAUDE.md`.
+
+## Commands
+
+Run from `Backend/` (uses `venv/`):
+```bash
+venv/bin/uvicorn app.main:app --reload   # dev server on :8000, docs at /docs
+venv/bin/python -m py_compile <file>.py  # quick syntax check
+venv/bin/alembic upgrade head            # apply DB migrations
+venv/bin/alembic revision --autogenerate -m "..."  # new migration after model changes
+venv/bin/pytest tests/ -q                # run backend tests (offline: sqlite + fake upstream)
+```
+The daily snapshot job, history-archive CLI, and backup script live under `scripts/` — see `scripts/CLAUDE.md`.
+
+Backend tests live in `Backend/tests/` (auth, password reset, portfolio, card-search, price-history, history archive, eBay, TCGCSV, rate limiting, the health probe, the sitemap, the admin stats, the card catalog + the snapshot crawl's retry sweeps, TCGCSV/eBay fills, image check, catalog upsert/sync marker, dropped-page recovery, and the stamp/mark variety fork — 296 tests, runs offline in ~30s). `conftest.py` sets `DATABASE_URL`/`SECRET_KEY`/`CARD_CACHE_DIR` BEFORE importing app modules (they read config at import time), swaps the DB for in-memory SQLite (overrides `get_db`), resets the rate limiter between tests (every TestClient request shares one client "IP"), pins `RATE_LIMIT_TRUST_FORWARDED=0`, `SMTP_HOST=""` (a dev `.env` may set either; the empty host keeps the mailer in print-to-console mode so tests can never send real email), `EBAY_EPN_CAMPAIGN_ID=""` (so a dev affiliate id can't tag the suite's eBay URLs), and `ADMIN_EMAILS=""` (tests grant admin by monkeypatching `admin_access._ADMIN_EMAILS`), and replaces `portfolio._session` with a fake upstream (`test_search.py`/`test_history.py`/`test_catalog.py` do the same for `cards.session`, seeding catalog rows + the sync marker through `card_catalog`; `test_ebay.py` fakes `ebay_prices._fetch_sold_html` and parses fixture HTML; `test_tcgcsv.py` fakes the `tcgcsv._fetch_*` helpers with fixture JSON and resets the module memos; `test_password_reset.py` monkeypatches `mailer.send_email` to capture the outbound message and pulls the raw token from it). Dev deps: `requirements-dev.txt`.
+
+## App assembly & data model
+
+- `Backend/app/main.py` — app assembly only: FastAPI app, CORS (`CORS_ORIGINS`), includes the auth/portfolio/cards/health/sitemap/admin routers. This is the uvicorn target (`app.main:app`).
+- `Backend/app/database.py` — engine/session setup from `DATABASE_URL`.
+- `Backend/app/models.py` — SQLAlchemy models; schema is managed by Alembic (`alembic/versions/`), NOT `create_all` — model changes need a migration. `card_catalog` (one row per card: searchable columns + the full card JSON in `data` + `price_updated_at`; also holds synthetic stamp/mark variety rows, `varietyOf` set) and `catalog_meta` (the `last_full_sync` marker) back the local catalog. `card_price_snapshot` (one row per card per **variant** per UTC day — variant `""` is the headline series, named variants exist only for cards with 2+ priced variants; composite `(card_id, snapshot_date)` index) is the app-wide price history for any browsed-or-held card; portfolio value-over-time is derived from it, there is no separate portfolio-snapshot table. Holds ~30–60 days of dailies + monthly closes; full old dailies live in the `history_archive` cold storage, not the DB. `password_reset_tokens` (sha256 of the emailed token, 30-min expiry, single-use) backs the forgot-password flow — its `user_id` FK has no cascade, so account deletion clears it explicitly.
+
+## Deploy & scheduled jobs
+
+- `docker-compose.yml` + `Caddyfile` (repo root) + `Backend/Dockerfile` — the production deploy: `db` (postgres:16) / `api` (single uvicorn worker — in-memory rate limits/caches) / `caddy` (:80 — serves `Frontend/mintly/dist`, proxies `/api/*` prefix-stripped and `/sitemap.xml` to the api) / `cloudflared` (tunnel to mintlytcg.com). Frontend production builds use the committed `.env.production` (`VITE_API_BASE=/api`, same-origin — no CORS). Server secrets live in a compose-root `.env` on the server, never in the repo. Details + deploy loop: HANDOFF "Production deployment".
+- A LaunchAgent (`~/Library/LaunchAgents/com.mintly.daily-snapshot.plist`) runs `scripts/snapshot_all.py` daily at 1pm local (just after TCGCSV's 20:00 UTC refresh, so the price fill reads same-day data), logging to `~/Library/Logs/mintly-daily-snapshot.log` — see HANDOFF for load/kickstart commands. It needs the Postgres in `DATABASE_URL` running. Because the repo lives under `~/Documents` (macOS TCC-protected), the agent invokes the framework Python directly and that binary must be granted **Full Disk Access** or every scheduled run fails with "Operation not permitted" (see HANDOFF "Daily snapshot job").
+
+## Conventions
+
+- TCG API query syntax: multi-word `name:` filters MUST be quoted (`name:"pikachu vmax"`) — bare words after a filter return HTTP 400 upstream. Free-text query parts (search text, `name`, set ids) are lowercased before building the upstream query so case variants share one cache entry; `rarity`/`type` stay exact (era-specific dropdown strings).
+- Card searches request only the fields the frontend uses (`_CARD_FIELDS` in `app/routers/cards.py`, via the upstream `select=` param). If the frontend `Card` type grows a field, add it there too or it will arrive undefined.
+- Card-list endpoints (`/search`, `/cards`, `/sets/{id}/cards`) take `?page=` and return a paged envelope `{data, page, pageSize, totalCount}` (50/page), typed as `CardPage` in `api.ts`. Don't return bare card arrays from new list endpoints.
+- Backend validation uses Pydantic models with `Field` constraints (price ≥ 0, quantity ≥ 1); mirror user-facing rules client-side for instant feedback, with identical messages.
+- Backend datetimes are naive UTC: use `utcnow()` from `app/models.py` for anything stored in or compared against a `DateTime` column (snapshot dedupe is per UTC day) — never `datetime.utcnow()` (deprecated) or local `date.today()`.
+- Schema changes: edit `app/models.py`, then `alembic revision --autogenerate -m "..."`, review the generated file, and `alembic upgrade head`. The app no longer calls `create_all`, so an unapplied migration means missing tables/columns at runtime.
+
+## Gotchas
+
+- Browse endpoints only trust `card_catalog` after a complete `scripts/snapshot_all.py` run has stamped the sync marker — a fresh DB proxies everything upstream until then. Catalog search is ILIKE substring + newest-sets-first (subtly different from upstream's phrase matching/ordering); the smart-search parsing, set-name recognition, and word-drop fallback are unchanged.
+- The card/search `_cache` survives `--reload` restarts (disk mirror); it now only backs the proxy fallback path, so only a never-fetched query that misses the catalog pays the upstream cost (a few seconds — upstream latency, not a bug). The portfolio `_price_cache` is memory-only and does reset on restart.
+- Upstream latency scales with the *requested* `pageSize`, not the payload: 250/page benchmarks at 20–60s with dropped connections, 50/page at 2–5s. Don't raise `_PAGE_SIZE` in `app/routers/cards.py` without re-measuring (`scripts/snapshot_all.py` keeps its own 250 deliberately — it's a retrying batch job, not a user-facing request).
+- Some newer sets (2026 "Mega Evolution" era) can lack TCGPlayer price data upstream — empty `tcgplayer.prices`. The daily job fills those with real TCGplayer prices from TCGCSV (matched by set + number), so after one run they browse as normally-priced cards; the eBay sold-listings estimate is the last resort for cards TCGCSV can't match, and CardDetail's live eBay fallback still covers brand-new cards browsed before the next crawl. Upstream also backfills over time — e.g. `me1` is now fully priced upstream.
+- eBay scraping is fragile by nature: `ebay_prices` seeds cookies from the eBay homepage before each search and retries once (eBay blocks cold requests with a tiny "Error Page | eBay"; a real results page is ~1MB+). `parse_sold` depends on eBay's `.su-card-container` markup and takes the price *after* the "Sold <date>" marker — if eBay restructures, it returns nothing and estimates degrade to `count:0`, never an error. Verify parser changes against live HTML.
+- `Backend/.env` holds real secrets (DB URL, SECRET_KEY, API key) and is gitignored — don't read it into command output or commit it.
