@@ -48,7 +48,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
-  // e.g. "Your session expired — please log in again." when redirected here on a 401
+  // e.g. "Your session expired. Please log in again." when redirected here on a 401
   const notice = (location.state as { notice?: string } | null)?.notice
 
   async function handleSubmit(e: React.FormEvent) {

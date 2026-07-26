@@ -30,7 +30,7 @@ def test_allows_up_to_limit_then_429():
     with pytest.raises(HTTPException) as exc:
         dep(make_request())
     assert exc.value.status_code == 429
-    assert "try again" in exc.value.detail
+    assert "Try again" in exc.value.detail
     assert 1 <= int(exc.value.headers["Retry-After"]) <= 60
 
 

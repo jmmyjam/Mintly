@@ -187,7 +187,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         try:
             response = _session.get(f"{BASE_URL}/cards/{body.card_id}", timeout=_TIMEOUT)
         except requests.RequestException:
-            raise HTTPException(status_code=504, detail="Card lookup timed out — try again")
+            raise HTTPException(status_code=504, detail="Card lookup timed out. Please try again.")
         if response.status_code != 200:
             raise HTTPException(status_code=404, detail="Card not found")
         card_data = response.json().get("data", {})
@@ -206,7 +206,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
     if purchase_price is None:
         purchase_price = market_price
         if purchase_price is None:
-            raise HTTPException(status_code=400, detail="No market price available for this card — enter a purchase price")
+            raise HTTPException(status_code=400, detail="No market price available for this card. Enter a purchase price.")
 
     card = PortfolioCard(
         user_id=current_user.id,
@@ -223,7 +223,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         PortfolioCard.card_id == body.card_id,
     ).scalar()
     if total > body.quantity:
-        return {"message": f"Added — you now have {total} total", "id": card.id}
+        return {"message": f"Added, you now have {total} total", "id": card.id}
     return {"message": "Card added", "id": card.id}
 
 

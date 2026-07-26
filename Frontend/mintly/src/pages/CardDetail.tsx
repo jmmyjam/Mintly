@@ -27,7 +27,7 @@ function dateRange(since: string, until: string) {
 }
 
 // Must match the static <title> in index.html — restored when leaving the page
-const DEFAULT_TITLE = 'Mintly — Pokémon TCG Portfolio Tracker'
+const DEFAULT_TITLE = 'Mintly - Pokémon TCG Portfolio Tracker'
 
 // schema.org Product markup — describes the card so it can surface in search.
 // Mintly is a tracker, not a store, so there is deliberately NO `offers` block:
@@ -42,7 +42,7 @@ function cardJsonLd(card: Card) {
     name: card.name,
     image: [card.images.large],
     description:
-      `${card.name} — Pokémon TCG card from ${card.set.name}${num}` +
+      `${card.name} - Pokémon TCG card from ${card.set.name}${num}` +
       `${card.rarity ? `, ${card.rarity}` : ''}. Market price and price history on Mintly.`,
     sku: card.id,
     brand: { '@type': 'Brand', name: 'Pokémon TCG' },
@@ -137,7 +137,7 @@ export default function CardDetail() {
         .then(data => {
           if (cancelled) return
           setCard(data)
-          document.title = `${data.name} · ${data.set.name} — Mintly`
+          document.title = `${data.name} · ${data.set.name} - Mintly`
           if (attempt === 0) {
             // drop any prior card's estimate/history (in a callback, not the effect body)
             setEbay(null)
@@ -178,7 +178,7 @@ export default function CardDetail() {
             setError(
               err instanceof TypeError
                 ? CONNECTION_ERROR
-                : "We couldn't find that card. It may have been removed — try searching for it by name.",
+                : "We couldn't find that card. It may have been removed, so try searching for it by name.",
             )
         })
         .finally(() => {
@@ -368,7 +368,7 @@ export default function CardDetail() {
           <div className={styles.versions}>
             <h2>Other versions{card.varietyOf ? '' : ' & varieties'}</h2>
             <p className={styles.versionsNote}>
-              Cards sharing this number — the regular print and its stamped or marked varieties, each tracked separately.
+              Cards sharing this number: the regular print and its stamped or marked varieties, each tracked separately.
             </p>
             <div className={styles.versionGrid}>
               {versions.map(v => {

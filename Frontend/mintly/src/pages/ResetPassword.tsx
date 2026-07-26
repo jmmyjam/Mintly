@@ -56,7 +56,7 @@ export default function ResetPassword() {
     try {
       await resetPassword(token, newPw)
       navigate('/login', {
-        state: { notice: 'Your password has been updated — log in with your new password.' },
+        state: { notice: 'Your password has been updated. Log in with your new password.' },
       })
     } catch (err) {
       setResetError(errorMessage(err, 'Something went wrong. Please try again.'))
@@ -114,7 +114,7 @@ export default function ResetPassword() {
             </p>
             {sentMessage ? (
               <p className={styles.sentNote}>
-                {sentMessage} The link works for 30 minutes — check your spam
+                {sentMessage} The link works for 30 minutes. Check your spam
                 folder if it doesn&apos;t arrive.
               </p>
             ) : (

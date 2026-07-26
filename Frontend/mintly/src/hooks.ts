@@ -7,7 +7,7 @@ import { addCard, errorMessage, getToken, SessionExpiredError } from './api'
 export function useSessionRedirect() {
   const navigate = useNavigate()
   return () =>
-    navigate('/login', { state: { notice: 'Your session expired — please log in again.' } })
+    navigate('/login', { state: { notice: 'Your session expired. Please log in again.' } })
 }
 
 export interface AddCardStatus {

@@ -146,7 +146,7 @@ export default function PriceHistoryChart({ cardId, currentPrice, currentVariant
       <div className={styles.priceHistory}>
         <h2>Price History</h2>
         <p className="prices-note">
-          Not enough history yet — Mintly records one price point per day, so this
+          Not enough history yet. Mintly records one price point per day, so this
           chart fills in as the card is tracked.
         </p>
       </div>

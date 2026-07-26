@@ -137,7 +137,7 @@ export default function Search() {
         // Nothing typed and no filters — show the newest set by default
         const newest = sets[0];
         results = await filterCards({ set_id: newest.id }, p);
-        setResultsLabel(`Newest set — ${newest.name}`);
+        setResultsLabel(`Newest set: ${newest.name}`);
       }
       setCards(results.data);
       setPage(p);
@@ -307,8 +307,8 @@ export default function Search() {
         cards.every((c) => getCardPrice(c) == null) && (
           <p className="prices-note">
             {cards.some((c) => c.estimate)
-              ? "TCGPlayer market prices aren't available for this set yet — values marked \"eBay est.\" are estimates from recent eBay sales."
-              : "Market prices aren't available for these cards yet — the price data source hasn't been updated for this set."}
+              ? "TCGPlayer market prices aren't available for this set yet. Values marked \"eBay est.\" are estimates from recent eBay sales."
+              : "Market prices aren't available for these cards yet. The price data source hasn't been updated for this set."}
           </p>
         )}
 

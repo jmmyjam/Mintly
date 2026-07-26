@@ -80,7 +80,7 @@ def rate_limit(scope: str, times: int, seconds: int, what: str = "requests"):
                 retry = max(1, int(seconds - (now - hits[0])) + 1)
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Too many {what} — try again in about {retry} seconds",
+                    detail=f"Too many {what}. Try again in about {retry} seconds.",
                     headers={"Retry-After": str(retry)},
                 )
             hits.append(now)

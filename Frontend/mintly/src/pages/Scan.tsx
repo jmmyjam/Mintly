@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { scanCard, getCardPrice, type Card } from '../api'
+import { scanCard, getCardPrice, getToken, SessionExpiredError, type Card } from '../api'
 import CameraViewfinder from '../components/CameraViewfinder'
 import CardImage from '../components/CardImage'
+import PageMessage from '../components/PageMessage'
 import PriceQtyForm from '../components/PriceQtyForm'
 import StatusMessage from '../components/StatusMessage'
-import { useAddCard } from '../hooks'
+import { useAddCard, useSessionRedirect } from '../hooks'
 import { money } from '../format'
 import styles from './Scan.module.css'
 
 export default function Scan() {
   const navigate = useNavigate()
+  const redirectToLogin = useSessionRedirect()
   const [captured, setCaptured] = useState<string | null>(null) // thumbnail data URL
   const [matching, setMatching] = useState(false) // upload + match in flight
   const [results, setResults] = useState<Card[] | null>(null)
@@ -32,7 +34,7 @@ export default function Scan() {
       (blob) => {
         if (!blob) {
           setMatching(false)
-          setNotice("Couldn't read the capture — try again.")
+          setNotice("Couldn't read the capture. Try again.")
           return
         }
         scanCard(blob)
@@ -42,7 +44,11 @@ export default function Scan() {
               setNotice('No match found. Try scanning again, or search by name below.')
             }
           })
-          .catch(() => {
+          .catch((err) => {
+            if (err instanceof SessionExpiredError) {
+              redirectToLogin()
+              return
+            }
             setResults([])
             setNotice('Something went wrong scanning. Please try again.')
           })
@@ -134,6 +140,15 @@ export default function Scan() {
             </button>
           ))}
       </div>
+    )
+  }
+
+  if (!getToken()) {
+    return (
+      <PageMessage action={{ to: '/login', label: 'Login', className: 'btn-primary btn-lg' }}>
+        <h2>Log in to scan cards</h2>
+        <p>Point your camera at a card to identify it and add it to your portfolio.</p>
+      </PageMessage>
     )
   }
 

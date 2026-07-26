@@ -154,7 +154,7 @@ export interface AdminStats {
 // Thrown on 401 so pages can redirect to /login instead of showing a generic error
 export class SessionExpiredError extends Error {
   constructor() {
-    super('Session expired — please log in again.')
+    super('Session expired. Please log in again.')
     this.name = 'SessionExpiredError'
   }
 }
@@ -237,7 +237,7 @@ export async function login(username: string, password: string): Promise<void> {
     // for it would send a rate-limited user hunting for a typo
     if (res.status === 429) {
       const data = await res.json().catch(() => ({}))
-      throw new Error(data.detail || 'Too many login attempts — try again in a few minutes')
+      throw new Error(data.detail || 'Too many login attempts. Please try again in a few minutes.')
     }
     throw new Error('Invalid credentials')
   }
@@ -381,12 +381,13 @@ export async function filterCards(filters: CardFilters, page = 1): Promise<CardP
 }
 
 // Camera scanner: upload a captured card image, get nearest-match candidates
-// (same CardPage envelope the search endpoints return). Unauthed like search.
+// (same CardPage envelope the search endpoints return). Authed — /scan is
+// login-only, so this goes through authedFetch (401 → SessionExpiredError).
 export async function scanCard(blob: Blob): Promise<CardPage> {
   const form = new FormData()
   form.append('file', blob, 'scan.jpg')
   // No Content-Type header — the browser sets the multipart boundary itself.
-  const res = await fetch(`${BASE}/scan`, { method: 'POST', body: form })
+  const res = await authedFetch('/scan', { method: 'POST', body: form })
   if (!res.ok) throw new Error('Scan failed')
   return res.json()
 }

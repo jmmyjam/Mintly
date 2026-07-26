@@ -53,18 +53,27 @@ def _seed(pairs: list[tuple[dict, np.ndarray]]) -> None:
     card_embed.reset_cache()
 
 
-def _post(client, content=b"\xff\xd8fakejpeg"):
-    return client.post("/scan", files={"file": ("card.jpg", content, "image/jpeg")})
+def _post(client, headers, content=b"\xff\xd8fakejpeg"):
+    return client.post(
+        "/scan", files={"file": ("card.jpg", content, "image/jpeg")}, headers=headers
+    )
 
 
-def test_scan_returns_nearest_card(client, monkeypatch):
+def test_scan_requires_login(client):
+    # /scan is login-only — an anonymous request must be rejected before any
+    # (compute-heavy) embedding runs.
+    res = client.post("/scan", files={"file": ("card.jpg", b"\xff\xd8fake", "image/jpeg")})
+    assert res.status_code == 401
+
+
+def test_scan_returns_nearest_card(client, auth_headers, monkeypatch):
     va, vb = _unit_vec(1), _unit_vec(2)
     _seed([(catalog_card("base1-4", "Charizard"), va),
            (catalog_card("base1-58", "Pikachu"), vb)])
     # query embedding equals Charizard's vector -> it must rank first
     monkeypatch.setattr(card_embed, "embed_query", lambda data: [va])
 
-    res = _post(client)
+    res = _post(client, auth_headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data and data[0]["id"] == "base1-4"
@@ -72,19 +81,19 @@ def test_scan_returns_nearest_card(client, monkeypatch):
     assert res.json()["totalCount"] == 2
 
 
-def test_scan_mirror_orientation_still_matches(client, monkeypatch):
+def test_scan_mirror_orientation_still_matches(client, auth_headers, monkeypatch):
     va, vb = _unit_vec(1), _unit_vec(2)
     _seed([(catalog_card("base1-4", "Charizard"), va),
            (catalog_card("base1-58", "Pikachu"), vb)])
     # a "mirror" that only the second orientation matches Charizard -> best-of wins
     monkeypatch.setattr(card_embed, "embed_query", lambda data: [_unit_vec(99), va])
 
-    res = _post(client)
+    res = _post(client, auth_headers)
     assert res.status_code == 200
     assert res.json()["data"][0]["id"] == "base1-4"
 
 
-def test_scan_no_embeddings_is_empty_not_error(client, monkeypatch):
+def test_scan_no_embeddings_is_empty_not_error(client, auth_headers, monkeypatch):
     db = TestingSessionLocal()
     try:
         card_catalog.upsert_cards(db, [catalog_card("base1-4", "Charizard")])
@@ -94,17 +103,17 @@ def test_scan_no_embeddings_is_empty_not_error(client, monkeypatch):
     card_embed.reset_cache()
     monkeypatch.setattr(card_embed, "embed_query", lambda data: [_unit_vec(1)])
 
-    res = _post(client)
+    res = _post(client, auth_headers)
     assert res.status_code == 200
     assert res.json()["data"] == []
 
 
-def test_scan_unreadable_image(client, monkeypatch):
+def test_scan_unreadable_image(client, auth_headers, monkeypatch):
     monkeypatch.setattr(card_embed, "embed_query", lambda data: None)
-    res = _post(client, content=b"not-an-image")
+    res = _post(client, auth_headers, content=b"not-an-image")
     assert res.status_code == 400
 
 
-def test_scan_empty_upload(client):
-    res = _post(client, content=b"")
+def test_scan_empty_upload(client, auth_headers):
+    res = _post(client, auth_headers, content=b"")
     assert res.status_code == 400

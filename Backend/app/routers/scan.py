@@ -14,15 +14,23 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routers.auth import get_current_user
 from app.services import card_catalog, card_embed
 from app.services.price_history import annotate_price_changes, attach_estimates
 from app.services.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
-# Its own generous per-IP scope — an abuse guard for a compute-heavy endpoint,
-# not a usage cap (the feature is meant to be unlimited for real users).
-router = APIRouter(dependencies=[Depends(rate_limit("scan", times=60, seconds=60, what="scans"))])
+# Login-only: the scanner is an account feature (you scan to add to a portfolio),
+# and gating the compute-heavy embedding behind a valid JWT keeps it off limits to
+# anonymous callers. Plus its own generous per-IP scope — an abuse guard for a
+# compute-heavy endpoint, not a usage cap (meant to be unlimited for real users).
+router = APIRouter(
+    dependencies=[
+        Depends(get_current_user),
+        Depends(rate_limit("scan", times=60, seconds=60, what="scans")),
+    ]
+)
 
 _MAX_BYTES = 8 * 1024 * 1024
 _TOP_K = 12

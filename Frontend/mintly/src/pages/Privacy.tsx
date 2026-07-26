@@ -19,7 +19,7 @@ export default function Privacy() {
 
       <h2>2. How it's used</h2>
       <p>
-        This data exists solely to run the service — logging you in, showing
+        This data exists solely to run the service: logging you in, showing
         your portfolio, and computing its value over time. Your email address
         is used only for signing in and for sending a password-reset link when
         you request one; we don&apos;t send marketing email. We do not sell
@@ -44,7 +44,7 @@ export default function Privacy() {
         server, which matches it against our database of card images to find the
         card and returns the closest matches for you to confirm. The image is
         used only to compute that match: it is not linked to your account, not
-        shown to anyone, and not kept — it is discarded once the match is made.
+        shown to anyone, and not kept. It is discarded once the match is made.
         The matching runs entirely on Mintly&apos;s own hardware; the image is
         never sent to any third party.
       </p>
@@ -55,7 +55,7 @@ export default function Privacy() {
         For cards it cannot price, Mintly fetches TCGplayer price data from
         TCGCSV, a public daily mirror, and may also query recent sold listings
         on eBay to estimate a value. Your account details are never sent to any
-        of these services — only the card name, number, or set needed to find
+        of these services, only the card name, number, or set needed to find
         results and prices. Password-reset emails are delivered through an
         email provider, which processes your email address solely to deliver
         that message. The site itself is served through Cloudflare, which sits
@@ -65,7 +65,7 @@ export default function Privacy() {
         outbound links to TCGplayer and eBay are affiliate links: following one
         tells the retailer or its affiliate network that the visit came from
         Mintly, so Mintly can earn a commission on qualifying purchases. These
-        links contain only the card being looked up — never your account
+        links contain only the card being looked up, never your account
         details.
       </p>
 

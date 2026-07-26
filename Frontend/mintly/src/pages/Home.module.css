@@ -85,6 +85,123 @@
   border-color: var(--ink);
 }
 
+/* Scanner highlight — a mint-accented band advertising the free, unlimited scan */
+.scan-section {
+  display: flex;
+  align-items: center;
+  gap: clamp(24px, 5vw, 56px);
+  flex-wrap: wrap;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-border);
+  border-radius: 28px;
+  padding: clamp(28px, 5vw, 48px);
+  margin: 24px 0;
+  /* Soft mint glow so the section reads as the accent surface (the cream CTA
+     stays the one warm surface below it). */
+  box-shadow: 0 0 0 1px rgba(86, 207, 158, 0.04), 0 24px 60px rgba(86, 207, 158, 0.06);
+}
+
+.scan-copy {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.scan-eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.scan-title {
+  letter-spacing: -0.03em;
+  margin-bottom: 12px;
+}
+
+.scan-text {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 165%;
+  max-width: 460px;
+  margin-bottom: 18px;
+}
+
+.scan-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.scan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.scan-fine-print {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 160%;
+  max-width: 460px;
+  margin-bottom: 24px;
+}
+
+.scan-section :global(.btn-primary) {
+  background: var(--accent);
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.scan-section :global(.btn-primary):hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+/* Decorative viewfinder — echoes the /scan card-outline frame */
+.scan-visual {
+  flex: 1 1 240px;
+  display: flex;
+  justify-content: center;
+}
+
+.scan-frame {
+  position: relative;
+  width: clamp(180px, 60%, 240px);
+  aspect-ratio: 5 / 7;
+  padding: 14px;
+}
+
+.scan-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.5));
+}
+
+/* Four mint corner brackets framing the card */
+.scan-corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--accent);
+}
+.scan-corner-tl { top: 0; left: 0; border-right: none; border-bottom: none; border-top-left-radius: 8px; }
+.scan-corner-tr { top: 0; right: 0; border-left: none; border-bottom: none; border-top-right-radius: 8px; }
+.scan-corner-bl { bottom: 0; left: 0; border-right: none; border-top: none; border-bottom-left-radius: 8px; }
+.scan-corner-br { bottom: 0; right: 0; border-left: none; border-top: none; border-bottom-right-radius: 8px; }
+
 .home-features {
   display: grid;
   /* 3 up on desktop, 2 on tablets, 1 on phones — reflows on its own. */

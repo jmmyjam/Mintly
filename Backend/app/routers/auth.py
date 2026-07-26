@@ -235,7 +235,7 @@ def reset_email_html(username: str, link: str) -> str:
           </h1>
           <p style="margin:0 0 26px;font-size:14px;line-height:1.6;color:#9c9ca4;">
             Hi {name}, someone asked to reset the password for your Mintly
-            account. If that was you, choose a new password below &mdash; the
+            account. If that was you, choose a new password below. The
             link works for {RESET_TOKEN_TTL_MINUTES} minutes.
           </p>
           <table role="presentation" cellpadding="0" cellspacing="0"><tr>
@@ -247,7 +247,7 @@ def reset_email_html(username: str, link: str) -> str:
             </td>
           </tr></table>
           <p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#9c9ca4;">
-            If you didn't ask for this, you can ignore this email &mdash; your
+            If you didn't ask for this, you can ignore this email; your
             password is unchanged.
           </p>
           <p style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#9c9ca4;">
@@ -257,7 +257,7 @@ def reset_email_html(username: str, link: str) -> str:
         </td></tr>
       </table>
       <p style="margin:18px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#9c9ca4;">
-        Mintly &mdash; Pok&eacute;mon TCG portfolio tracker
+        Mintly - Pok&eacute;mon TCG portfolio tracker
       </p>
     </td></tr>
   </table>
@@ -296,7 +296,7 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
                     f"If that was you, open this link within {RESET_TOKEN_TTL_MINUTES} minutes "
                     f"to choose a new password:\n\n"
                     f"{link}\n\n"
-                    f"If you didn't ask for this, you can ignore this email — "
+                    f"If you didn't ask for this, you can ignore this email; "
                     f"your password is unchanged.\n"
                 ),
                 html=reset_email_html(user.username, link),
@@ -316,7 +316,7 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
 def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     invalid = HTTPException(
         status_code=400,
-        detail="This reset link is invalid or has expired — request a new one")
+        detail="This reset link is invalid or has expired. Request a new one")
     token = db.query(PasswordResetToken).filter(
         PasswordResetToken.token_hash == hash_token(body.token)
     ).first()

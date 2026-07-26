@@ -58,7 +58,7 @@ const SITE_GRAPH = {
       applicationCategory: 'FinanceApplication',
       operatingSystem: 'Any',
       description:
-        'Free Pokémon TCG portfolio tracker — search the card catalog, see ' +
+        'Free Pokémon TCG portfolio tracker - search the card catalog, see ' +
         "live TCGPlayer market prices and price history, and track your collection's " +
         'value over time.',
       offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },

@@ -122,8 +122,8 @@ export default function Admin() {
         <h2 className={styles.sectionTitle}>Users</h2>
         <div className={styles.tileGrid}>
           <StatTile label="Total users" value={num(stats.users.total)} />
-          <StatTile label="New — 7 days" value={num(stats.users.new_7d)} />
-          <StatTile label="New — 30 days" value={num(stats.users.new_30d)} />
+          <StatTile label="New (7 days)" value={num(stats.users.new_7d)} />
+          <StatTile label="New (30 days)" value={num(stats.users.new_30d)} />
           <StatTile
             label="With a portfolio"
             value={num(stats.users.with_portfolio)}
@@ -133,7 +133,7 @@ export default function Admin() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Signups — last 30 days</h2>
+        <h2 className={styles.sectionTitle}>Signups over the last 30 days</h2>
         <div className={styles.chartCard}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={stats.signups_by_day} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

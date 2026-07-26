@@ -11,7 +11,7 @@ REGISTER = {"email": "ash@example.com", "username": "ash", "password": "pikachu1
             "accepted_terms": True}
 
 GENERIC = "If that email has an account, a reset link is on its way."
-INVALID = "This reset link is invalid or has expired — request a new one"
+INVALID = "This reset link is invalid or has expired. Request a new one"
 
 
 @pytest.fixture

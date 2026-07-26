@@ -245,7 +245,7 @@ export default function Portfolio() {
     <div className={styles.portfolioChart}>
       <h2>Value Over Time</h2>
       {isPlaceholder && (
-        <p className={styles.chartCaption}>Showing today's value — history builds each day you visit.</p>
+        <p className={styles.chartCaption}>Showing today's value. History builds each day you visit.</p>
       )}
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
