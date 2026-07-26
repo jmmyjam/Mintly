@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { scanCard, getCardPrice, getToken, SessionExpiredError, type Card } from '../api'
 import CameraViewfinder from '../components/CameraViewfinder'
 import CardImage from '../components/CardImage'
-import PageMessage from '../components/PageMessage'
 import PriceQtyForm from '../components/PriceQtyForm'
+import SignedOutHero from '../components/SignedOutHero'
 import StatusMessage from '../components/StatusMessage'
 import { useAddCard, useSessionRedirect } from '../hooks'
 import { money } from '../format'
@@ -144,12 +144,7 @@ export default function Scan() {
   }
 
   if (!getToken()) {
-    return (
-      <PageMessage action={{ to: '/login', label: 'Login', className: 'btn-primary btn-lg' }}>
-        <h2>Log in to scan cards</h2>
-        <p>Point your camera at a card to identify it and add it to your portfolio.</p>
-      </PageMessage>
-    )
+    return <SignedOutHero variant="scan" />
   }
 
   return (

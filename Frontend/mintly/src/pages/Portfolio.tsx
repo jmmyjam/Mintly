@@ -7,6 +7,7 @@ import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
 import PriceQtyForm from '../components/PriceQtyForm'
+import SignedOutHero from '../components/SignedOutHero'
 import StatRow from '../components/StatRow'
 import StatusMessage from '../components/StatusMessage'
 import { useSessionRedirect } from '../hooks'
@@ -188,12 +189,7 @@ export default function Portfolio() {
   }
 
   if (!getToken()) {
-    return (
-      <PageMessage action={{ to: '/login', label: 'Login', className: 'btn-primary btn-lg' }}>
-        <h2>Log in to view your portfolio</h2>
-        <p>Track your cards and monitor their value over time.</p>
-      </PageMessage>
-    )
+    return <SignedOutHero variant="portfolio" />
   }
 
   if (loading) return <PageMessage><p>Loading portfolio...</p></PageMessage>

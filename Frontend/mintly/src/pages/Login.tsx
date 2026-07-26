@@ -39,7 +39,11 @@ const PREVIEW: {
 }
 
 export default function Login() {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const location = useLocation()
+  // Open the register tab when arriving from a "Create an account" link
+  const [mode, setMode] = useState<'login' | 'register'>(
+    () => ((location.state as { register?: boolean } | null)?.register ? 'register' : 'login'),
+  )
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -47,7 +51,6 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const location = useLocation()
   // e.g. "Your session expired. Please log in again." when redirected here on a 401
   const notice = (location.state as { notice?: string } | null)?.notice
 

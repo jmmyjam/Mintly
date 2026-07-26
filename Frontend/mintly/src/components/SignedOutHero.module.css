@@ -1,0 +1,136 @@
+/* Promotional hero for signed-out visitors to account-only pages (Portfolio,
+   Scan). Mint-accented card echoing the Home page's scanner band. */
+.hero {
+  display: flex;
+  align-items: center;
+  gap: clamp(24px, 5vw, 56px);
+  flex-wrap: wrap;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-border);
+  border-radius: 28px;
+  padding: clamp(28px, 5vw, 48px);
+  margin: clamp(16px, 5vw, 48px) auto;
+  /* Soft mint glow so the section reads as the accent surface. */
+  box-shadow: 0 0 0 1px rgba(86, 207, 158, 0.04), 0 24px 60px rgba(86, 207, 158, 0.06);
+}
+
+.copy {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+.eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: clamp(1.75rem, 4.5vw, 2.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin-bottom: 14px;
+}
+
+.text {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 165%;
+  max-width: 460px;
+  margin-bottom: 18px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 3vw, 24px);
+  flex-wrap: wrap;
+}
+
+.secondary {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.secondary a {
+  font-weight: 600;
+}
+
+/* ----- Scan viewfinder visual (echoes the /scan card-outline frame) --------- */
+.visual {
+  flex: 1 1 260px;
+  display: flex;
+  justify-content: center;
+}
+
+.frame {
+  position: relative;
+  width: clamp(190px, 60%, 250px);
+  aspect-ratio: 5 / 7;
+  padding: 14px;
+}
+
+.frameImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.5));
+}
+
+/* Four mint corner brackets framing the card */
+.corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--accent);
+}
+.corner-tl { top: 0; left: 0; border-right: none; border-bottom: none; border-top-left-radius: 8px; }
+.corner-tr { top: 0; right: 0; border-left: none; border-bottom: none; border-top-right-radius: 8px; }
+.corner-bl { bottom: 0; left: 0; border-right: none; border-top: none; border-bottom-left-radius: 8px; }
+.corner-br { bottom: 0; right: 0; border-left: none; border-top: none; border-bottom-right-radius: 8px; }
+
+/* ----- Portfolio fanned-cards visual (mirrors the Home hero spread) --------- */
+.fan {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  min-height: 300px;
+  align-self: center;
+}
+
+.fan-card {
+  position: absolute;
+  width: 47%;
+  max-width: 150px;
+  border-radius: 10px;
+  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.55);
+}
+
+.fan-card-1 { left: 0; top: 34px; transform: rotate(-11deg); }
+.fan-card-2 { left: 27%; top: 4px; transform: rotate(2deg); z-index: 2; }
+.fan-card-3 { left: 54%; top: 40px; transform: rotate(13deg); }
