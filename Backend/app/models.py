@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index, JSON, LargeBinary
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 
@@ -59,6 +59,11 @@ class CatalogCard(Base):
     release_date = Column(String)   # set releaseDate "YYYY/MM/DD" — sorts as text
     data = Column(JSON)             # the card dict exactly as served to the frontend
     price_updated_at = Column(DateTime, default=utcnow)  # when data's tcgplayer block was last fetched
+    # A CLIP image embedding of the card's artwork (float32 vector, raw bytes),
+    # backing the camera scanner's nearest-neighbour match. NULL until the
+    # `scripts/embed_catalog.py` backfill fills it; upsert_cards never sets this
+    # column, so a written embedding survives the daily crawl untouched.
+    embedding = Column(LargeBinary, nullable=True)
 
 
 class CatalogMeta(Base):

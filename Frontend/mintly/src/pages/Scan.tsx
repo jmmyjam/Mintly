@@ -1,29 +1,21 @@
-import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { filterCards, searchCards, getCardPrice, type Card, type CardPage } from '../api'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { scanCard, getCardPrice, type Card } from '../api'
 import CameraViewfinder from '../components/CameraViewfinder'
 import CardImage from '../components/CardImage'
 import PriceQtyForm from '../components/PriceQtyForm'
 import StatusMessage from '../components/StatusMessage'
 import { useAddCard } from '../hooks'
-import { readCard, normNumber, warmUpOcr, type CardReading } from '../ocr'
 import { money } from '../format'
 import styles from './Scan.module.css'
 
 export default function Scan() {
+  const navigate = useNavigate()
   const [captured, setCaptured] = useState<string | null>(null) // thumbnail data URL
-  const [reading, setReading] = useState(false) // OCR in progress
-  const [nameField, setNameField] = useState('')
-  const [numberField, setNumberField] = useState('')
+  const [matching, setMatching] = useState(false) // upload + match in flight
   const [results, setResults] = useState<Card[] | null>(null)
-  const [searching, setSearching] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-
-  // ?debug (any value) surfaces exactly what OCR was given and returned
-  const [searchParams] = useSearchParams()
-  const debug = searchParams.has('debug')
-  const [debugInfo, setDebugInfo] = useState<CardReading['debug'] | null>(null)
-  const [ocrError, setOcrError] = useState<string | null>(null)
+  const [manualQuery, setManualQuery] = useState('')
 
   // Shared add-to-portfolio flow, same as Search/CardDetail
   const { add, busy: addBusy, status: addStatus } = useAddCard()
@@ -31,82 +23,40 @@ export default function Scan() {
   const [purchasePrice, setPurchasePrice] = useState('')
   const [quantity, setQuantity] = useState('1')
 
-  // Start downloading the OCR model while the user lines up the card
-  useEffect(() => {
-    warmUpOcr()
-  }, [])
-
-  // Name-first lookup: the number narrows it when legible, but a readable name
-  // alone must still surface a best guess (per the plan). First non-empty wins.
-  async function runLookup(name: string, rawNumber: string) {
-    const cleanName = name.trim()
-    const num = normNumber(rawNumber)
-    if (!cleanName && !num) {
-      setNotice('Type at least the card name, then tap Find card.')
-      return
-    }
-    setSearching(true)
+  function handleCapture(canvas: HTMLCanvasElement) {
+    setCaptured(canvas.toDataURL('image/jpeg', 0.85))
     setResults(null)
     setNotice(null)
-
-    // Each step is independent: a single failing query (e.g. the backend 500s on
-    // an odd name+number combo) falls through to the next instead of aborting the
-    // whole lookup and losing the name-only fallback that would have worked.
-    const step = async (fn: () => Promise<CardPage>): Promise<Card[]> => {
-      try {
-        return (await fn()).data
-      } catch (err) {
-        console.error('[scan] lookup step failed', err)
-        return []
-      }
-    }
-
-    let data: Card[] = []
-    if (cleanName && num) data = await step(() => filterCards({ name: cleanName, number: num }))
-    if (data.length === 0 && cleanName) data = await step(() => filterCards({ name: cleanName }))
-    if (data.length === 0) {
-      const q = `${cleanName} ${rawNumber}`.trim()
-      if (q) data = await step(() => searchCards(q))
-    }
-
-    setResults(data)
-    if (data.length === 0) setNotice('No match found. Edit the name or number and try again.')
-    setSearching(false)
-  }
-
-  async function handleCapture(card: HTMLCanvasElement) {
-    setCaptured(card.toDataURL('image/jpeg', 0.8))
-    setResults(null)
-    setNotice(null)
-    setDebugInfo(null)
-    setOcrError(null)
-    setReading(true)
-    try {
-      const r = await readCard(card, { debug })
-      setNameField(r.name)
-      setNumberField(r.rawNumber)
-      if (r.debug) setDebugInfo(r.debug)
-      setReading(false)
-      if (r.name || r.rawNumber) {
-        await runLookup(r.name, r.rawNumber)
-      } else {
-        setNotice("Couldn't read the card — type the name below and tap Find card.")
-      }
-    } catch (err) {
-      setReading(false)
-      setOcrError(err instanceof Error ? err.message : String(err))
-      setNotice("Couldn't read the card — type the name below and tap Find card.")
-    }
+    setMatching(true)
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setMatching(false)
+          setNotice("Couldn't read the capture — try again.")
+          return
+        }
+        scanCard(blob)
+          .then((page) => {
+            setResults(page.data)
+            if (page.data.length === 0) {
+              setNotice('No match found. Try scanning again, or search by name below.')
+            }
+          })
+          .catch(() => {
+            setResults([])
+            setNotice('Something went wrong scanning. Please try again.')
+          })
+          .finally(() => setMatching(false))
+      },
+      'image/jpeg',
+      0.85,
+    )
   }
 
   function reset() {
     setCaptured(null)
     setResults(null)
-    setNameField('')
-    setNumberField('')
     setNotice(null)
-    setDebugInfo(null)
-    setOcrError(null)
     setAdding(null)
     setPurchasePrice('')
     setQuantity('1')
@@ -118,6 +68,12 @@ export default function Scan() {
       setPurchasePrice('')
       setQuantity('1')
     })
+  }
+
+  function manualSearch(e: React.FormEvent) {
+    e.preventDefault()
+    const q = manualQuery.trim()
+    if (q) navigate(`/search?q=${encodeURIComponent(q)}`)
   }
 
   function renderTile(card: Card, best = false) {
@@ -171,7 +127,6 @@ export default function Scan() {
               className="btn-outline btn-sm"
               onClick={() => {
                 setAdding(card.id)
-                // Priceless cards can't auto-price on add — seed the eBay estimate
                 if (price == null && card.estimate) setPurchasePrice(card.estimate.value.toFixed(2))
               }}
             >
@@ -185,76 +140,32 @@ export default function Scan() {
   return (
     <div className="page">
       <h1>Scan a card</h1>
-      {debug && (
-        <p className={styles.debugBanner}>
-          🔍 Debug mode on — the OCR crops &amp; raw text appear at the bottom after each scan.
-        </p>
-      )}
 
       {!captured ? (
         <>
           <p className={styles.intro}>
-            Point your camera at a Pokémon card and line it up inside the frame. Mintly reads the
-            card name and number right on your device — no photo is uploaded — then finds the match
-            so you can add it to your portfolio.
+            Point your camera at a Pokémon card and line it up inside the frame. Mintly matches the
+            photo against its card database to find it, then you can add it to your portfolio.
           </p>
           <p className={styles.tips}>
-            For the best read: fill the frame with the card, hold it flat and steady so it&apos;s in
-            focus, use good light, and tilt slightly to keep glare off the name.
+            For the best match: fill the frame with the card, hold steady so it&apos;s in focus, and
+            use good, even light.
           </p>
-          <CameraViewfinder onCapture={handleCapture} busy={reading} />
+          <CameraViewfinder onCapture={handleCapture} busy={matching} />
         </>
       ) : (
         <div className={styles.review}>
-          <div className={styles.capturePane}>
-            <img src={captured} alt="Captured card" className={styles.thumb} />
-            <button className="btn-outline btn-sm" onClick={reset}>
-              Scan another
-            </button>
-          </div>
-          <div className={styles.readPane}>
-            <p className={styles.readIntro}>Check what we read, fix anything, then find the card.</p>
-            <label className="edit-field">
-              <span className="stat-label">Card name</span>
-              <input
-                className="mini-input"
-                value={nameField}
-                onChange={(e) => setNameField(e.target.value)}
-                placeholder="e.g. Charizard"
-              />
-            </label>
-            <label className="edit-field">
-              <span className="stat-label">Number (bottom of card)</span>
-              <input
-                className="mini-input"
-                value={numberField}
-                onChange={(e) => setNumberField(e.target.value)}
-                placeholder="e.g. 4/102"
-              />
-            </label>
-            <button
-              className="btn-primary"
-              onClick={() => runLookup(nameField, numberField)}
-              disabled={reading || searching}
-            >
-              {reading ? 'Reading…' : searching ? 'Finding…' : 'Find card'}
-            </button>
-          </div>
+          <img src={captured} alt="Captured card" className={styles.thumb} />
+          <button className="btn-outline btn-sm" onClick={reset}>
+            Scan another
+          </button>
         </div>
       )}
 
       {captured && (
         <div className={styles.results}>
-          {reading && <p className={styles.status}>Reading the card…</p>}
-          {searching && <p className={styles.status}>Finding matches…</p>}
+          {matching && <p className={styles.status}>Finding your card…</p>}
           {notice && <p className="prices-note">{notice}</p>}
-          {results && results.length === 0 && !!nameField.trim() && (
-            <p className={styles.manual}>
-              <Link to={`/search?q=${encodeURIComponent(nameField.trim())}`}>
-                Search the catalog manually →
-              </Link>
-            </p>
-          )}
 
           {results && results.length > 0 && (
             <>
@@ -268,30 +179,20 @@ export default function Scan() {
               )}
             </>
           )}
-        </div>
-      )}
 
-      {debug && (
-        <div className={styles.debug}>
-          <h3 className={styles.debugHeading}>Debug · what OCR saw</h3>
-          {ocrError && <p className="error">OCR error: {ocrError}</p>}
-          {reading && <p className={styles.status}>Running OCR…</p>}
-          {debugInfo ? (
-            <div className={styles.debugGrid}>
-              <figure className={styles.debugFig}>
-                <img src={debugInfo.nameCropUrl} alt="name crop sent to OCR" />
-                <figcaption>name crop → “{debugInfo.rawName || '(empty)'}”</figcaption>
-              </figure>
-              <figure className={styles.debugFig}>
-                <img src={debugInfo.numberCropUrl} alt="number crop sent to OCR" />
-                <figcaption>number crop → “{debugInfo.rawNumber || '(empty)'}”</figcaption>
-              </figure>
-            </div>
-          ) : (
-            !reading &&
-            !ocrError && (
-              <p className={styles.status}>Scan a card and the two crops OCR receives will show here.</p>
-            )
+          {!matching && (
+            <form className={styles.manual} onSubmit={manualSearch}>
+              <input
+                className="mini-input"
+                value={manualQuery}
+                onChange={(e) => setManualQuery(e.target.value)}
+                placeholder="Not it? Search by name"
+                aria-label="Search by card name"
+              />
+              <button type="submit" className="btn-outline btn-sm">
+                Search
+              </button>
+            </form>
           )}
         </div>
       )}

@@ -40,13 +40,13 @@ export default function Privacy() {
       <h2>4. Card scanning</h2>
       <p>
         The optional card scanner uses your device&apos;s camera to identify a
-        card. Recognition runs entirely in your browser: on-device text
-        recognition reads only the card&apos;s name and number from the camera
-        image, and that image is never uploaded to Mintly or stored anywhere.
-        Mintly then looks up the recognized name and number through the same
-        card catalog used by search (see section 5) — only that text is sent,
-        exactly as if you had typed it. The recognition software your browser
-        loads for this is cached on your device after first use.
+        card. When you scan, the captured photo is sent to Mintly&apos;s own
+        server, which matches it against our database of card images to find the
+        card and returns the closest matches for you to confirm. The image is
+        used only to compute that match: it is not linked to your account, not
+        shown to anyone, and not kept — it is discarded once the match is made.
+        The matching runs entirely on Mintly&apos;s own hardware; the image is
+        never sent to any third party.
       </p>
 
       <h2>5. Third parties</h2>

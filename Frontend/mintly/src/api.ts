@@ -380,6 +380,17 @@ export async function filterCards(filters: CardFilters, page = 1): Promise<CardP
   return res.json()
 }
 
+// Camera scanner: upload a captured card image, get nearest-match candidates
+// (same CardPage envelope the search endpoints return). Unauthed like search.
+export async function scanCard(blob: Blob): Promise<CardPage> {
+  const form = new FormData()
+  form.append('file', blob, 'scan.jpg')
+  // No Content-Type header — the browser sets the multipart boundary itself.
+  const res = await fetch(`${BASE}/scan`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error('Scan failed')
+  return res.json()
+}
+
 // ----- Portfolio calls (authed) ---------------------------------------------------
 
 export async function getPortfolio(): Promise<PortfolioCard[]> {

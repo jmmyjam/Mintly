@@ -34,11 +34,6 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
   const streamRef = useRef<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
-  // Some cameras (front/selfie, some desktop webcams) deliver a horizontally
-  // mirrored image, which makes card text unreadable to OCR. We can't reliably
-  // detect this, so the user controls it: `flipped` mirrors both the preview and
-  // the capture. Seeded from facingMode (rear = off) but overridable via Flip.
-  const [flipped, setFlipped] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -50,8 +45,8 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
       }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          // Ask for a high-res stream so the card fills more pixels — sharper
-          // crops are the single biggest lever for OCR on small card text.
+          // Ask for a high-res stream so the card fills more pixels — a sharper
+          // capture gives the embedding match more to work with.
           video: {
             facingMode: { ideal: 'environment' },
             width: { ideal: 1920 },
@@ -64,10 +59,6 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
           return
         }
         streamRef.current = stream
-        // Seed the flip default: confirmed rear cameras aren't mirrored; treat
-        // front/unknown as likely-mirrored. The user can override with Flip.
-        const facing = stream.getVideoTracks()[0]?.getSettings().facingMode
-        setFlipped(facing !== 'environment')
         const v = videoRef.current
         if (v) {
           v.srcObject = stream
@@ -118,14 +109,7 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
     const c = document.createElement('canvas')
     c.width = Math.max(1, Math.round(nw))
     c.height = Math.max(1, Math.round(nh))
-    const ctx = c.getContext('2d')!
-    // Match the preview: if flipped, mirror the capture too so what the user
-    // sees (readable, left-to-right) is what OCR receives.
-    if (flipped) {
-      ctx.translate(c.width, 0)
-      ctx.scale(-1, 1)
-    }
-    ctx.drawImage(v, nx, ny, nw, nh, 0, 0, c.width, c.height)
+    c.getContext('2d')!.drawImage(v, nx, ny, nw, nh, 0, 0, c.width, c.height)
     onCapture(c)
   }
 
@@ -154,13 +138,7 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
         </div>
       ) : (
         <div className={styles.viewport}>
-          <video
-            ref={videoRef}
-            className={flipped ? `${styles.video} ${styles.videoMirrored}` : styles.video}
-            playsInline
-            muted
-            autoPlay
-          />
+          <video ref={videoRef} className={styles.video} playsInline muted autoPlay />
           <div className={styles.overlay} aria-hidden="true">
             <div ref={frameRef} className={styles.frame} />
           </div>
@@ -177,17 +155,6 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
             disabled={busy || !ready}
           >
             {busy ? 'Reading…' : 'Scan card'}
-          </button>
-        )}
-        {!error && (
-          <button
-            type="button"
-            className="btn-outline btn-sm"
-            onClick={() => setFlipped((f) => !f)}
-            disabled={busy}
-            aria-pressed={flipped}
-          >
-            ⇄ Flip {flipped ? '(on)' : '(off)'}
           </button>
         )}
         <label className={styles.fileLabel}>

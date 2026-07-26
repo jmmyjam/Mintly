@@ -24,12 +24,6 @@
   object-fit: cover;
 }
 
-/* Un-mirror the preview of a selfie-mirrored front camera so it matches the
-   (also un-mirrored) captured image. */
-.videoMirrored {
-  transform: scaleX(-1);
-}
-
 .overlay {
   position: absolute;
   inset: 0;

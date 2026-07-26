@@ -14,24 +14,17 @@
   opacity: 0.85;
 }
 
-/* Review row: captured thumbnail beside the editable name/number fields */
+/* After a capture: the thumbnail + a "scan another" button, centered */
 .review {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  align-items: flex-start;
-  margin-top: 8px;
-}
-
-.capturePane {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  margin-top: 8px;
 }
 
 .thumb {
-  width: 160px;
+  width: 150px;
   max-width: 40vw;
   aspect-ratio: 5 / 7;
   object-fit: cover;
@@ -40,21 +33,8 @@
   background: var(--bg-card);
 }
 
-.readPane {
-  flex: 1 1 260px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.readIntro {
-  margin: 0;
-  color: var(--text);
-}
-
 .results {
-  margin-top: 28px;
+  margin-top: 24px;
 }
 
 .status {
@@ -72,8 +52,16 @@
   font-size: 1rem;
 }
 
+/* "Not it? Search by name" fallback */
 .manual {
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 26px;
+}
+
+.manual .mini-input {
+  max-width: 260px;
 }
 
 .grid {
@@ -124,60 +112,4 @@
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text);
-}
-
-/* ?debug diagnostics — invisible to normal users */
-.debugBanner {
-  margin: 0 auto 16px;
-  max-width: 60ch;
-  padding: 8px 14px;
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--text-h);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.debug {
-  margin-top: 28px;
-  padding-top: 18px;
-  border-top: 1px dashed var(--border);
-}
-
-.debugHeading {
-  margin: 0 0 12px;
-  font-size: 0.95rem;
-  color: var(--text);
-}
-
-.debugGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
-  gap: 16px;
-}
-
-.debugFig {
-  margin: 0;
-  padding: 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.debugFig img {
-  display: block;
-  width: 100%;
-  height: auto;
-  image-rendering: pixelated;
-  background: #fff;
-  border-radius: 6px;
-}
-
-.debugFig figcaption {
-  margin-top: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8rem;
-  color: var(--text-h);
-  word-break: break-word;
 }
