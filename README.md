@@ -20,7 +20,7 @@
 ## Features
 
 - **Smart search** — natural-language queries ("charizard 4 base set") parsed into name/number/set filters, with set-name recognition, word-drop fallback, and debounced search-as-you-type
-- **Camera card scanner** — point your phone at a card and Mintly finds it by matching the *artwork*, not the text: a self-hosted CLIP image-embedding model (ViT-B/32) fingerprints every catalog card once, and each scan embeds the photo (plus its mirror) and returns the nearest cards to confirm and add. Robust to glare/blur/angle where OCR isn't, runs entirely on Mintly's own hardware, so it's **free and unlimited** with no per-scan cost. The photo is used only to compute the match and is never stored.
+- **Camera card scanner** — point your phone at a card and Mintly finds it by matching the _artwork_, not the text: a self-hosted CLIP image-embedding model (ViT-B/32) fingerprints every catalog card once, and each scan embeds the photo (plus its mirror) and returns the nearest cards to confirm and add. Robust to glare/blur/angle where OCR isn't, runs entirely on Mintly's own hardware, so it's **free and unlimited** with no per-scan cost. The photo is used only to compute the match and is never stored.
 - **Catalog-first browsing** — a daily crawl mirrors the full card catalog (~20k cards) into Postgres, so search/browse answer in milliseconds and keep working through upstream API outages; dead upstream image URLs are auto-repaired against TCGplayer product scans
 - **Card varieties as first-class cards** — stamped/marked TCGplayer siblings of a card (`[Staff]`, `[W Stamped]`, `(Black Dot Error)`) are forked into their own synthetic catalog entries — searchable, browsable, holdable, and charted like any card — with a "Variety" badge and an "Other versions" section cross-linking a card and its siblings (finishes like holo/reverse stay on the base card as variants)
 - **Three price sources in accuracy order** — TCGPlayer prices via the Pokemon TCG API; real TCGplayer prices from [TCGCSV](https://tcgcsv.com) for brand-new sets the API hasn't priced yet (variant-accurate, so a 5¢ common shows as 5¢); eBay sold-listings median as the last resort, so even unpriced cards show an estimate
@@ -43,7 +43,7 @@
 
 **Search** — natural-language search with set/rarity/type filters and daily price-change chips:
 
-![Card search](docs/screenshots/search.jpg)
+![Card search](docs/screenshots/search.png)
 
 **Card detail** — live prices, market/low/mid/high spread, quick add-to-portfolio, and buy links:
 
@@ -58,6 +58,7 @@
 ### Backend
 
 1. Install dependencies:
+
    ```bash
    cd Backend
    python -m venv venv
@@ -66,6 +67,7 @@
    ```
 
 2. Create a `.env` file:
+
    ```
    DATABASE_URL=postgresql://username@localhost:5432/mintly
    SECRET_KEY=your-secret-key
@@ -73,12 +75,14 @@
    ```
 
 3. Create the database and apply migrations:
+
    ```bash
    psql postgres -c "CREATE DATABASE mintly;"
    alembic upgrade head
    ```
 
 4. Start the server:
+
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -90,12 +94,14 @@
 ### Frontend
 
 1. Install dependencies:
+
    ```bash
    cd Frontend/mintly
    npm install
    ```
 
 2. Start the dev server:
+
    ```bash
    npm run dev
    ```
@@ -133,10 +139,10 @@ Mintly builds its own price history — there is no upstream history API. One ro
 
 1. **TCGPlayer crawl** — pages the full card list (~20.5k cards) and snapshots every priced card. Flaky pages are retried inline, then again in an end-of-run second pass; a page has to fail both to be skipped.
 2. **TCGCSV fill** — cards with no TCGPlayer price (~1.6k: brand-new sets plus old oddballs) get real TCGplayer prices from the TCGCSV mirror, matched by set + card number and stored in the catalog like any other price — so newest-set cards browse as normally-priced cards, variant table and all.
-3. **eBay fill** — whatever TCGCSV couldn't match gets the median of its recent eBay *sold* listings instead, newest sets first, paced 5s between scrapes. Cards with too few recent sales record nothing; only 5 consecutive failed fetches (bot block) stop the pass early.
+3. **eBay fill** — whatever TCGCSV couldn't match gets the median of its recent eBay _sold_ listings instead, newest sets first, paced 5s between scrapes. Cards with too few recent sales record nothing; only 5 consecutive failed fetches (bot block) stop the pass early.
 4. **Compaction to cold storage** — see the next section.
 
-The crawl also does two catalog-maintenance passes: **image repair** HEAD-checks each card's artwork URL and re-points dead ones (`images.pokemontcg.io` answers a missing image with a card-back PNG under a 404) at the TCGplayer product scan, and **variety forking** splits any stamped/marked TCGplayer sibling of a card (`[Staff]`, `[W Stamped]`, black-dot errors) into its own synthetic catalog entry. The card scanner's image embeddings are *not* touched here — new cards are fingerprinted separately by `scripts/embed_catalog.py`.
+The crawl also does two catalog-maintenance passes: **image repair** HEAD-checks each card's artwork URL and re-points dead ones (`images.pokemontcg.io` answers a missing image with a card-back PNG under a 404) at the TCGplayer product scan, and **variety forking** splits any stamped/marked TCGplayer sibling of a card (`[Staff]`, `[W Stamped]`, black-dot errors) into its own synthetic catalog entry. The card scanner's image embeddings are _not_ touched here — new cards are fingerprinted separately by `scripts/embed_catalog.py`.
 
 ```bash
 cd Backend
@@ -168,7 +174,7 @@ Left alone, daily snapshots would grow the database ~1.1GB/year forever. Instead
 
 - **Last ~30 days** — full daily rows in Postgres (charts' 1M range stays daily-resolution).
 - **Older months** — the DB keeps one row per card per month (its month-end "close"), so 6M/1Y/All chart ranges show monthly points. Keeps the DB to ~36MB/year.
-- **The full old dailies** — exported to `Backend/.archive/price-history/YYYY-MM.csv.gz` (~3–6MB/month, gitignored) *before* the DB copy is thinned; the archive file must exist on disk before a single row is removed. Back this folder up — the DB alone no longer holds full history.
+- **The full old dailies** — exported to `Backend/.archive/price-history/YYYY-MM.csv.gz` (~3–6MB/month, gitignored) _before_ the DB copy is thinned; the archive file must exist on disk before a single row is removed. Back this folder up — the DB alone no longer holds full history.
 
 The snapshot job compacts automatically each day (a month becomes eligible once it's complete and 30+ days old). Manual controls:
 
@@ -191,25 +197,25 @@ venv/bin/pytest tests/ -q     # 226 tests, ~30s
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/register` | Create account |
-| POST | `/auth/login` | Login, returns JWT |
-| GET | `/search?q=` | Natural language card search |
-| GET | `/cards?name=&set_id=&number=` | Filtered card search |
-| GET | `/cards/{card_id}` | Get a single card |
-| GET | `/cards/{card_id}/history?days=` | Daily price points from Mintly's snapshots |
-| GET | `/cards/{card_id}/ebay-price` | Recent eBay sold-listings estimate |
-| POST | `/scan` | Camera scanner: upload a card photo, get the nearest catalog cards by image match (auth required) |
-| GET | `/sets` | List all sets |
-| GET | `/sets/{set_id}/cards` | Cards in a set |
-| GET | `/portfolio` | Get your portfolio (auth required) |
-| GET | `/portfolio/history` | Portfolio value over time (auth required) |
-| POST | `/portfolio/add` | Add card to portfolio (auth required) |
-| PATCH | `/portfolio/{id}` | Edit a lot's price/quantity (auth required) |
-| DELETE | `/portfolio/{id}` | Remove card from portfolio (auth required) |
-| GET | `/health` | Uptime probe: 200 when app + DB answer, 503 otherwise |
-| GET | `/sitemap.xml` | XML sitemap for crawlers (static pages + every catalog card) |
+| Method | Endpoint                         | Description                                                                                       |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/register`                 | Create account                                                                                    |
+| POST   | `/auth/login`                    | Login, returns JWT                                                                                |
+| GET    | `/search?q=`                     | Natural language card search                                                                      |
+| GET    | `/cards?name=&set_id=&number=`   | Filtered card search                                                                              |
+| GET    | `/cards/{card_id}`               | Get a single card                                                                                 |
+| GET    | `/cards/{card_id}/history?days=` | Daily price points from Mintly's snapshots                                                        |
+| GET    | `/cards/{card_id}/ebay-price`    | Recent eBay sold-listings estimate                                                                |
+| POST   | `/scan`                          | Camera scanner: upload a card photo, get the nearest catalog cards by image match (auth required) |
+| GET    | `/sets`                          | List all sets                                                                                     |
+| GET    | `/sets/{set_id}/cards`           | Cards in a set                                                                                    |
+| GET    | `/portfolio`                     | Get your portfolio (auth required)                                                                |
+| GET    | `/portfolio/history`             | Portfolio value over time (auth required)                                                         |
+| POST   | `/portfolio/add`                 | Add card to portfolio (auth required)                                                             |
+| PATCH  | `/portfolio/{id}`                | Edit a lot's price/quantity (auth required)                                                       |
+| DELETE | `/portfolio/{id}`                | Remove card from portfolio (auth required)                                                        |
+| GET    | `/health`                        | Uptime probe: 200 when app + DB answer, 503 otherwise                                             |
+| GET    | `/sitemap.xml`                   | XML sitemap for crawlers (static pages + every catalog card)                                      |
 
 Password reset (`POST /auth/forgot-password`, `POST /auth/reset-password`), profile management (`GET`/`PATCH /auth/me`, `POST /auth/me/password`), and account deletion (`DELETE /auth/me`) round out the auth surface — see HANDOFF.md for the full endpoint reference.
 
