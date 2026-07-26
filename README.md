@@ -5,9 +5,11 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169e1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/backend_tests-226_passing-2ea44f)
+![Tests](https://img.shields.io/badge/backend_tests-302_passing-2ea44f)
 
-**Live at [mintlytcg.com](https://mintlytcg.com).** A Pokemon TCG portfolio tracker: search cards, monitor live market prices, and track your collection's value over time.
+**Live at [mintlytcg.com](https://mintlytcg.com).** A Pokemon TCG portfolio tracker: search cards, scan them with your camera, monitor live market prices, and track your collection's value over time.
+
+![Mintly home page](docs/screenshots/home.jpg)
 
 ## Stack
 
@@ -18,7 +20,9 @@
 ## Features
 
 - **Smart search** — natural-language queries ("charizard 4 base set") parsed into name/number/set filters, with set-name recognition, word-drop fallback, and debounced search-as-you-type
-- **Catalog-first browsing** — a daily crawl mirrors the full card catalog (~20k cards) into Postgres, so search/browse answer in milliseconds and keep working through upstream API outages
+- **Camera card scanner** — point your phone at a card and Mintly finds it by matching the *artwork*, not the text: a self-hosted CLIP image-embedding model (ViT-B/32) fingerprints every catalog card once, and each scan embeds the photo (plus its mirror) and returns the nearest cards to confirm and add. Robust to glare/blur/angle where OCR isn't, runs entirely on Mintly's own hardware, so it's **free and unlimited** with no per-scan cost. The photo is used only to compute the match and is never stored.
+- **Catalog-first browsing** — a daily crawl mirrors the full card catalog (~20k cards) into Postgres, so search/browse answer in milliseconds and keep working through upstream API outages; dead upstream image URLs are auto-repaired against TCGplayer product scans
+- **Card varieties as first-class cards** — stamped/marked TCGplayer siblings of a card (`[Staff]`, `[W Stamped]`, `(Black Dot Error)`) are forked into their own synthetic catalog entries — searchable, browsable, holdable, and charted like any card — with a "Variety" badge and an "Other versions" section cross-linking a card and its siblings (finishes like holo/reverse stay on the base card as variants)
 - **Three price sources in accuracy order** — TCGPlayer prices via the Pokemon TCG API; real TCGplayer prices from [TCGCSV](https://tcgcsv.com) for brand-new sets the API hasn't priced yet (variant-accurate, so a 5¢ common shows as 5¢); eBay sold-listings median as the last resort, so even unpriced cards show an estimate
 - **Price history charts** (1M/6M/1Y/All) built from Mintly's own daily snapshots — no upstream history API exists — with one colored line per variant on multi-variant cards and daily price-change chips wherever a price appears
 - **Portfolio tracking by purchase lot** — per-lot gain/loss, daily change, filters and sorting, and a value-over-time chart
@@ -26,7 +30,28 @@
 - **Accessibility preferences** — reduce motion, high contrast, underlined links, and text size; applied instantly and stored per device
 - **Hardened public API** — per-IP sliding-window rate limits sized for humans, an uptime `/health` probe, and anti-enumeration password-reset responses
 - **SEO-ready** — JSON-LD structured data, robots.txt, and a catalog-driven sitemap covering every card page
+- **Self-funding, ad-free** — optional "Buy on TCGplayer" / "Search on eBay" affiliate links on each card and a "Buy me a coffee" link, all config-gated (no ads, no subscriptions, no tracking)
 - **Tiered history storage** — recent dailies in Postgres, older months compacted to monthly closes with the full dailies archived to gzipped CSV (offloaded, never deleted)
+
+## Screenshots
+
+**Portfolio** — summary tiles, a value-over-time chart, and per-lot holdings with daily change:
+
+![Portfolio dashboard](docs/screenshots/portfolio.jpg)
+
+![Portfolio holdings](docs/screenshots/portfolio-holdings.jpg)
+
+**Search** — natural-language search with set/rarity/type filters and daily price-change chips:
+
+![Card search](docs/screenshots/search.jpg)
+
+**Card detail** — live prices, market/low/mid/high spread, quick add-to-portfolio, and buy links:
+
+![Card detail](docs/screenshots/card-detail.jpg)
+
+**Price history** — built from Mintly's own daily snapshots, with 1M/6M/1Y/All ranges:
+
+![Price history chart](docs/screenshots/price-history.jpg)
 
 ## Getting Started
 
@@ -59,6 +84,8 @@
    ```
 
    API runs at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+
+   > `requirements.txt` includes the camera scanner's ML stack (CPU PyTorch + `sentence-transformers`); it's a heavy install and the CLIP model downloads and caches on first use. `/scan` returns matches only after the card artwork has been fingerprinted — run `venv/bin/python scripts/embed_catalog.py` once to backfill `card_catalog.embedding`, then restart the API (it caches the embedding matrix, with a 6h TTL).
 
 ### Frontend
 
@@ -96,6 +123,7 @@ docker compose restart caddy                                # if the Caddyfile c
 - **Backend change** → `docker compose up -d --build` rebuilds the api image and restarts the container.
 - **Caddyfile change** → needs the explicit `restart caddy`: the file is bind-mounted, so compose won't recreate the container on its own.
 - **DB schema change** → also run `docker compose exec api alembic upgrade head` once the new image is up.
+- **Card scanner** → the api image bundles CPU PyTorch + the baked CLIP model, so the first `--build` is slow and pulls a large image. After the `card_catalog.embedding` column exists, run `docker compose exec -T api python scripts/embed_catalog.py` once to fingerprint every card image, then `docker compose restart api` so it loads the fresh embeddings — `/scan` returns nothing until this completes. A weekly cron re-runs the backfill so newly-crawled cards get embedded.
 
 Verify after any deploy: `curl https://mintlytcg.com/api/health` → `{"status":"ok"}`.
 
@@ -107,6 +135,8 @@ Mintly builds its own price history — there is no upstream history API. One ro
 2. **TCGCSV fill** — cards with no TCGPlayer price (~1.6k: brand-new sets plus old oddballs) get real TCGplayer prices from the TCGCSV mirror, matched by set + card number and stored in the catalog like any other price — so newest-set cards browse as normally-priced cards, variant table and all.
 3. **eBay fill** — whatever TCGCSV couldn't match gets the median of its recent eBay *sold* listings instead, newest sets first, paced 5s between scrapes. Cards with too few recent sales record nothing; only 5 consecutive failed fetches (bot block) stop the pass early.
 4. **Compaction to cold storage** — see the next section.
+
+The crawl also does two catalog-maintenance passes: **image repair** HEAD-checks each card's artwork URL and re-points dead ones (`images.pokemontcg.io` answers a missing image with a card-back PNG under a 404) at the TCGplayer product scan, and **variety forking** splits any stamped/marked TCGplayer sibling of a card (`[Staff]`, `[W Stamped]`, black-dot errors) into its own synthetic catalog entry. The card scanner's image embeddings are *not* touched here — new cards are fingerprinted separately by `scripts/embed_catalog.py`.
 
 ```bash
 cd Backend
@@ -170,6 +200,7 @@ venv/bin/pytest tests/ -q     # 226 tests, ~30s
 | GET | `/cards/{card_id}` | Get a single card |
 | GET | `/cards/{card_id}/history?days=` | Daily price points from Mintly's snapshots |
 | GET | `/cards/{card_id}/ebay-price` | Recent eBay sold-listings estimate |
+| POST | `/scan` | Camera scanner: upload a card photo, get the nearest catalog cards by image match (auth required) |
 | GET | `/sets` | List all sets |
 | GET | `/sets/{set_id}/cards` | Cards in a set |
 | GET | `/portfolio` | Get your portfolio (auth required) |
@@ -184,4 +215,4 @@ Password reset (`POST /auth/forgot-password`, `POST /auth/reset-password`), prof
 
 ## Disclaimer
 
-Mintly is an unofficial fan project, not affiliated with, endorsed, or sponsored by Nintendo, The Pokémon Company, TCGplayer, or eBay. Pokémon and all card images are trademarks of their respective owners. Prices shown are third-party market figures and estimates, provided for informational purposes only — not offers to buy or sell.
+Mintly is an unofficial fan project, not affiliated with, endorsed, or sponsored by Nintendo, The Pokémon Company, TCGplayer, or eBay. Pokémon and all card images are trademarks of their respective owners. Prices shown are third-party market figures and estimates, provided for informational purposes only — not offers to buy or sell. Some links to TCGplayer and eBay may be affiliate links, meaning Mintly may earn a small commission on qualifying purchases at no additional cost to you.
