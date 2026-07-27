@@ -95,7 +95,11 @@
   border: 1px solid var(--accent-border);
   border-radius: 28px;
   padding: clamp(28px, 5vw, 48px);
-  margin: 24px 0;
+  /* Even 48px gaps above and below: the top margin is 0 because the features
+     block already contributes 48px of bottom padding, and the 48px bottom
+     margin collapses with the CTA's 24px top margin to 48px. Without this the
+     panel had 72px above but only 24px below and looked shifted down. */
+  margin: 0 0 48px;
   /* Soft mint glow so the section reads as the accent surface (the cream CTA
      stays the one warm surface below it). */
   box-shadow: 0 0 0 1px rgba(86, 207, 158, 0.04), 0 24px 60px rgba(86, 207, 158, 0.06);
