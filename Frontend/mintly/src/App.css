@@ -181,9 +181,50 @@
 
 .pct { font-size: 11px; margin-left: 4px; opacity: 0.8; }
 
+/* Segmented control — a pill track with a cream selected item. Shared by the
+   Portfolio filter row (All/Gainers/Losers) and the chart range toggles
+   (1M/6M/1Y/All). `.on-card` darkens the track for controls sitting on a
+   --bg-card surface (the hero + holding chart panels); `.segmented-lg` is the
+   roomier filter size. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.segmented.on-card { background: var(--bg); }
+
+.segmented-item {
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+
+.segmented-item.is-selected {
+  background: var(--cream);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.segmented-lg .segmented-item { padding: 6px 15px; font-size: 13px; }
+
 /* Utilities */
 .positive { color: var(--positive); }
 .negative { color: var(--negative); }
+
+/* Tabular numerals — set on every money/percent/date figure so columns align */
+.num { font-variant-numeric: tabular-nums; }
 
 .error {
   color: var(--negative);

@@ -61,3 +61,51 @@
   border-radius: 3px;
   flex: none;
 }
+
+/* Holding route (/portfolio/:cardId): the cost overlays give the panel the
+   larger holding-page radius so it lines up with the position panel above it. */
+.with-overlays {
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin: 0;
+}
+
+/* Bottom legend for the cost overlays: market line, purchase dots, avg-cost dash */
+.cost-legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.cost-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.swatch-line {
+  width: 14px;
+  height: 2px;
+  background: var(--accent);
+  display: inline-block;
+}
+
+.swatch-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--cream);
+  display: inline-block;
+}
+
+.swatch-dash {
+  width: 14px;
+  height: 0;
+  border-top: 1.5px dashed var(--negative);
+  display: inline-block;
+}

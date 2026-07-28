@@ -16,8 +16,24 @@
   --negative: #e0705c;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   --radius: 18px;
+  --radius-lg: 22px; /* hero panel, drawer, position panel */
+  --radius-md: 14px; /* inner stat grids */
+  --radius-sm: 10px; /* card artwork in a tile */
 
-  font: 16px/150% system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* San Francisco system stack; every money/percent/date figure sets tabular-nums (.num) */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+
+  /* Divider inside a card surface, quieter than --border */
+  --hairline: #2a2a30;
+  /* Decorative one-off grays (dimmed cents, separators, dashed frames) — never
+     used for real content, so the AA-on-content rule (which requires --text) still holds */
+  --text-dim: #6f6f78; /* dimmed cents on large figures, muted captions */
+  --dot: #3a3a42;      /* meta "·" separator */
+  --slash: #4a4a52;    /* breadcrumb "/" separator */
+  --border-dashed: #35353d; /* "Add a card" dashed frame */
+
+  font: 16px/150% var(--font-ui);
   color: var(--text);
   background: var(--frame);
   color-scheme: dark;

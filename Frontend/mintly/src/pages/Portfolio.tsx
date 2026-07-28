@@ -1,33 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { getPortfolio, getPortfolioHistory, removeCard, updateCard, getToken, getCardImageUrl, CONNECTION_ERROR, SessionExpiredError, type PortfolioCard, type HistoryPoint, type PriceChange } from '../api'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceDot, ResponsiveContainer } from 'recharts'
+import { getPortfolio, getPortfolioHistory, getToken, getCardImageUrl, CONNECTION_ERROR, SessionExpiredError, type PortfolioCard, type HistoryPoint } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
-import PriceQtyForm from '../components/PriceQtyForm'
 import SignedOutHero from '../components/SignedOutHero'
-import StatRow from '../components/StatRow'
-import StatusMessage from '../components/StatusMessage'
 import { useSessionRedirect } from '../hooks'
-import { money } from '../format'
+import { money, signedMoney } from '../format'
+import { groupByCard, groupMetrics, localISODate, formatChartDate } from '../portfolio'
 import styles from './Portfolio.module.css'
 
 // ----- Types & constants ---------------------------------------------------------
 
-// One card can have several lots — separate purchases at different prices
-interface CardGroup {
-  card_id: string
-  card_name: string
-  current_price: number | null
-  price_change: PriceChange | null
-  image_url: string | null
-  lots: PortfolioCard[]
-}
-
 type SortKey = 'recent' | 'value' | 'gain' | 'loss' | 'name'
 type PLFilter = 'all' | 'gainers' | 'losers'
+type Range = '1M' | '6M' | '1Y' | 'All'
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'recent', label: 'Recently added' },
@@ -37,69 +26,18 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'name', label: 'Name A–Z' },
 ]
 
-// ----- Helpers ---------------------------------------------------------------------
-
-function formatChartDate(d: string) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function localISODate(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-// purchase_date arrives as naive UTC with no zone suffix; anchor it with Z so
-// it converts to the local date instead of being read as local time
-function parseUTCDate(d: string) {
-  return new Date(d.endsWith('Z') ? d : d + 'Z')
-}
-
-function formatLotDate(d: string) {
-  return parseUTCDate(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function groupByCard(cards: PortfolioCard[]): CardGroup[] {
-  const map = new Map<string, CardGroup>()
-  for (const c of cards) {
-    const group = map.get(c.card_id)
-    if (group) {
-      group.lots.push(c)
-    } else {
-      map.set(c.card_id, {
-        card_id: c.card_id,
-        card_name: c.card_name,
-        current_price: c.current_price,
-        price_change: c.price_change,
-        image_url: c.image_url,
-        lots: [c],
-      })
-    }
-  }
-  return [...map.values()]
-}
-
-// gain is null when the card has no market price (it can't be a gainer or loser)
-function groupMetrics(g: CardGroup) {
-  return {
-    value: g.lots.reduce((s, l) => s + (l.current_price ?? l.purchase_price) * l.quantity, 0),
-    gain: g.current_price != null ? g.lots.reduce((s, l) => s + (l.gain_loss ?? 0), 0) : null,
-    added: Math.max(...g.lots.map(l => parseUTCDate(l.purchase_date).getTime() || 0)),
-  }
-}
+const RANGES: Range[] = ['1M', '6M', '1Y', 'All']
+const RANGE_DAYS: Record<Range, number | null> = { '1M': 30, '6M': 180, '1Y': 365, All: null }
 
 export default function Portfolio() {
   const [cards, setCards] = useState<PortfolioCard[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(() => !!getToken())
   const [error, setError] = useState('')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('recent')
   const [nameFilter, setNameFilter] = useState('')
   const [plFilter, setPlFilter] = useState<PLFilter>('all')
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editPrice, setEditPrice] = useState('')
-  const [editQty, setEditQty] = useState('')
-  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null)
-  const [lotError, setLotError] = useState<{ id: number; text: string } | null>(null)
+  const [range, setRange] = useState<Range>('1M')
   // The token is already cleared by authedFetch — send the user back to login
   const redirectToLogin = useSessionRedirect()
 
@@ -128,66 +66,6 @@ export default function Portfolio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Inline error line next to the affected lot; self-clears like useAddCard's errors
-  function showLotError(id: number, text: string) {
-    setLotError({ id, text })
-    setTimeout(() => setLotError(null), 4000)
-  }
-
-  async function handleRemove(id: number) {
-    setConfirmRemoveId(null)
-    try {
-      await removeCard(id)
-      setCards(prev => prev.filter(c => c.id !== id))
-    } catch (err) {
-      if (err instanceof SessionExpiredError) {
-        redirectToLogin()
-        return
-      }
-      showLotError(
-        id,
-        err instanceof TypeError ? CONNECTION_ERROR : "We couldn't remove that card. Please try again.",
-      )
-    }
-  }
-
-  function startEdit(lot: PortfolioCard) {
-    setConfirmRemoveId(null)
-    setEditingId(lot.id)
-    setEditPrice(String(lot.purchase_price))
-    setEditQty(String(lot.quantity))
-  }
-
-  async function handleSaveEdit(lot: PortfolioCard) {
-    const price = parseFloat(editPrice)
-    const qty = parseInt(editQty)
-    if (Number.isNaN(price) || price < 0 || Number.isNaN(qty) || qty < 1) {
-      showLotError(lot.id, 'Enter a valid price and quantity.')
-      return
-    }
-    try {
-      await updateCard(lot.id, { purchase_price: price, quantity: qty })
-      setCards(prev => prev.map(c => {
-        if (c.id !== lot.id) return c
-        const gain_loss = c.current_price != null ? Math.round((c.current_price - price) * qty * 100) / 100 : null
-        const gain_loss_pct = c.current_price != null && price > 0
-          ? Math.round(((c.current_price - price) / price) * 10000) / 100
-          : null
-        return { ...c, purchase_price: price, quantity: qty, gain_loss, gain_loss_pct }
-      }))
-      setEditingId(null)
-    } catch (err) {
-      if (err instanceof SessionExpiredError) {
-        redirectToLogin()
-        return
-      }
-      showLotError(
-        lot.id,
-        err instanceof TypeError ? CONNECTION_ERROR : "We couldn't save those changes. Please try again.",
-      )
-    }
-  }
-
   if (!getToken()) {
     return <SignedOutHero variant="portfolio" />
   }
@@ -195,12 +73,28 @@ export default function Portfolio() {
   if (loading) return <PageMessage><p>Loading portfolio...</p></PageMessage>
   if (error) return <PageMessage><p className="error">{error}</p></PageMessage>
 
+  // ----- Portfolio-wide figures (always the full portfolio, not the filtered view)
   const totalValue = cards.reduce((sum, c) => sum + (c.current_price ?? c.purchase_price) * c.quantity, 0)
   const totalCost = cards.reduce((sum, c) => sum + c.purchase_price * c.quantity, 0)
   const totalGainLoss = cards.reduce((sum, c) => sum + (c.gain_loss ?? 0), 0)
-  const groups = groupByCard(cards)
+  const allTimePct = totalCost > 0 ? Math.round((totalGainLoss / totalCost) * 10000) / 100 : null
+  const lotCount = cards.length
 
+  const groups = groupByCard(cards)
   const metrics = new Map(groups.map(g => [g.card_id, groupMetrics(g)]))
+
+  // Today's total move (per-unit day change × quantity, summed) and the best %
+  // mover across the portfolio — the two right-hand hero stat cells.
+  let today = 0
+  let hasToday = false
+  let bestMover: number | null = null
+  for (const g of groups) {
+    const dc = metrics.get(g.card_id)!.dayChange
+    if (dc != null) { today += dc; hasToday = true }
+    const pct = g.price_change?.percent
+    if (pct != null && (bestMover == null || pct > bestMover)) bestMover = pct
+  }
+
   const nameQuery = nameFilter.trim().toLowerCase()
   const visibleGroups = groups.filter(g => {
     if (nameQuery && !g.card_name.toLowerCase().includes(nameQuery)) return false
@@ -224,295 +118,212 @@ export default function Portfolio() {
   })
   const isFiltered = !!nameQuery || plFilter !== 'all'
 
-  // With under two days of history, show a flat line at the current value
-  const isPlaceholder = history.length < 2
+  // ----- Value-over-time chart, scoped to the selected range ---------------------
+  const days = RANGE_DAYS[range]
   let chartData = history
+  if (days != null && history.length) {
+    // Anchor the window to the latest snapshot (≈ today) rather than a live clock
+    // read, which the purity lint forbids during render.
+    const anchor = new Date(history[history.length - 1].date + 'T00:00:00')
+    anchor.setDate(anchor.getDate() - days)
+    const cutoff = localISODate(anchor)
+    const filtered = history.filter(p => p.date >= cutoff)
+    if (filtered.length >= 2) chartData = filtered
+  }
+  // With under two days of history in range, show a flat line at the current value
+  const isPlaceholder = chartData.length < 2
   if (isPlaceholder) {
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(today.getDate() - 1)
+    const now = new Date()
+    const yesterday = new Date(now)
+    yesterday.setDate(now.getDate() - 1)
     chartData = [
       { date: localISODate(yesterday), total_value: totalValue },
-      { date: localISODate(today), total_value: totalValue },
+      { date: localISODate(now), total_value: totalValue },
     ]
   }
+  const lastPoint = chartData[chartData.length - 1]
+  const [dollars, cents] = money(totalValue).split('.')
+  const gainDir = totalGainLoss > 0 ? 'positive' : totalGainLoss < 0 ? 'negative' : 'flat'
 
-  const chart = (
-    <div className={styles.portfolioChart}>
-      <h2>Value Over Time</h2>
-      {isPlaceholder && (
-        <p className={styles.chartCaption}>Showing today's value. History builds each day you visit.</p>
-      )}
-      <ResponsiveContainer width="100%" height={240}>
-        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id="valueFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-          <XAxis
-            dataKey="date"
-            tickFormatter={formatChartDate}
-            stroke="var(--text)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-          />
-          <YAxis
-            tickFormatter={v => `$${v}`}
-            stroke="var(--text)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            width={60}
-            domain={['auto', 'auto']}
-          />
-          <Tooltip
-            formatter={value => [money(Number(value)), 'Value']}
-            labelFormatter={label => formatChartDate(String(label))}
-            contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
-            labelStyle={{ color: 'var(--text)' }}
-          />
-          <Area type="monotone" dataKey="total_value" stroke="var(--accent)" strokeWidth={2} fill="url(#valueFill)" />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  )
-
-  const editForm = (lot: PortfolioCard) => (
-    <PriceQtyForm
-      labeled
-      price={editPrice}
-      quantity={editQty}
-      onPriceChange={setEditPrice}
-      onQuantityChange={setEditQty}
-      onSubmit={() => handleSaveEdit(lot)}
-      submitLabel="Save"
-      smallButtons
-      onCancel={() => setEditingId(null)}
-    />
-  )
+  if (cards.length === 0) {
+    return (
+      <div className="page">
+        <h1>My Portfolio</h1>
+        <div className="centered">
+          <p>No cards yet.</p>
+          <Link to="/search" className="btn-primary" style={{ marginTop: '16px' }}>Search Cards</Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="page">
-      <h1>My Portfolio</h1>
+      <h1 className={styles.srOnly}>My Portfolio</h1>
 
-      {cards.length === 0 ? (
-        <>
-          {chart}
-          <div className="centered">
-            <p>No cards yet.</p>
-            <Link to="/search" className="btn-primary" style={{ marginTop: '16px' }}>Search Cards</Link>
+      {/* ---- Hero panel: value + all-time change + stat grid (left), chart (right) */}
+      <section className={styles.hero}>
+        <div className={styles.heroLeft}>
+          <div>
+            <span className={styles.heroLabel}>Portfolio value</span>
+            <div className={`${styles.heroValue} num`}>{dollars}<span className={styles.heroCents}>.{cents}</span></div>
+            <div className={`${styles.changePill} ${styles[gainDir]} num`}>
+              <span className={styles.changeArrow}>{totalGainLoss > 0 ? '▲' : totalGainLoss < 0 ? '▼' : '–'}</span>
+              {money(Math.abs(totalGainLoss))}
+              {allTimePct != null && (
+                <span className={styles.changePct}> ({allTimePct > 0 ? '+' : allTimePct < 0 ? '−' : ''}{Math.abs(allTimePct)}%)</span>
+              )}
+            </div>
           </div>
-        </>
-      ) : (
-        <>
-          <div className={styles.portfolioSummary}>
-            <div className={styles.summaryStat}>
-              <span className="stat-label">Total Value</span>
-              <span className={styles.statValue}>{money(totalValue)}</span>
+
+          <div className={styles.statGrid}>
+            <div className={styles.statCell}>
+              <span className="stat-label">Cost basis</span>
+              <span className={`${styles.statValue} num`}>{money(totalCost)}</span>
             </div>
-            <div className={styles.summaryStat}>
-              <span className="stat-label">Total Cost</span>
-              <span className={styles.statValue}>{money(totalCost)}</span>
-            </div>
-            <div className={styles.summaryStat}>
-              <span className="stat-label">Gain / Loss</span>
-              <GainLoss value={totalGainLoss} className={styles.statValue} />
-            </div>
-            <div className={styles.summaryStat}>
+            <div className={styles.statCell}>
               <span className="stat-label">Cards</span>
-              <span className={styles.statValue}>{groups.length}</span>
+              <span className={`${styles.statValue} num`}>
+                {groups.length}<span className={styles.statSub}> · {lotCount} {lotCount === 1 ? 'lot' : 'lots'}</span>
+              </span>
+            </div>
+            <div className={styles.statCell}>
+              <span className="stat-label">Today</span>
+              <span className={`${styles.statValue} num ${hasToday ? (today >= 0 ? 'positive' : 'negative') : ''}`}>
+                {hasToday ? signedMoney(today) : '—'}
+              </span>
+            </div>
+            <div className={styles.statCell}>
+              <span className="stat-label">Best mover</span>
+              <span className={`${styles.statValue} num ${bestMover != null ? (bestMover >= 0 ? 'positive' : 'negative') : ''}`}>
+                {bestMover != null ? `${bestMover > 0 ? '+' : bestMover < 0 ? '−' : ''}${Math.abs(bestMover).toFixed(1)}%` : '—'}
+              </span>
             </div>
           </div>
+        </div>
 
-          {chart}
-
-          <div className="filter-row">
-            <input
-              value={nameFilter}
-              onChange={e => setNameFilter(e.target.value)}
-              placeholder="Filter by name"
-              className={`filter-select ${styles.filterName}`}
-            />
-            <select
-              value={plFilter}
-              onChange={e => setPlFilter(e.target.value as PLFilter)}
-              className="filter-select"
-            >
-              <option value="all">All cards</option>
-              <option value="gainers">Gainers</option>
-              <option value="losers">Losers</option>
-            </select>
-            <select
-              value={sortKey}
-              onChange={e => setSortKey(e.target.value as SortKey)}
-              className="filter-select"
-            >
-              {SORT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>Sort: {o.label}</option>
-              ))}
-            </select>
-            {isFiltered && (
-              <>
+        <div className={styles.heroRight}>
+          <div className={styles.heroChartHead}>
+            <span className={styles.heroChartTitle}>Value over time</span>
+            <div className="segmented on-card">
+              {RANGES.map(r => (
                 <button
-                  className="btn-outline btn-sm"
-                  onClick={() => { setNameFilter(''); setPlFilter('all') }}
+                  key={r}
+                  className={`segmented-item${range === r ? ' is-selected' : ''}`}
+                  onClick={() => setRange(r)}
                 >
-                  Clear
+                  {r}
                 </button>
-                <span className={styles.toolbarCount}>
-                  {visibleGroups.length} of {groups.length} cards
+              ))}
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={210}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 6, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="portfolioFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--hairline)" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tickFormatter={formatChartDate}
+                stroke="var(--text)"
+                fontSize={11.5}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                minTickGap={40}
+              />
+              <YAxis hide domain={['auto', 'auto']} />
+              <Tooltip
+                formatter={value => [money(Number(value)), 'Value']}
+                labelFormatter={label => formatChartDate(String(label))}
+                contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
+                labelStyle={{ color: 'var(--text)' }}
+              />
+              <Area type="monotone" dataKey="total_value" stroke="var(--accent)" strokeWidth={2.5} fill="url(#portfolioFill)" />
+              {!isPlaceholder && (
+                <ReferenceDot x={lastPoint.date} y={lastPoint.total_value} r={4.5} fill="var(--accent)" stroke="none" ifOverflow="extendDomain" />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* ---- Filter row: name, gainers/losers, sort, count -------------------- */}
+      <div className={styles.filterRow}>
+        <input
+          value={nameFilter}
+          onChange={e => setNameFilter(e.target.value)}
+          placeholder="Filter by name"
+          className={`filter-select ${styles.filterName}`}
+        />
+        <div className="segmented segmented-lg">
+          {([['all', 'All'], ['gainers', 'Gainers'], ['losers', 'Losers']] as [PLFilter, string][]).map(([value, label]) => (
+            <button
+              key={value}
+              className={`segmented-item${plFilter === value ? ' is-selected' : ''}`}
+              onClick={() => setPlFilter(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={sortKey}
+          onChange={e => setSortKey(e.target.value as SortKey)}
+          className="filter-select"
+        >
+          {SORT_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <span className={`${styles.count} num`}>
+          {isFiltered
+            ? `${visibleGroups.length} of ${groups.length} cards`
+            : `${groups.length} ${groups.length === 1 ? 'card' : 'cards'} · ${lotCount} ${lotCount === 1 ? 'lot' : 'lots'}`}
+        </span>
+      </div>
+
+      {visibleGroups.length === 0 ? (
+        <p className={styles.noMatch}>No cards match your filters.</p>
+      ) : (
+        <div className={styles.grid}>
+          {visibleGroups.map(group => {
+            const m = metrics.get(group.card_id)!
+            const single = group.lots.length === 1
+            return (
+              <Link key={group.card_id} to={`/portfolio/${group.card_id}`} className={styles.tile}>
+                <span className={styles.tileArt}>
+                  <CardImage src={group.image_url ?? getCardImageUrl(group.card_id)} alt={group.card_name} />
                 </span>
-              </>
-            )}
-          </div>
-
-          {visibleGroups.length === 0 ? (
-            <p className={styles.noMatch}>No cards match your filters.</p>
-          ) : (
-          <div className={styles.portfolioGrid}>
-            {visibleGroups.map(group => {
-              const single = group.lots.length === 1
-              const totalQty = group.lots.reduce((sum, l) => sum + l.quantity, 0)
-              const groupCost = group.lots.reduce((sum, l) => sum + l.purchase_price * l.quantity, 0)
-              const avgPaid = totalQty > 0 ? groupCost / totalQty : 0
-              const groupGain = group.current_price != null
-                ? group.lots.reduce((sum, l) => sum + (l.gain_loss ?? 0), 0)
-                : null
-              const groupGainPct = groupGain != null && groupCost > 0
-                ? Math.round((groupGain / groupCost) * 10000) / 100
-                : null
-              const isExpanded = expandedId === group.card_id
-              const lot = group.lots[0]
-
-              return (
-                <div key={group.card_id} className={styles.portfolioCard}>
-                  <Link to={`/card/${group.card_id}`} className="card-link">
-                    <CardImage src={group.image_url ?? getCardImageUrl(group.card_id)} alt={group.card_name} />
-                  </Link>
-                  <div className={styles.portfolioCardBody}>
-                    <Link to={`/card/${group.card_id}`} className="card-link">
-                      <p className="card-name">{group.card_name}</p>
-                    </Link>
-                    <p className="card-set">Qty: {totalQty}{!single ? ` · ${group.lots.length} purchases` : ''}</p>
-
-                    {single && editingId === lot.id ? (
-                      editForm(lot)
-                    ) : (
-                      <>
-                        <div className="price-rows">
-                          <StatRow label={single ? 'Paid' : 'Avg Paid'}>
-                            {money(single ? lot.purchase_price : avgPaid)}
-                          </StatRow>
-                          <StatRow label="Now">
-                            {money(group.current_price)}
-                            {group.price_change && (
-                              <DayChange change={group.price_change} className="stat-day-change" />
-                            )}
-                          </StatRow>
-                          {groupGain != null && (
-                            <StatRow label="P&L">
-                              <GainLoss value={groupGain} pct={groupGainPct} />
-                            </StatRow>
-                          )}
-                        </div>
-
-                        {single ? (
-                          confirmRemoveId === lot.id ? (
-                            <div className={styles.cardActions}>
-                              <button
-                                className="btn-outline btn-sm btn-danger"
-                                onClick={() => handleRemove(lot.id)}
-                              >
-                                Confirm remove
-                              </button>
-                              <button className="btn-outline btn-sm" onClick={() => setConfirmRemoveId(null)}>
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <div className={styles.cardActions}>
-                              <button className="btn-outline btn-sm" onClick={() => startEdit(lot)}>
-                                Edit
-                              </button>
-                              <button
-                                className="btn-outline btn-sm btn-danger"
-                                onClick={() => setConfirmRemoveId(lot.id)}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          )
-                        ) : (
-                          <>
-                            <button
-                              className="btn-outline btn-sm"
-                              onClick={() => setExpandedId(isExpanded ? null : group.card_id)}
-                            >
-                              {isExpanded ? 'Hide purchases ▴' : `${group.lots.length} purchases ▾`}
-                            </button>
-                            {isExpanded && (
-                              <div className={styles.lotList}>
-                                {group.lots.map(l => (
-                                  <div key={l.id}>
-                                    {editingId === l.id ? (
-                                      editForm(l)
-                                    ) : (
-                                      <div className={styles.lotRow}>
-                                        <div className={styles.lotInfo}>
-                                          <span className={styles.lotMain}>{l.quantity} @ {money(l.purchase_price)}</span>
-                                          <span className={styles.lotDate}>{formatLotDate(l.purchase_date)}</span>
-                                        </div>
-                                        {l.gain_loss != null && <GainLoss value={l.gain_loss} />}
-                                        {confirmRemoveId === l.id ? (
-                                          <div className={styles.lotActions}>
-                                            <button
-                                              className={`${styles.lotBtn} ${styles.lotBtnDanger} negative`}
-                                              onClick={() => handleRemove(l.id)}
-                                            >
-                                              Remove
-                                            </button>
-                                            <button className={styles.lotBtn} onClick={() => setConfirmRemoveId(null)}>
-                                              Cancel
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          <div className={styles.lotActions}>
-                                            <button className={styles.lotBtn} onClick={() => startEdit(l)}>Edit</button>
-                                            <button
-                                              className={`${styles.lotBtn} ${styles.lotBtnDanger}`}
-                                              onClick={() => setConfirmRemoveId(l.id)}
-                                            >
-                                              ✕
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                    {lotError?.id === l.id && (
-                                      <StatusMessage ok={false}>{lotError.text}</StatusMessage>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </>
-                    )}
-                    {single && lotError?.id === lot.id && (
-                      <StatusMessage ok={false}>{lotError.text}</StatusMessage>
-                    )}
-                  </div>
+                <div>
+                  <p className={styles.tileName}>{group.card_name}</p>
+                  <p className={`${styles.tileMeta} num`}>Qty {m.qty}</p>
                 </div>
-              )
-            })}
-          </div>
-          )}
-        </>
+                <div>
+                  <div className={`${styles.tilePrice} num`}>{money(group.current_price)}</div>
+                  {group.price_change && (
+                    <DayChange change={group.price_change} today />
+                  )}
+                </div>
+                <div className={`${styles.tileFooter} num`}>
+                  <span>{single ? `paid ${money(m.avg)}` : `avg paid ${money(m.avg)}`}</span>
+                  {m.gain != null && <GainLoss value={m.gain} />}
+                </div>
+              </Link>
+            )
+          })}
+
+          <Link to="/search" className={styles.addTile}>
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>Add a card</span>
+          </Link>
+        </div>
       )}
     </div>
   )

@@ -1,0 +1,377 @@
+/* ---- Breadcrumb + prev/next -------------------------------------------------- */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.crumb-link { color: var(--text); text-decoration: none; }
+.crumb-link:hover { color: var(--text-h); text-decoration: none; }
+.crumb-slash { color: var(--slash); }
+.crumb-current { color: var(--text-h); }
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.nav-btn:hover:not(:disabled) { border-color: var(--text-h); color: var(--text-h); }
+.nav-btn:disabled { opacity: 0.4; cursor: default; }
+
+.nav-count { font-size: 12.5px; color: var(--text); white-space: nowrap; }
+
+/* ---- Two-column body --------------------------------------------------------- */
+.body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 36px;
+  align-items: flex-start;
+}
+
+.sidebar {
+  flex: 0 1 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* CardImage size="detail" defaults to 320px — here it fills the 260px sidebar */
+.media { display: block; }
+.media > span { width: 100%; max-width: 260px; }
+
+.card-page-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  max-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 11px 14px;
+  color: var(--text-h);
+  font-size: 13px;
+  font-weight: 590;
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+
+.card-page-link:hover { border-color: var(--accent); text-decoration: none; }
+.link-arrow { color: var(--text); }
+
+.main {
+  flex: 1 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ---- Title row --------------------------------------------------------------- */
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.title-left { min-width: 0; }
+
+.title-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.owned-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.sub-line { margin: 6px 0 0; font-size: 13.5px; color: var(--text); }
+
+.add-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cream);
+  color: var(--ink);
+  border: none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 590;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-btn:hover { opacity: 0.85; }
+
+/* ---- Position panel (accent-tinted border = "this is yours") ----------------- */
+.position-panel {
+  background: var(--bg-card);
+  border: 1px solid rgba(86, 207, 158, 0.35);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 1px;
+  background: var(--hairline);
+}
+
+.stat-cell {
+  background: var(--bg-card);
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.stat-cell :global(.stat-label) { font-size: 10.5px; letter-spacing: 1px; }
+.stat-cell :global(.day-change) { margin-top: 4px; font-size: 12.5px; font-weight: 590; }
+
+.stat-value-big {
+  font-family: var(--font-display);
+  font-size: clamp(24px, 4.5vw, 34px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-h);
+  margin-top: 6px;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 590;
+  color: var(--text-h);
+  margin-top: 6px;
+}
+
+.stat-sub { font-size: 11.5px; color: var(--text); margin-top: 3px; }
+
+/* Cost-basis bar (multi-lot only) */
+.bar-row {
+  border-top: 1px solid var(--hairline);
+  padding: 16px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bar-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+}
+
+.bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(224, 112, 92, 0.35), var(--negative));
+}
+
+.bar-fill-pos { background: linear-gradient(90deg, rgba(86, 207, 158, 0.35), var(--accent)); }
+
+.bar-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: var(--text-h);
+  border-radius: 2px;
+  transform: translateX(-1px);
+}
+
+/* Add-a-purchase form, revealed inside the panel */
+.add-row {
+  border-top: 1px solid var(--hairline);
+  padding: 16px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.add-head {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+
+.add-row :global(.add-form) { max-width: 420px; }
+
+/* ---- Purchases table --------------------------------------------------------- */
+.purchases {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.p-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.p-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+}
+
+.p-sub { font-size: 12.5px; color: var(--text); }
+
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.table {
+  min-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.col-labels {
+  display: grid;
+  grid-template-columns: 118px 0.6fr 1fr 1fr 1.2fr auto;
+  gap: 12px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rows { display: flex; flex-direction: column; gap: 2px; }
+
+.row {
+  display: grid;
+  grid-template-columns: 118px 0.6fr 1fr 1fr 1.2fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 8px;
+  margin: 0 -8px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-h);
+  transition: background 0.2s;
+}
+
+.row:hover { background: var(--bg-elevated); }
+.row-date { color: var(--text); }
+
+.cell-actions { display: flex; gap: 12px; font-size: 12.5px; }
+
+.action-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.action-btn:hover { color: var(--text-h); }
+.action-remove:hover { color: var(--negative); }
+
+.edit-row {
+  padding: 10px 8px;
+  margin: 0 -8px;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-date { font-size: 12px; color: var(--text); }
+
+.totals {
+  display: grid;
+  grid-template-columns: 118px 0.6fr 1fr 1fr 1.2fr auto;
+  gap: 12px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+  font-weight: 590;
+  color: var(--text-h);
+}
+
+.totals-muted { color: var(--text); font-weight: 400; }
+
+/* ---- Chart, full width below the two-column body ----------------------------- */
+.chart-wrap { margin-top: 22px; }
