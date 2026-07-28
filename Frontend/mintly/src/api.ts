@@ -55,6 +55,10 @@ export interface Card {
   // [Staff] stamp, error print, ...) forked from a base card that shares its
   // number. Holds the base pokemontcg.io card id it was forked from.
   varietyOf?: string
+  // Only set on /scan results: the CLIP cosine similarity of this candidate to
+  // the captured photo (roughly [-1, 1], higher = closer). Batch scan uses it
+  // to flag shaky best-guesses for review.
+  matchScore?: number
 }
 
 // One daily point in a card's price history (from Mintly's own snapshots)
@@ -417,6 +421,33 @@ export async function addCard(card_id: string, purchase_price: number | null, qu
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || "We couldn't add that card. Please try again.")
   return data.message || 'Added to portfolio!'
+}
+
+// One item in a batch add: card_id, purchase_price (null = market price), quantity
+export interface BatchAddItem {
+  card_id: string
+  purchase_price: number | null
+  quantity: number
+}
+
+// Result of a batch add: how many landed, which items failed and why, and a message
+export interface BatchAddResult {
+  added: number
+  failed: { card_id: string; reason: string }[]
+  message: string
+}
+
+// Batch add for the scanner's batch mode: one request for a stack of scanned
+// cards (up to 100). Reports per-item failures rather than failing the whole set.
+export async function addCardBatch(items: BatchAddItem[]): Promise<BatchAddResult> {
+  const res = await authedFetch('/portfolio/add-batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || "We couldn't add those cards. Please try again.")
+  return data as BatchAddResult
 }
 
 export async function updateCard(id: number, updates: { purchase_price?: number; quantity?: number }): Promise<void> {

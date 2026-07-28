@@ -50,7 +50,16 @@ def scan(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     ranked = card_embed.nearest(db, query_vecs, k=_TOP_K)
     rows = card_catalog.get_cards(db, [card_id for card_id, _ in ranked])
-    cards = [card_catalog.card_payload(rows[cid]) for cid, _ in ranked if cid in rows]
+    # Keep the cosine similarity per card (batch scan uses it to flag shaky
+    # best-guesses for review); it's in [-1, 1], higher = closer artwork.
+    cards = []
+    for cid, score in ranked:
+        row = rows.get(cid)
+        if row is None:
+            continue
+        payload = card_catalog.card_payload(row)
+        payload["matchScore"] = round(float(score), 4)
+        cards.append(payload)
 
     # Same best-effort snapshot + daily-change + eBay-estimate annotation the
     # browse pages apply, so scan tiles render identically.

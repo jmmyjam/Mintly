@@ -56,6 +56,12 @@ class AddCardRequest(BaseModel):
     quantity: int = Field(1, ge=1)
 
 
+class AddBatchRequest(BaseModel):
+    # Camera scanner's batch mode: one "Add all" for a stack of scanned cards.
+    # Capped so a single request can't queue unbounded work.
+    items: list[AddCardRequest] = Field(..., min_length=1, max_length=100)
+
+
 class UpdateCardRequest(BaseModel):
     purchase_price: float | None = Field(None, ge=0)
     quantity: int | None = Field(None, ge=1)
@@ -225,6 +231,56 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
     if total > body.quantity:
         return {"message": f"Added, you now have {total} total", "id": card.id}
     return {"message": "Card added", "id": card.id}
+
+
+@router.post("/portfolio/add-batch")
+def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bulk add for the scanner's batch mode. Every id comes from a scan, so it's
+    a `card_catalog` row — names resolve from the catalog (no upstream single-card
+    GET per card) and any auto-priced items (no purchase_price given) are filled
+    from ONE batched `fetch_prices` pass. A per-item failure is reported, not
+    fatal, so one bad id doesn't sink the rest of the batch."""
+    rows = card_catalog.get_cards(db, [item.card_id for item in body.items])
+
+    # Resolve market price for the auto-priced items in one freshest-first pass
+    # (live upstream OR-query in chunks of 100, then TCGCSV/eBay fallbacks).
+    need_price = [item.card_id for item in body.items if item.purchase_price is None]
+    market_prices: dict[str, float] = {}
+    if need_price:
+        market_prices, _ = fetch_prices(need_price, db)
+
+    to_add: list[PortfolioCard] = []
+    failed: list[dict] = []
+    for item in body.items:
+        row = rows.get(item.card_id)
+        if row is None:
+            failed.append({"card_id": item.card_id, "reason": "Card not found"})
+            continue
+        purchase_price = item.purchase_price
+        if purchase_price is None:
+            purchase_price = market_prices.get(item.card_id)
+            if purchase_price is None:
+                failed.append({"card_id": item.card_id, "reason": "No market price available"})
+                continue
+        to_add.append(PortfolioCard(
+            user_id=current_user.id,
+            card_id=item.card_id,
+            card_name=card_catalog.card_payload(row).get("name", "Unknown"),
+            purchase_price=purchase_price,
+            quantity=item.quantity,
+        ))
+
+    for card in to_add:
+        db.add(card)
+    if to_add:
+        db.commit()
+
+    added = len(to_add)
+    if added:
+        message = f"Added {added} card{'s' if added != 1 else ''} to your portfolio"
+    else:
+        message = "No cards were added"
+    return {"added": added, "failed": failed, "message": message}
 
 
 @router.get("/portfolio")

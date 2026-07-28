@@ -1,0 +1,113 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(12px, 4vw, 40px);
+  overflow-y: auto;
+  background: rgba(10, 10, 11, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.panel {
+  width: min(100%, 760px);
+  margin: auto;
+  padding: clamp(16px, 3vw, 24px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.sub {
+  margin: 6px 0 18px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+  gap: 14px;
+}
+
+/* Each candidate is a tappable button styled like a card tile */
+.option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+
+.option:hover {
+  border-color: var(--accent-border);
+}
+
+.option:active {
+  transform: scale(0.99);
+}
+
+.optionSelected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.currentBadge {
+  align-self: flex-start;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.optionName {
+  font-weight: 600;
+  color: var(--text-h);
+  line-height: 1.25;
+}
+
+.optionSet {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.optionPrice {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.est {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}

@@ -1,6 +1,6 @@
 # Mintly — Handoff Document
 
-*Last updated: July 25, 2026*
+*Last updated: July 27, 2026*
 
 A Pokemon TCG portfolio tracker: search cards, view live market prices, and track a collection's value over time. Live in production at **https://mintlytcg.com** (see "Production deployment").
 
@@ -82,10 +82,11 @@ All card and portfolio endpoints share a per-IP budget of 120 requests/min; over
 | `GET /cards/{card_id}/history?days=` | `{points, variants}` from Mintly's snapshots: `points` is the headline daily series `[{date, price}]`; `variants` maps each TCGPlayer variant to its own series (populated only for cards with 2+ priced variants — `{}` otherwise). `days` defaults to 1825 (~5 years), clamped 1–3650. |
 | `GET /cards/{card_id}/ebay-price` | Recent-eBay-sold estimate `{count, median, average, low, high, currency, since, until, source_url, sample}`. `count:0` when nothing usable. Best-effort scrape (12h cache). A usable estimate for a TCGPlayer-priceless card also refreshes today's price snapshot to that median (best-effort; never for a card TCGPlayer can price), so the card's history point matches the estimate shown. Extra rate limit: 60/hour per IP. |
 | `GET /sets`, `GET /sets/{id}`, `GET /sets/{id}/cards?page=` | Sets list is cached; single sets served from it; drives filter dropdown + default view. Set-cards served from the catalog only when it holds the whole set (count ≥ the sets list's `total`), else proxied + upserted. Responses carry `priceChange` too. |
-| `POST /scan` | Camera card scanner. Multipart image upload (`file`), unauthed. Embeds the photo with CLIP (image + horizontal mirror) and returns the nearest catalog cards in the same paged `{data, page, pageSize, totalCount}` envelope, with the same `priceChange`/`estimate` annotation as search. Empty `data` until `card_catalog.embedding` is backfilled (`scripts/embed_catalog.py`). Own `scan` rate limit: 60/min per IP. |
+| `POST /scan` | Camera card scanner. Multipart image upload (`file`), **login-only** (router-level `Depends(get_current_user)`). Embeds the photo with CLIP (image + horizontal mirror) and returns the nearest catalog cards in the same paged `{data, page, pageSize, totalCount}` envelope, with the same `priceChange`/`estimate` annotation as search. Each card also carries `matchScore` (the CLIP cosine, ~[-1, 1]) so batch mode can flag shaky best-guesses. Empty `data` until `card_catalog.embedding` is backfilled (`scripts/embed_catalog.py`). Own `scan` rate limit: 60/min per IP. |
 | `GET /portfolio` | Auth. Returns one row per lot with live price, P&L, daily `price_change`, and the card's real `image_url` (batched upstream call, 15-min cache; a card upstream can't price falls back to the catalog's TCGCSV price, then the latest eBay-median snapshot). Also records today's snapshots as a side effect. |
 | `GET /portfolio/history` | Auth. `[{date, total_value}]` from snapshots × current holdings; missing days carry the last known price forward. |
 | `POST /portfolio/add` | Auth. `purchase_price` optional → falls back to current market price (400 if the card has none). |
+| `POST /portfolio/add-batch` | Auth. Bulk add for the scanner's batch mode: body `{items: [{card_id, purchase_price?, quantity}]}` (1–100). Names resolve from `card_catalog` (every scanned id is a catalog row, so no per-card upstream GET); auto-priced items resolve in one batched `fetch_prices` pass. Per-item failures are reported, not fatal → `{added, failed: [{card_id, reason}], message}`. |
 | `PATCH /portfolio/{id}` | Auth. Update `purchase_price` and/or `quantity` on one lot. |
 | `DELETE /portfolio/{id}` | Auth. Remove one lot. |
 | `GET /health` | Unauthed, no rate limit. `{"status": "ok"}` when the app and DB answer; 503 when the DB query fails. The URL to give an uptime monitor. |

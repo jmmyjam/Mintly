@@ -74,6 +74,63 @@ class TestAdd:
         assert sorted(r["purchase_price"] for r in rows) == [100.0, 200.0]
 
 
+class TestAddBatch:
+    """Batch add for the scanner's batch mode. Scanned ids are catalog rows, so
+    names/prices resolve from the catalog without a per-card upstream call."""
+
+    def batch(self, client, headers, items):
+        return client.post("/portfolio/add-batch", json={"items": items}, headers=headers)
+
+    def test_adds_multiple_lots_explicit_and_auto_price(self, client, auth_headers):
+        seed_catalog_card(make_card("base1-4", "Charizard", price=500.0))
+        seed_catalog_card(make_card("base1-2", "Blastoise", price=300.0))
+        res = self.batch(client, auth_headers, [
+            {"card_id": "base1-4", "purchase_price": 350.0, "quantity": 2},
+            {"card_id": "base1-2"},  # no price -> auto-fill from the catalog
+        ])
+        assert res.status_code == 200
+        body = res.json()
+        assert body["added"] == 2
+        assert body["failed"] == []
+
+        rows = client.get("/portfolio", headers=auth_headers).json()
+        by_name = {r["card_name"]: r for r in rows}
+        assert by_name["Charizard"]["purchase_price"] == 350.0
+        assert by_name["Charizard"]["quantity"] == 2
+        assert by_name["Blastoise"]["purchase_price"] == 300.0  # auto from catalog price
+        assert by_name["Blastoise"]["quantity"] == 1
+
+    def test_reports_failures_but_still_adds_the_rest(self, client, auth_headers):
+        seed_catalog_card(make_card("base1-4", "Charizard", price=500.0))
+        res = self.batch(client, auth_headers, [
+            {"card_id": "base1-4", "purchase_price": 10.0},
+            {"card_id": "ghost-999"},  # not in the catalog
+        ])
+        assert res.status_code == 200
+        body = res.json()
+        assert body["added"] == 1
+        assert [f["card_id"] for f in body["failed"]] == ["ghost-999"]
+
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["card_name"] == "Charizard"
+
+    def test_auto_price_with_no_source_fails_that_item(self, client, auth_headers):
+        # A catalog card with no price and no snapshot can't auto-price
+        seed_catalog_card(make_card("me1-9", "Priceless", price=None))
+        body = self.batch(client, auth_headers, [{"card_id": "me1-9"}]).json()
+        assert body["added"] == 0
+        assert body["failed"][0]["card_id"] == "me1-9"
+        assert client.get("/portfolio", headers=auth_headers).json() == []
+
+    def test_empty_batch_rejected(self, client, auth_headers):
+        assert self.batch(client, auth_headers, []).status_code == 422
+
+    def test_users_only_add_to_their_own_portfolio(self, client, auth_headers, second_auth_headers):
+        seed_catalog_card(make_card("base1-4", "Charizard", price=500.0))
+        self.batch(client, auth_headers, [{"card_id": "base1-4", "purchase_price": 10.0}])
+        assert client.get("/portfolio", headers=second_auth_headers).json() == []
+
+
 class TestGetPortfolio:
     def test_live_price_and_gain_loss(self, client, auth_headers, upstream):
         upstream.add(make_card("base1-4", price=500.0))
