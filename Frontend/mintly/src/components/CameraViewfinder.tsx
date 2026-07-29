@@ -3,10 +3,14 @@ import styles from './CameraViewfinder.module.css'
 
 interface Props {
   // Called with a canvas cropped to the card-outline frame (live camera) or the
-  // whole photo (file fallback). The parent runs OCR on it.
+  // whole photo (file fallback). The parent uploads it to /scan for matching.
   onCapture: (card: HTMLCanvasElement) => void
-  // Disable capture while the parent is busy (e.g. reading a previous scan).
+  // Disable capture while the parent is busy (matching a previous scan). Also
+  // flips the status chip to the "Finding your card…" amber state.
   busy?: boolean
+  // Shown in the permission-denied / no-camera fallback so the user isn't stuck
+  // (jumps to Search). Optional — omit and only the photo fallback shows.
+  onSearchByName?: () => void
 }
 
 function cameraErrorMessage(err: unknown): string {
@@ -28,7 +32,15 @@ function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
   return c
 }
 
-export default function CameraViewfinder({ onCapture, busy }: Props) {
+const CameraIcon = () => (
+  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="6" width="18" height="13" rx="2.5" />
+    <circle cx="12" cy="12.5" r="3.4" />
+    <path d="M8.5 6l1.4-2.2h4.2L15.5 6" />
+  </svg>
+)
+
+export default function CameraViewfinder({ onCapture, busy, onSearchByName }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -130,38 +142,55 @@ export default function CameraViewfinder({ onCapture, busy }: Props) {
     img.src = url
   }
 
-  return (
-    <div className={styles.wrap}>
-      {error ? (
+  if (error) {
+    return (
+      <div className={styles.wrap}>
         <div className={styles.errorBox}>
           <p>{error}</p>
-        </div>
-      ) : (
-        <div className={styles.viewport}>
-          <video ref={videoRef} className={styles.video} playsInline muted autoPlay />
-          <div className={styles.overlay} aria-hidden="true">
-            <div ref={frameRef} className={styles.frame} />
+          <div className={styles.errorActions}>
+            <label className="btn-outline btn-sm">
+              Choose a photo
+              <input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={busy} />
+            </label>
+            {onSearchByName && (
+              <button type="button" className="btn-outline btn-sm" onClick={onSearchByName}>
+                Search by name instead
+              </button>
+            )}
           </div>
-          <p className={styles.hint}>Line the card up inside the frame</p>
         </div>
-      )}
-
-      <div className={styles.controls}>
-        {!error && (
-          <button
-            type="button"
-            className="btn-primary btn-lg"
-            onClick={capture}
-            disabled={busy || !ready}
-          >
-            {busy ? 'Reading…' : 'Scan card'}
-          </button>
-        )}
-        <label className={styles.fileLabel}>
-          {error ? 'Choose a photo' : 'or choose a photo'}
-          <input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={busy} />
-        </label>
       </div>
+    )
+  }
+
+  return (
+    <div className={styles.wrap}>
+      <div className={styles.viewport}>
+        <video ref={videoRef} className={styles.video} playsInline muted autoPlay />
+        <div className={styles.overlay} aria-hidden="true">
+          <div ref={frameRef} className={styles.frame}>
+            <span className={`${styles.bracket} ${styles.bracketTl}`} />
+            <span className={`${styles.bracket} ${styles.bracketTr}`} />
+            <span className={`${styles.bracket} ${styles.bracketBl}`} />
+            <span className={`${styles.bracket} ${styles.bracketBr}`} />
+          </div>
+        </div>
+        <span className={`${styles.chip} ${busy ? styles.chipBusy : ''}`}>
+          <span className={styles.chipDot} />
+          {busy ? 'Finding your card…' : 'Camera live'}
+        </span>
+        <span className={styles.hint}>Line the card up inside the corners</span>
+      </div>
+
+      <button type="button" className={styles.captureBtn} onClick={capture} disabled={busy || !ready}>
+        <CameraIcon />
+        {busy ? 'Scanning…' : 'Capture'}
+      </button>
+
+      <label className={styles.fileLabel}>
+        or choose a photo
+        <input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={busy} />
+      </label>
     </div>
   )
 }

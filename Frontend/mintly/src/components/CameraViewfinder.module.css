@@ -1,19 +1,19 @@
 .wrap {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 14px;
+  gap: 12px;
+  width: 100%;
 }
 
+/* The live camera frame. Corner brackets + a dimming mask over the card region
+   read as an alignment guide rather than a hard border. */
 .viewport {
   position: relative;
   width: 100%;
-  max-width: 420px;
   aspect-ratio: 3 / 4;
-  margin: 0 auto;
-  background: #000;
+  background: #101012;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 20px;
   overflow: hidden;
 }
 
@@ -33,39 +33,127 @@
   pointer-events: none;
 }
 
-/* Card-shaped cut-out. The huge spread shadow dims everything outside the frame
-   so the aligned card stands out. */
+/* The card-shaped crop region (frameRef). The huge spread shadow dims everything
+   outside it; the four corner brackets mark where to line the card up. */
 .frame {
+  position: relative;
   aspect-ratio: 5 / 7;
-  height: 84%;
-  max-width: 86%;
-  border: 2px dashed rgba(242, 238, 227, 0.9);
-  border-radius: 12px;
-  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  height: 62%;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(6, 6, 7, 0.55);
+}
+
+.bracket {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+}
+
+.bracketTl {
+  left: 0;
+  top: 0;
+  border-left: 2.5px solid var(--accent);
+  border-top: 2.5px solid var(--accent);
+  border-radius: 6px 0 0 0;
+}
+
+.bracketTr {
+  right: 0;
+  top: 0;
+  border-right: 2.5px solid var(--accent);
+  border-top: 2.5px solid var(--accent);
+  border-radius: 0 6px 0 0;
+}
+
+.bracketBl {
+  left: 0;
+  bottom: 0;
+  border-left: 2.5px solid var(--accent);
+  border-bottom: 2.5px solid var(--accent);
+  border-radius: 0 0 0 6px;
+}
+
+.bracketBr {
+  right: 0;
+  bottom: 0;
+  border-right: 2.5px solid var(--accent);
+  border-bottom: 2.5px solid var(--accent);
+  border-radius: 0 0 6px 0;
+}
+
+/* Top-left status chip: accent dot + "Camera live", or amber + "Finding…" */
+.chip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  background: rgba(10, 10, 11, 0.72);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 590;
+  color: var(--text-h);
+}
+
+.chipDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.chipBusy .chipDot {
+  background: var(--warn);
 }
 
 .hint {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 10px;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   margin: 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-  pointer-events: none;
+  padding: 5px 14px;
+  background: rgba(10, 10, 11, 0.6);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: rgba(242, 242, 239, 0.75);
+  white-space: nowrap;
 }
 
-.controls {
+/* Full-width cream capture pill */
+.captureBtn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  padding: 15px 24px;
+  background: var(--cream);
+  color: var(--ink);
+  border: 1px solid var(--cream);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 15.5px;
+  font-weight: 590;
+  cursor: pointer;
+  transition: opacity 0.2s;
 }
 
+.captureBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.captureBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Subtle photo-upload fallback (desktop / no rear camera) */
 .fileLabel {
-  font-size: 0.85rem;
+  align-self: center;
+  font-size: 12.5px;
   color: var(--text);
   cursor: pointer;
   text-decoration: underline;
@@ -76,22 +164,39 @@
   color: var(--text-h);
 }
 
-.fileLabel input {
+.fileLabel input,
+.errorActions label input {
   display: none;
 }
 
+/* Permission-denied / no-camera fallback, filling the frame's footprint */
 .errorBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
   width: 100%;
-  max-width: 420px;
-  margin: 0 auto;
-  padding: 24px;
+  aspect-ratio: 3 / 4;
+  padding: 28px;
   text-align: center;
   color: var(--text);
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 20px;
 }
 
 .errorBox p {
-  margin: 0;
+  margin: auto 0 0;
+}
+
+.errorActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: auto;
+}
+
+.errorActions label {
+  cursor: pointer;
 }

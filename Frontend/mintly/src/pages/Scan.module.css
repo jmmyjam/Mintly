@@ -1,158 +1,53 @@
-.intro {
-  max-width: 60ch;
-  margin: 0 auto 12px;
-  text-align: center;
-  color: var(--text);
-}
-
-.tips {
-  max-width: 56ch;
-  margin: 0 auto 22px;
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--text);
-  opacity: 0.85;
-}
-
-/* After a capture: the thumbnail + a "scan another" button, centered */
-.review {
+/* ===== Page header (h1 + intro + mode toggle) ============================== */
+.pageHead {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
 }
 
-.thumb {
-  width: 150px;
-  max-width: 40vw;
-  aspect-ratio: 5 / 7;
-  object-fit: cover;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-card);
+.headText {
+  min-width: 0;
 }
 
-.results {
-  margin-top: 24px;
-}
-
-.status {
-  color: var(--text);
-  text-align: center;
-}
-
-.bestHeading {
-  margin: 8px 0 12px;
-}
-
-.otherHeading {
-  margin: 26px 0 12px;
-  color: var(--text);
-  font-size: 1rem;
-}
-
-/* "Not it? Search by name" fallback */
-.manual {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 26px;
-}
-
-.manual .mini-input {
-  max-width: 260px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
-  gap: 16px;
-}
-
-.tile {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* The best guess gets a highlighted card + ribbon */
-.tileBest {
-  position: relative;
-  padding: 12px;
-  background: var(--bg-card);
-  border: 2px solid var(--accent);
-  border-radius: var(--radius);
-}
-
-.badge {
-  align-self: flex-start;
-  padding: 2px 10px;
-  font-size: 0.72rem;
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 30px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-  background: var(--accent);
-  border-radius: 999px;
-}
-
-.info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.price {
-  margin: 4px 0 0;
-  font-weight: 600;
+  letter-spacing: -0.03em;
   color: var(--text-h);
 }
 
-.est {
-  font-size: 0.78rem;
-  font-weight: 500;
+.intro {
+  margin: 6px 0 0;
+  max-width: 52ch;
+  font-size: 13.5px;
   color: var(--text);
 }
 
-/* ----- Batch mode ----- */
-
+/* The shared segmented control, sized up a touch to match the scan comp */
 .modeToggle {
-  display: flex;
-  gap: 4px;
-  width: fit-content;
-  margin: 0 auto 18px;
-  padding: 4px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  flex: none;
+}
+.modeToggle :global(.segmented-item) {
+  padding: 7px 20px;
+  font-size: 13.5px;
+  font-weight: 590;
 }
 
-.modeBtn {
-  padding: 6px 18px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.modeActive {
-  color: var(--ink);
-  background: var(--accent);
-}
-
+/* Leaving batch with a pending queue (two-step confirm) */
 .confirmClear {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 12px;
-  max-width: 60ch;
-  margin: 0 auto 18px;
+  margin-bottom: 18px;
   padding: 12px 16px;
-  font-size: 0.9rem;
+  font-size: 13.5px;
   color: var(--text-h);
   background: var(--bg-card);
   border: 1px solid var(--accent-border);
@@ -164,36 +59,173 @@
   gap: 8px;
 }
 
-/* Live line under the viewfinder: "Finding…" / "Added X" / no-match notice */
-.batchStatusLine {
-  min-height: 1.4em;
-  margin-top: 12px;
+/* ===== Batch mode: camera left, live queue right =========================== */
+.batchBody {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.cameraCol {
+  flex: 1 1 340px;
+  max-width: 400px;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Keep the viewfinder in view while the queue grows — desktop only, so it can't
+   pin over the queue once the layout has collapsed to one column. */
+@media (min-width: 900px) {
+  .cameraCol {
+    position: sticky;
+    top: 20px;
+  }
+}
+
+.queueCol {
+  flex: 100 1 440px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Live line under the capture button: "Added X" / no-match notice */
+.statusLine {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
   text-align: center;
 }
 
 .added {
+  font-size: 13px;
+  font-weight: 590;
   color: var(--accent);
-  font-weight: 600;
 }
 
-.batchPanel {
-  margin-top: 22px;
+.tips {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: center;
 }
 
-.batchHeader {
+/* --- Queue header ---------------------------------------------------------- */
+.queueHead {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.queueTitleWrap {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.queueTitle {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+}
+
+.countPill {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--text);
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.queueActions {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
-.batchTitle {
-  margin: 0;
-  font-size: 1.15rem;
+.clearAll {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.clearAll:hover {
+  color: var(--text-h);
 }
 
+.clearConfirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.clearYes,
+.clearNo {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 590;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.clearYes {
+  color: var(--negative);
+}
+.clearNo {
+  color: var(--text-h);
+}
+
+/* --- Low-confidence banner ------------------------------------------------- */
+.warnBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  font-size: 13px;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 12px;
+}
+
+/* --- Empty queue placeholder ---------------------------------------------- */
+.emptyQueue {
+  padding: 28px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text);
+  border: 1px dashed var(--border-dashed);
+  border-radius: 16px;
+}
+
+.footerNote {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* --- Queue rows ------------------------------------------------------------ */
 .queue {
   display: flex;
   flex-direction: column;
@@ -206,78 +238,557 @@
 .queueRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 12px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
 }
 
-.queueThumb {
-  flex: 0 0 auto;
-  width: 44px;
+.queueRowShaky {
+  border-color: var(--warn-border-strong);
+}
+
+/* A card the last commit couldn't add — kept in the queue, made findable */
+.queueRowFailed {
+  border-color: var(--negative);
+}
+
+/* Your capture -> the matched art, side by side, so the check is visual */
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.captureThumb {
+  width: 40px;
   aspect-ratio: 5 / 7;
   object-fit: cover;
   border-radius: 6px;
   background: var(--bg-elevated);
 }
 
-.queueArt {
-  flex: 0 0 auto;
-  width: 52px;
+.matchArt {
+  width: 46px;
+  flex: none;
+}
+.matchArt > span {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 6px;
 }
 
-.queueInfo {
-  flex: 1 1 0;
+.rowInfo {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.queueNameRow {
+.rowNameLine {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 9px;
 }
 
-.queueName {
-  font-weight: 600;
+.rowName {
+  font-size: 14.5px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
   color: var(--text-h);
+  text-decoration: none;
+}
+.rowName:hover {
+  color: var(--accent);
+  text-decoration: none;
 }
 
-.queueSet {
-  margin: 2px 0 8px;
-  font-size: 0.82rem;
-  color: var(--text);
-}
-
-.checkBadge {
-  padding: 1px 8px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--ink);
-  background: #e6b450;
+.badgeOk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 590;
+  color: var(--accent);
+  white-space: nowrap;
+  border: 1px solid var(--accent-border);
   border-radius: 999px;
 }
 
-.queueControls {
-  display: flex;
-  flex-wrap: wrap;
+.badgeShaky {
+  display: inline-flex;
   align-items: center;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  background: var(--warn);
+  border-radius: 999px;
+}
+
+.rowMeta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  flex: none;
+}
+
+/* --191a1c is a deliberate near-black input fill from the scan comp, one shade
+   above --bg, so the fields read as inset against the --bg-card row. */
+.priceInput,
+.qtyInput {
+  background: #191a1c;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-h);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.priceInput {
+  width: 82px;
+}
+.qtyInput {
+  width: 46px;
+}
+.priceInput:focus,
+.qtyInput:focus {
+  border-color: var(--text-h);
+}
+
+.changeBtn {
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--text-h);
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.changeBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* On a shaky row the thing needing attention is the bright thing */
+.changeShaky {
+  color: var(--ink);
+  background: var(--warn);
+  border-color: var(--warn);
+}
+.changeShaky:hover {
+  color: var(--ink);
+  border-color: var(--warn);
+  opacity: 0.9;
 }
 
 .removeBtn {
-  padding: 4px 9px;
-  font-size: 0.85rem;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
   line-height: 1;
   color: var(--text);
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
 }
-
 .removeBtn:hover {
   color: var(--negative);
   border-color: var(--negative);
+}
+
+/* ===== Single mode, before a capture: centered camera ====================== */
+.singleCamera {
+  max-width: 400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ===== Single mode, after a capture: capture + best guess + alternates ===== */
+.singleResult {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  align-items: flex-start;
+}
+
+.captureCol {
+  flex: 1 1 200px;
+  max-width: 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.captureLabel {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+.capturePhoto {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  object-fit: cover;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  background: var(--bg-card);
+}
+
+.scanAnother {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 590;
+  color: var(--text-h);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.scanAnother:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.manualInput {
+  width: 100%;
+  padding: 9px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-h);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.manualInput::placeholder {
+  color: var(--text);
+}
+.manualInput:focus {
+  border-color: var(--text-h);
+}
+
+.resultCol {
+  flex: 100 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.status {
+  color: var(--text);
+}
+
+.bestHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.bestHeading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+}
+
+.bestCard {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+}
+
+.bestArt {
+  width: 132px;
+  flex: none;
+  display: block;
+}
+.bestArt > span {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 11px;
+}
+
+.bestInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bestName {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+}
+
+.bestMeta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bestPriceRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bestPrice {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+}
+
+.estLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.bestActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bestPriceInput,
+.bestQtyInput {
+  background: #191a1c;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-h);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.bestPriceInput {
+  width: 110px;
+}
+.bestQtyInput {
+  width: 56px;
+}
+.bestPriceInput:focus,
+.bestQtyInput:focus {
+  border-color: var(--text-h);
+}
+
+.bestAdd {
+  padding: 10px 22px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 590;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid var(--cream);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.bestAdd:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.bestAdd:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cardPageLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 590;
+  color: var(--text-h);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.cardPageLink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* --- Other matches (mirrors the Search result tile) ------------------------ */
+.otherHeading {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 590;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+.altGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+  gap: 14px;
+}
+
+.altTile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  transition: transform 0.25s, border-color 0.25s;
+}
+.altTile:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent-border);
+}
+
+.altLink {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.altLink:hover {
+  text-decoration: none;
+}
+.altLink:hover .altName {
+  color: var(--accent);
+}
+
+.altArt {
+  position: relative;
+  display: block;
+}
+.altArt > span:first-child {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 9px;
+}
+
+.altPct {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 590;
+  color: var(--text);
+  background: rgba(10, 10, 11, 0.75);
+  border-radius: 999px;
+}
+
+.altName {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+.altMeta {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.altPrice {
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+}
+
+.priceNone {
+  color: var(--text);
+}
+
+.altBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--text-h);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.altBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Compact inline add form inside an alternate tile (mirrors Search's quick-add) */
+.altAddForm {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 6px;
+}
+.altAddForm :global(.mini-input) {
+  border-radius: 9px;
+}
+.altAddForm :global(.add-form-buttons) {
+  grid-column: 1 / -1;
 }

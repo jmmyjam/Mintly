@@ -14,6 +14,11 @@
   --accent-border: rgba(86, 207, 158, 0.35);
   --positive: #56cf9e;
   --negative: #e0705c;
+  /* Amber "needs a look" accent — low-confidence scan matches (Scan page). */
+  --warn: #e6b450;
+  --warn-bg: rgba(230, 180, 80, 0.1);
+  --warn-border: rgba(230, 180, 80, 0.35);
+  --warn-border-strong: rgba(230, 180, 80, 0.45);
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   --radius: 18px;
   --radius-lg: 22px; /* hero panel, drawer, position panel */
