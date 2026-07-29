@@ -283,6 +283,34 @@ def test_exact_filters_number_set_rarity_type():
     assert envelope["totalCount"] == 0
 
 
+def test_multi_value_facets_or_within_and_across():
+    seed_catalog([
+        catalog_card("b1-4", "Charizard", number="4", rarity="Rare Holo",
+                     types=["Fire", "Flying"]),
+        catalog_card("b1-58", "Pikachu", number="58", rarity="Common",
+                     types=["Lightning"]),
+        catalog_card("b2-4", "Chansey", number="4", rarity="Rare Holo",
+                     types=["Colorless"]),
+        catalog_card("b3-9", "Blastoise", number="9", rarity="Rare Holo",
+                     types=["Water"]),
+    ])
+    # a list ORs within the set facet (any of these sets)
+    envelope, _ = db_search(set_id=["b1", "b2"])
+    assert {c["id"] for c in envelope["data"]} == {"b1-4", "b1-58", "b2-4"}
+    # rarity list ORs too
+    envelope, _ = db_search(rarity=["Common", "Rare Holo"])
+    assert envelope["totalCount"] == 4
+    # type list ORs (delimiter-fenced membership)
+    envelope, _ = db_search(type_=["Fire", "Water"])
+    assert {c["id"] for c in envelope["data"]} == {"b1-4", "b3-9"}
+    # different facets still AND together
+    envelope, _ = db_search(set_id=["b1", "b2"], rarity=["Rare Holo"])
+    assert {c["id"] for c in envelope["data"]} == {"b1-4", "b2-4"}
+    # a single string still works (backward-compatible callers)
+    envelope, _ = db_search(set_id="b3")
+    assert [c["id"] for c in envelope["data"]] == ["b3-9"]
+
+
 def test_pagination_envelope_and_natural_number_order():
     seed_catalog([catalog_card(f"b1-{i}", "Pikachu", number=str(i))
                   for i in range(1, 61)])

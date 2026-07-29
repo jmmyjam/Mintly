@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addCard, errorMessage, getToken, SessionExpiredError } from './api'
+import { invalidateOwned } from './owned'
 
 // The one notice Login.tsx displays when an authed call 401s — every redirect must
 // use this exact flow, so new authed features should reuse this hook.
@@ -34,6 +35,8 @@ export function useAddCard() {
     try {
       const price = parseFloat(priceInput)
       const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1)
+      // The portfolio changed — drop the owned-qty cache so Search re-badges
+      invalidateOwned()
       onSuccess?.()
       setStatus({ id: cardId, msg, ok: true })
       setTimeout(() => setStatus(null), 3000)

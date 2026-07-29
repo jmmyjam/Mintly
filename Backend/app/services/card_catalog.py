@@ -11,7 +11,7 @@ is one whole card.
 """
 from datetime import timedelta
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import CatalogCard, CatalogMeta, utcnow
@@ -129,24 +129,40 @@ def price_is_stale(row: CatalogCard) -> bool:
     return row.price_updated_at is None or utcnow() - row.price_updated_at > PRICE_TTL
 
 
+def _as_list(v: "str | list[str] | None") -> list[str] | None:
+    """Normalize a single value or a list into a non-empty list (or None)."""
+    if v is None:
+        return None
+    values = [v] if isinstance(v, str) else list(v)
+    values = [x for x in values if x]
+    return values or None
+
+
 def search(db: Session, *, name: str | None = None, number: str | None = None,
-           set_id: str | None = None, rarity: str | None = None,
-           type_: str | None = None, page: int = 1) -> tuple[dict, list[str]]:
+           set_id: "str | list[str] | None" = None, rarity: "str | list[str] | None" = None,
+           type_: "str | list[str] | None" = None, page: int = 1) -> tuple[dict, list[str]]:
     """Paged catalog query. name is a substring match (case-insensitive); the
-    rest are exact — same spirit as the upstream filters they replace.
-    Returns (envelope in the proxy's shape, ids on this page whose stored
-    price is past PRICE_TTL — the router refreshes those in the background)."""
+    rest are exact. set_id/rarity/type_ accept a single value or a list — a
+    list ORs within that facet (match ANY of the chosen sets/rarities/types)
+    while different facets still AND together. Returns (envelope in the proxy's
+    shape, ids on this page whose stored price is past PRICE_TTL — the router
+    refreshes those in the background)."""
+    set_ids = _as_list(set_id)
+    rarities = _as_list(rarity)
+    types = _as_list(type_)
     q = db.query(CatalogCard)
     if name:
         q = q.filter(CatalogCard.name.ilike(f"%{_escape_like(name)}%", escape="\\"))
     if number:
         q = q.filter(CatalogCard.number == number)
-    if set_id:
-        q = q.filter(CatalogCard.set_id == set_id)
-    if rarity:
-        q = q.filter(CatalogCard.rarity == rarity)
-    if type_:
-        q = q.filter(CatalogCard.types.like(f"%|{_escape_like(type_)}|%", escape="\\"))
+    if set_ids:
+        q = q.filter(CatalogCard.set_id.in_(set_ids))
+    if rarities:
+        q = q.filter(CatalogCard.rarity.in_(rarities))
+    if types:
+        q = q.filter(or_(*[
+            CatalogCard.types.like(f"%|{_escape_like(t)}|%", escape="\\") for t in types
+        ]))
     total = q.count()
     rows = (
         q.order_by(

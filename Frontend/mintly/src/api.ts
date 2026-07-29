@@ -107,10 +107,12 @@ export interface CardSet {
 
 export interface CardFilters {
   name?: string
-  set_id?: string
   number?: string
-  rarity?: string
-  type?: string
+  // set/rarity/type accept one value or several — a list ORs within that facet
+  // (any of the chosen sets/rarities/types); different facets AND together
+  set_id?: string | string[]
+  rarity?: string | string[]
+  type?: string | string[]
 }
 
 export interface HistoryPoint {
@@ -376,7 +378,12 @@ export async function getEbayEstimate(cardId: string): Promise<EbayEstimate> {
 export async function filterCards(filters: CardFilters, page = 1): Promise<CardPage> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value)
+    // arrays become repeated params (?set_id=a&set_id=b) — the backend ORs them
+    if (Array.isArray(value)) {
+      for (const v of value) if (v) params.append(key, v)
+    } else if (value) {
+      params.set(key, value)
+    }
   }
   params.set('page', String(page))
   const res = await fetch(`${BASE}/cards?${params}`)

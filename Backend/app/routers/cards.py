@@ -441,31 +441,45 @@ def smart_search(q: str, page: int = Query(1, ge=1), db: Session = Depends(get_d
     return _with_price_changes(db, results)
 
 
-# Search cards — supports name, set code, card number, rarity, and type
+# Search cards — supports name, set code, card number, rarity, and type. The
+# set/rarity/type facets accept MULTIPLE values (repeated `?set_id=a&set_id=b`
+# or comma-joined `?set_id=a,b`): a facet ORs its values (match ANY chosen
+# set/rarity/type), while different facets still AND together.
 @router.get("/cards")
 def search_cards(
     name: str | None = None,
-    set_id: str | None = None,
+    set_id: list[str] | None = Query(None),
     number: str | None = None,
-    rarity: str | None = None,
-    type: str | None = None,
+    rarity: list[str] | None = Query(None),
+    type: list[str] | None = Query(None),
     page: int = Query(1, ge=1),
     db: Session = Depends(get_db),
 ):
+    def _flat(vals: list[str] | None) -> list[str]:
+        # accept both repeated params and comma-joined values
+        return [x.strip() for v in (vals or []) for x in v.split(",") if x.strip()]
+
+    # set_ids are lowercased so case variants share one cache entry (set ids are
+    # lowercase upstream); rarity/type stay exact — era-specific dropdown strings
+    set_ids = [s.lower() for s in _flat(set_id)]
+    rarities = _flat(rarity)
+    types = _flat(type)
+
+    def _or_group(items: list[str], render) -> str:
+        parts = [render(i) for i in items]
+        return parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
+
     filters = []
-    # name/set_id are lowercased so case variants share one cache entry (set ids
-    # are lowercase upstream); rarity/type stay exact — they're era-specific
-    # strings picked from dropdowns, not free text
     if name:
         filters.append(f'name:"{name.replace(chr(34), "").lower()}"')
-    if set_id:
-        filters.append(f"set.id:{set_id.lower()}")
+    if set_ids:
+        filters.append(_or_group(set_ids, lambda s: f"set.id:{s}"))
     if number:
         filters.append(f"number:{number}")
-    if rarity:
-        filters.append(f'rarity:"{rarity}"')
-    if type:
-        filters.append(f"types:{type}")
+    if rarities:
+        filters.append(_or_group(rarities, lambda r: f'rarity:"{r}"'))
+    if types:
+        filters.append(_or_group(types, lambda t: f"types:{t}"))
 
     if not filters:
         raise HTTPException(status_code=400, detail="Provide at least one search parameter")
@@ -475,9 +489,9 @@ def search_cards(
             db,
             name=name.replace(chr(34), "").lower() if name else None,
             number=number,
-            set_id=set_id.lower() if set_id else None,
-            rarity=rarity,
-            type_=type,
+            set_id=set_ids or None,
+            rarity=rarities or None,
+            type_=types or None,
             page=page,
         )
         if results["totalCount"]:

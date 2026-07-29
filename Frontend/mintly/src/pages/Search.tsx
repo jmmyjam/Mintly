@@ -13,6 +13,7 @@ import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard } from "../hooks";
+import { getOwnedQty } from "../owned";
 import { money } from "../format";
 import styles from "./Search.module.css";
 
@@ -51,6 +52,33 @@ const TYPES = [
   "Water",
 ];
 
+// Comma-joined URL param -> list of values (the multi-select facets)
+function parseList(v: string | null): string[] {
+  return v ? v.split(",").filter(Boolean) : [];
+}
+
+// "2024/11/08" (or ISO) -> "Nov 8, 2024" for the default-view sub-line
+function formatSetDate(d?: string) {
+  if (!d) return "";
+  const date = new Date(d.replace(/\//g, "-") + (d.length <= 10 ? "T00:00:00" : ""));
+  return Number.isNaN(date.getTime())
+    ? d
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="M16 16l4.5 4.5" />
+  </svg>
+);
+
+const PlusIcon = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
 export default function Search() {
   // Seed query + filters from the URL (?q=, ?set=, ?rarity=, ?type=, ?number=)
   // so the home hero's ?q= link, shared URLs, and — crucially — pressing Back
@@ -61,27 +89,30 @@ export default function Search() {
   const initialPage = Math.max(1, Number(searchParams.get("page")) || 1);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [sets, setSets] = useState<CardSet[]>([]);
-  const [setId, setSetId] = useState(searchParams.get("set") ?? "");
-  const [rarity, setRarity] = useState(searchParams.get("rarity") ?? "");
-  const [typeFilter, setTypeFilter] = useState(searchParams.get("type") ?? "");
+  // set/rarity/type are multi-select — each holds a list of chosen values
+  const [setIds, setSetIds] = useState<string[]>(() => parseList(searchParams.get("set")));
+  const [rarities, setRarities] = useState<string[]>(() => parseList(searchParams.get("rarity")));
+  const [types, setTypes] = useState<string[]>(() => parseList(searchParams.get("type")));
   const [number, setNumber] = useState(searchParams.get("number") ?? "");
   const [cards, setCards] = useState<Card[]>([]);
   const [page, setPage] = useState(initialPage);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize, setPageSize] = useState(50);
-  const [resultsLabel, setResultsLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [ownedQty, setOwnedQty] = useState<Map<string, number>>(new Map());
   const { add: addToPortfolio, busy: addBusy, status: addStatus } = useAddCard();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   // The first search after mount honors the URL's ?page= (so Back from a card
   // lands on the same page); every later query/filter change restarts at page 1.
   const firstRunRef = useRef(true);
 
-  const hasFilters = !!(setId || rarity || typeFilter || number.trim());
+  const hasFilters = !!(setIds.length || rarities.length || types.length || number.trim());
+  const isDefaultView = !query.trim() && !hasFilters;
 
   // Sets power the filter dropdown and the default view (newest set)
   useEffect(() => {
@@ -95,6 +126,11 @@ export default function Search() {
       .catch(() => {});
   }, []);
 
+  // Which cards the signed-in user already holds, for the "Owned ×N" badge
+  useEffect(() => {
+    getOwnedQty().then(setOwnedQty).catch(() => {});
+  }, []);
+
   // Mirror the active query + filters + page into the URL (replace, so typing
   // doesn't pile up history entries). This is what makes browser Back from a card
   // return to the search — and the page — you had: Search re-seeds its state from
@@ -102,15 +138,13 @@ export default function Search() {
   useEffect(() => {
     const params: Record<string, string> = {};
     if (query.trim()) params.q = query.trim();
-    if (setId) params.set = setId;
-    if (rarity) params.rarity = rarity;
-    if (typeFilter) params.type = typeFilter;
+    if (setIds.length) params.set = setIds.join(",");
+    if (rarities.length) params.rarity = rarities.join(",");
+    if (types.length) params.type = types.join(",");
     if (number.trim()) params.number = number.trim();
     if (page > 1) params.page = String(page);
     setSearchParams(params, { replace: true });
-  }, [query, setId, rarity, typeFilter, number, page, setSearchParams]);
-
-  const isDefaultView = !query.trim() && !hasFilters;
+  }, [query, setIds, rarities, types, number, page, setSearchParams]);
 
   async function runSearch(p: number) {
     setLoading(true);
@@ -122,32 +156,25 @@ export default function Search() {
         results = await filterCards(
           {
             name: query.trim() || undefined,
-            set_id: setId || undefined,
-            rarity: rarity || undefined,
-            type: typeFilter || undefined,
+            set_id: setIds.length ? setIds : undefined,
+            rarity: rarities.length ? rarities : undefined,
+            type: types.length ? types : undefined,
             number: number.trim() || undefined,
           },
           p,
         );
-        setResultsLabel("");
       } else if (query.trim()) {
         results = await searchCards(query, p);
-        setResultsLabel("");
       } else {
         // Nothing typed and no filters — show the newest set by default
-        const newest = sets[0];
-        results = await filterCards({ set_id: newest.id }, p);
-        setResultsLabel(`Newest set: ${newest.name}`);
+        results = await filterCards({ set_id: sets[0].id }, p);
       }
       setCards(results.data);
       setPage(p);
       setTotalCount(results.totalCount);
       setPageSize(results.pageSize || 50);
-      if (results.totalCount === 0 && !isDefaultView)
-        setError(
-          "No cards found. Check the spelling, or try a shorter search like just the card's name.",
-        );
     } catch {
+      setCards([]);
       setError(
         isDefaultView
           ? "We couldn't load cards right now. Check your internet connection and try again in a moment."
@@ -179,7 +206,7 @@ export default function Search() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, setId, rarity, typeFilter, number, sets]);
+  }, [query, setIds, rarities, types, number, sets]);
 
   function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -194,35 +221,47 @@ export default function Search() {
   }
 
   function clearFilters() {
-    setSetId("");
-    setRarity("");
-    setTypeFilter("");
+    setSetIds([]);
+    setRarities([]);
+    setTypes([]);
     setNumber("");
   }
+
+  const addSet = (v: string) => setSetIds((p) => (p.includes(v) ? p : [...p, v]));
+  const removeSet = (v: string) => setSetIds((p) => p.filter((x) => x !== v));
+  const addRarity = (v: string) => setRarities((p) => (p.includes(v) ? p : [...p, v]));
+  const removeRarity = (v: string) => setRarities((p) => p.filter((x) => x !== v));
+  const addType = (v: string) => setTypes((p) => (p.includes(v) ? p : [...p, v]));
+  const removeType = (v: string) => setTypes((p) => p.filter((x) => x !== v));
 
   function handleAdd(card: Card) {
     addToPortfolio(card.id, purchasePrice, quantity, () => {
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
+      // useAddCard already invalidated the owned cache — refresh the badge
+      getOwnedQty().then(setOwnedQty).catch(() => {});
     });
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const newestSet = sets[0];
+  const setName = (id: string) => sets.find((s) => s.id === id)?.name ?? id;
+
   const pager = totalPages > 1 && cards.length > 0 && !error && (
     <div className={styles.pagination}>
       <button
-        className="btn-outline btn-sm"
+        className={styles.pagerBtn}
         disabled={page <= 1 || loading}
         onClick={() => goToPage(page - 1)}
       >
         ← Prev
       </button>
-      <span className={styles.pageInfo}>
+      <span className={`${styles.pageInfo} num`}>
         Page {page} of {totalPages} · {totalCount.toLocaleString()} cards
       </span>
       <button
-        className="btn-outline btn-sm"
+        className={styles.pagerBtn}
         disabled={page >= totalPages || loading}
         onClick={() => goToPage(page + 1)}
       >
@@ -231,76 +270,140 @@ export default function Search() {
     </div>
   );
 
+  // A multi-select facet: a `<select>` chip that stays put so you can keep
+  // adding, plus one dismissible accent chip per chosen value (a styled
+  // `<select>` can't hold a working ✕, so each pick becomes its own chip).
+  // Already-picked options drop out of the dropdown.
+  const multiFilter = (
+    values: string[],
+    placeholder: string,
+    options: { value: string; label: string }[],
+    labelFor: (v: string) => string,
+    onAdd: (v: string) => void,
+    onRemove: (v: string) => void,
+  ) => (
+    <>
+      <span className={styles.selectChip}>
+        <select value="" onChange={(e) => e.target.value && onAdd(e.target.value)} aria-label={placeholder}>
+          <option value="">{placeholder}</option>
+          {options
+            .filter((o) => !values.includes(o.value))
+            .map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+        </select>
+        <span className={styles.chevron} aria-hidden="true">▾</span>
+      </span>
+      {values.map((v) => (
+        <button key={v} className={styles.chipActive} onClick={() => onRemove(v)}>
+          {labelFor(v)} <span className={styles.chipX}>✕</span>
+        </button>
+      ))}
+    </>
+  );
+
   return (
     <div className="page">
-      <h1>Search Cards</h1>
-      <form onSubmit={handleSearch} className={styles.searchForm}>
+      <form onSubmit={handleSearch} className={styles.searchPill}>
+        <span className={styles.searchGlyph}>
+          <SearchIcon />
+        </span>
         <input
+          ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name (e.g. Charizard)"
+          placeholder="Search by name, e.g. Charizard"
+          aria-label="Search cards by name"
           className={styles.searchInput}
         />
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? "Searching..." : "Search"}
+        {query && (
+          <button
+            type="button"
+            className={styles.clearBtn}
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery("");
+              inputRef.current?.focus();
+            }}
+          >
+            ✕
+          </button>
+        )}
+        <button type="submit" className={styles.searchSubmit} disabled={loading}>
+          {loading ? "Searching…" : "Search"}
         </button>
       </form>
 
-      <div className="filter-row">
-        <select
-          value={setId}
-          onChange={(e) => setSetId(e.target.value)}
-          className="filter-select"
-        >
-          <option value="">All sets</option>
-          {sets.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={rarity}
-          onChange={(e) => setRarity(e.target.value)}
-          className="filter-select"
-        >
-          <option value="">Any rarity</option>
-          {RARITIES.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="filter-select"
-        >
-          <option value="">Any type</option>
-          {TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+      <div className={styles.filterRow}>
+        {multiFilter(
+          setIds,
+          "All sets",
+          sets.map((s) => ({ value: s.id, label: s.name })),
+          setName,
+          addSet,
+          removeSet,
+        )}
+        {multiFilter(
+          rarities,
+          "Any rarity",
+          RARITIES.map((r) => ({ value: r, label: r })),
+          (r) => r,
+          addRarity,
+          removeRarity,
+        )}
+        {multiFilter(
+          types,
+          "Any type",
+          TYPES.map((t) => ({ value: t, label: t })),
+          (t) => t,
+          addType,
+          removeType,
+        )}
         <input
           value={number}
           onChange={(e) => setNumber(e.target.value)}
           placeholder="Card #"
-          className={`filter-select ${styles.filterNumber}`}
+          aria-label="Card number"
+          className={styles.numberChip}
         />
         {hasFilters && (
-          <button className="btn-outline btn-sm" onClick={clearFilters}>
-            Clear filters
+          <button className={styles.clearFilters} onClick={clearFilters}>
+            Clear
           </button>
+        )}
+        {!isDefaultView && !loading && !error && totalCount > 0 && (
+          <span className={`${styles.filterCount} num`}>{totalCount.toLocaleString()} results</span>
         )}
       </div>
 
-      {error && <p className="error">{error}</p>}
-
-      {resultsLabel && !loading && !error && (
-        <h2 className={styles.resultsLabel}>{resultsLabel}</h2>
+      {/* Header: browse-the-newest-set eyebrow (default) or a results title */}
+      {isDefaultView ? (
+        newestSet && (
+          <div className={styles.defaultHead}>
+            <span className={styles.eyebrow}>Newest set</span>
+            <h1 className={styles.defaultTitle}>{newestSet.name}</h1>
+            <p className={`${styles.defaultSub} num`}>
+              Released {formatSetDate(newestSet.releaseDate)} · {totalCount.toLocaleString()} cards
+            </p>
+          </div>
+        )
+      ) : (
+        <div className={styles.resultsHead}>
+          <h1 className={styles.resultsTitle}>
+            {query.trim() ? `Results for “${query.trim()}”` : "Results"}
+          </h1>
+          {!error && cards.length > 0 && (
+            <span className={`${styles.resultsMeta} num`}>
+              Page {page} of {totalPages}
+              {query.trim() ? " · sorted by relevance" : ""}
+            </span>
+          )}
+        </div>
       )}
+
+      {error && <p className="error">{error}</p>}
 
       {!loading &&
         cards.length > 0 &&
@@ -314,75 +417,118 @@ export default function Search() {
 
       {pager}
 
-      <div className={styles.cardGrid}>
-        {cards.map((card) => {
-          const price = getCardPrice(card);
-          const isAdding = adding === card.id;
-          const status = addStatus?.id === card.id ? addStatus : null;
+      {loading && cards.length === 0 ? (
+        <div className={styles.cardGrid}>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className={styles.skeleton}>
+              <div className={styles.skeletonArt} />
+              <div className={styles.skeletonBar} style={{ width: "70%" }} />
+              <div className={styles.skeletonBar} style={{ width: "45%" }} />
+            </div>
+          ))}
+        </div>
+      ) : !loading && !error && cards.length === 0 && !isDefaultView ? (
+        <div className={styles.noResults}>
+          <p className={styles.noResultsTitle}>
+            No cards match {query.trim() ? `“${query.trim()}”` : "those filters"}
+          </p>
+          <p className={styles.noResultsHint}>
+            Check the spelling, or try a shorter search like just the card's name.
+          </p>
+          {hasFilters && (
+            <button className={styles.clearFiltersPill} onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className={styles.cardGrid}>
+          {cards.map((card) => {
+            const price = getCardPrice(card);
+            const est = price == null ? card.estimate?.value ?? null : null;
+            const owned = ownedQty.get(card.id);
+            const isAdding = adding === card.id;
+            const status = addStatus?.id === card.id ? addStatus : null;
 
-          return (
-            <div key={card.id} className={styles.cardItem}>
-              <Link to={`/card/${card.id}`} state={{ backSearch: location.search }} className="card-link">
-                <CardImage src={card.images.small} alt={card.name} />
-                <div className={styles.cardInfo}>
-                  <p className="card-name">{card.name}</p>
-                  <p className="card-set">{card.set.name}</p>
-                  {price != null ? (
-                    <p className={styles.cardPrice}>
-                      {money(price)}
-                      {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
+            return (
+              <div key={card.id} className={styles.tile}>
+                <Link
+                  to={`/card/${card.id}`}
+                  state={{ backSearch: location.search }}
+                  className={styles.tileLink}
+                >
+                  <span className={styles.tileArt}>
+                    <CardImage src={card.images.small} alt={card.name} />
+                    {owned ? (
+                      <span className={`${styles.ownedBadge} num`}>✓ Owned ×{owned}</span>
+                    ) : null}
+                  </span>
+                  <div>
+                    <p className={styles.tileName}>{card.name}</p>
+                    <p className={styles.tileMeta}>
+                      {card.set.name}
+                      {card.number ? ` · #${card.number}` : ""}
                     </p>
-                  ) : card.estimate ? (
-                    // No TCGPlayer price — recent-eBay-sold estimate, styled
-                    // like a normal price with the source named beside it
-                    <p className={styles.cardPrice}>
-                      {money(card.estimate.value)}
-                      <span className={styles.estBadge}>eBay est.</span>
-                      {card.priceChange && <DayChange change={card.priceChange} className="card-price-change" />}
-                    </p>
-                  ) : null}
-                </div>
-              </Link>
+                  </div>
+                  <div className={`${styles.tilePrice} num`}>
+                    {price != null ? (
+                      <>
+                        <span className={styles.priceNum}>{money(price)}</span>
+                        {card.priceChange && <DayChange change={card.priceChange} />}
+                      </>
+                    ) : est != null ? (
+                      <span className={styles.priceNum}>
+                        {money(est)}
+                        <span className={styles.estLabel}>eBay est.</span>
+                      </span>
+                    ) : (
+                      <span className={styles.priceNone}>—</span>
+                    )}
+                  </div>
+                </Link>
 
-              {status && <StatusMessage ok={status.ok}>{status.msg}</StatusMessage>}
-
-              {!status &&
-                (isAdding ? (
-                  <PriceQtyForm
-                    price={purchasePrice}
-                    quantity={quantity}
-                    onPriceChange={setPurchasePrice}
-                    onQuantityChange={setQuantity}
-                    onSubmit={() => handleAdd(card)}
-                    submitLabel="Add"
-                    busyLabel="Adding..."
-                    busy={addBusy}
-                    smallButtons
-                    onCancel={() => {
-                      setAdding(null);
-                      setPurchasePrice("");
-                      setQuantity("1");
-                    }}
-                  />
+                {status ? (
+                  <StatusMessage ok={status.ok}>{status.msg}</StatusMessage>
+                ) : isAdding ? (
+                  <div className={styles.quickAdd}>
+                    <PriceQtyForm
+                      className={styles.quickAddForm}
+                      price={purchasePrice}
+                      quantity={quantity}
+                      onPriceChange={setPurchasePrice}
+                      onQuantityChange={setQuantity}
+                      onSubmit={() => handleAdd(card)}
+                      submitLabel="Add"
+                      busyLabel="Adding…"
+                      busy={addBusy}
+                      smallButtons
+                      onCancel={() => {
+                        setAdding(null);
+                        setPurchasePrice("");
+                        setQuantity("1");
+                      }}
+                    />
+                  </div>
                 ) : (
                   <button
-                    className="btn-outline btn-sm"
+                    className={styles.tileBtn}
                     onClick={() => {
                       setAdding(card.id);
                       // Priceless cards can't fall back to a market price on
                       // add — seed the form with the eBay estimate instead
-                      if (price == null && card.estimate) {
-                        setPurchasePrice(card.estimate.value.toFixed(2));
+                      if (price == null && est != null) {
+                        setPurchasePrice(est.toFixed(2));
                       }
                     }}
                   >
-                    + Portfolio
+                    <PlusIcon /> Portfolio
                   </button>
-                ))}
-            </div>
-          );
-        })}
-      </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {pager}
     </div>
