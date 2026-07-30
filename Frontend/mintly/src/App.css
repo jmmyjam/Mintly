@@ -254,10 +254,43 @@
 
 .legal-page p { color: var(--text); line-height: 165%; }
 
+.legal-page ul { color: var(--text); line-height: 165%; margin: 8px 0; padding-left: 22px; }
+.legal-page li { margin-bottom: 6px; }
+
+/* Inline prose links must be distinguishable without relying on color alone
+   (WCAG 1.4.1) — underline them. The legal/accessibility pages are the only
+   place bare links sit inside body text; styled links elsewhere carry a class. */
+.legal-page p a,
+.legal-page li a { text-decoration: underline; }
+
 .legal-updated {
   font-size: 13px;
   margin-bottom: 8px;
   opacity: 0.8;
+}
+
+/* Skip-to-content link (App shell): visually hidden until focused, then it
+   pins to the top-left so keyboard users can jump past the nav (WCAG 2.4.1). */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -60px;
+  z-index: 1000;
+  background: var(--cream);
+  color: var(--ink);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 8px;
+  text-decoration: none;
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 /* Daily price-change chip (DayChange) — the direction classes are built with
@@ -275,7 +308,9 @@
 .day-change-negative { color: var(--negative); }
 .day-change-flat { color: var(--text); }
 .day-change-arrow { font-size: 9px; }
-.day-change-pct { font-weight: 500; opacity: 0.85; }
+/* No opacity here: it dropped the --negative percent below WCAG AA (4.5:1).
+   The smaller weight + parentheses already de-emphasize it. */
+.day-change-pct { font-weight: 500; }
 .day-change-none { color: var(--text); font-size: 13px; }
 
 /* below the price on a search tile */

@@ -18,6 +18,7 @@ import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
+import Accessibility from './pages/Accessibility'
 import NotFound from './pages/NotFound'
 import './App.css'
 
@@ -71,8 +72,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <StructuredData data={SITE_GRAPH} />
+      {/* First focusable element on every page: lets keyboard users skip the
+          nav straight to the page content (WCAG 2.4.1 Bypass Blocks). */}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <Navbar />
-      <main className="main">
+      <main className="main" id="main-content" tabIndex={-1}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
@@ -93,6 +97,7 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/accessibility" element={<Accessibility />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

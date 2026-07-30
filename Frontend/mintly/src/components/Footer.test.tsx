@@ -4,14 +4,15 @@ import Footer from './Footer'
 import { axe, renderWithRouter } from '../test/utils'
 
 describe('Footer', () => {
-  it('renders a contentinfo landmark with the quick links', () => {
+  it('renders a contentinfo landmark with a labeled Footer nav and the quick links', () => {
     renderWithRouter(<Footer />)
-    const footer = screen.getByRole('contentinfo')
-    expect(footer).toBeInTheDocument()
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Footer' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute('href', '/search')
     expect(screen.getByRole('link', { name: 'Portfolio' })).toHaveAttribute('href', '/portfolio')
     expect(screen.getByRole('link', { name: 'Terms' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Privacy' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Accessibility' })).toHaveAttribute('href', '/accessibility')
   })
 
   it('opens the external Buy Me a Coffee link safely in a new tab', () => {

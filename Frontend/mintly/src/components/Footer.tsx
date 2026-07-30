@@ -10,11 +10,12 @@ export default function Footer() {
             <img src="/favicon.svg" alt="" />
             Mintly
           </Link>
-          <nav className={styles.footerLinks}>
+          <nav className={styles.footerLinks} aria-label="Footer">
             <Link to="/search">Search</Link>
             <Link to="/portfolio">Portfolio</Link>
             <Link to="/terms">Terms</Link>
             <Link to="/privacy">Privacy</Link>
+            <Link to="/accessibility">Accessibility</Link>
             <a
               href="https://buymeacoffee.com/mintlytcg"
               target="_blank"

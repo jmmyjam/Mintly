@@ -14,6 +14,7 @@ describe('Navbar', () => {
 
   it('always exposes the primary nav destinations', () => {
     renderWithRouter(<Navbar />)
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute('href', '/search')
     expect(screen.getByRole('link', { name: 'Scan' })).toHaveAttribute('href', '/scan')
     expect(screen.getByRole('link', { name: 'Portfolio' })).toHaveAttribute('href', '/portfolio')

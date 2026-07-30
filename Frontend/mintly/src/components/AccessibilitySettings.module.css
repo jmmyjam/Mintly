@@ -1,0 +1,118 @@
+/* Device-local display preferences (AccessibilitySettings), shared by the
+   Profile page and the public Accessibility page. Moved out of Profile.module
+   .css when the controls were extracted so both hosts render them identically. */
+
+/* Hairline stack: rows sit over a hairline-colored track with 1px gaps, so the
+   dividers read as hairlines without per-row borders. */
+.setting-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-top: 20px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: var(--bg-card);
+  padding: 16px 4px;
+}
+
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setting-label {
+  color: var(--text-h);
+  font-size: 14.5px;
+  font-weight: 590;
+}
+
+.setting-desc {
+  /* --text (not --text-dim) so this real content clears WCAG AA 4.5:1 at 13px */
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 400px;
+}
+
+/* On/off switch (role="switch") */
+.switch {
+  flex: none;
+  position: relative;
+  width: 46px;
+  height: 27px;
+  border-radius: 999px;
+  border: 1px solid #3a3a42;
+  background: #2f2f36;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s;
+}
+
+.switch-on {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 21px;
+  height: 21px;
+  border-radius: 999px;
+  background: var(--text-dim);
+  transition: transform 0.16s, background 0.16s;
+}
+
+.switch-on .switch-knob {
+  background: var(--ink);
+  transform: translateX(19px);
+}
+
+/* Segmented control (text size) */
+.segmented {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.segment {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 590;
+  transition: background 0.2s, color 0.2s;
+}
+
+.segment-on {
+  background: var(--cream);
+  color: var(--ink);
+}
+
+/* Very narrow: let each row stack its control under the text. */
+@media (max-width: 460px) {
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}

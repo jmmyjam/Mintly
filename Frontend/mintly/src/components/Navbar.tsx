@@ -27,7 +27,7 @@ export default function Navbar() {
   const isHidden = hidden && !settings.reduceMotion
 
   return (
-    <nav className={isHidden ? `${styles.navbar} ${styles.navbarHidden}` : styles.navbar}>
+    <nav aria-label="Primary" className={isHidden ? `${styles.navbar} ${styles.navbarHidden}` : styles.navbar}>
       <Link to="/" className={styles.navbarBrand}>
         <img src="/favicon.svg" alt="" className={styles.brandLogo} />
         <span className={styles.brandText}>Mintly</span>

@@ -197,7 +197,7 @@
 
 .strength-text {
   font-size: 12.5px;
-  color: var(--text-dim);
+  color: var(--text); /* AA 4.5:1 — password-strength feedback is real content */
 }
 
 .terms-row {
@@ -289,7 +289,7 @@
 .example-tag {
   font-family: 'SF Mono', ui-monospace, monospace;
   font-size: 10.5px;
-  color: var(--text-dim);
+  color: var(--text); /* AA 4.5:1 at 10.5px (was --text-dim, ~3.3:1) */
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 4px 9px;

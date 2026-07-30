@@ -4,8 +4,8 @@ import {
   getMe, updateProfile, changePassword, getToken, clearToken,
   CONNECTION_ERROR, errorMessage, SessionExpiredError, type UserProfile,
 } from '../api'
-import { useAccessibility, type TextSize } from '../accessibility'
 import { useSessionRedirect } from '../hooks'
+import AccessibilitySettings from '../components/AccessibilitySettings'
 import DeleteAccount from '../components/DeleteAccount'
 import PageMessage from '../components/PageMessage'
 import StatusMessage from '../components/StatusMessage'
@@ -41,34 +41,6 @@ function initials(name: string): string {
 }
 
 type Status = { ok: boolean; text: string } | null
-
-// An accessible on/off switch — role="switch" so it announces its state. Rows
-// live inside the accessibility hairline stack, so each carries the panel fill.
-function SettingToggle({ label, description, checked, onChange }: {
-  label: string
-  description: string
-  checked: boolean
-  onChange: (next: boolean) => void
-}) {
-  return (
-    <div className={styles.settingRow}>
-      <div className={styles.settingText}>
-        <span className={styles.settingLabel}>{label}</span>
-        <span className={styles.settingDesc}>{description}</span>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        className={`${styles.switch} ${checked ? styles.switchOn : ''}`}
-        onClick={() => onChange(!checked)}
-      >
-        <span className={styles.switchKnob} />
-      </button>
-    </div>
-  )
-}
 
 // A password input with an inline Show/Hide toggle. The border + focus ring live
 // on the wrapper so the toggle sits inside the same 14px-radius control (same
@@ -108,12 +80,6 @@ function PasswordField({ label, value, onChange, autoComplete, describedBy }: {
   )
 }
 
-const TEXT_SIZES: { value: TextSize; label: string }[] = [
-  { value: 'default', label: 'Default' },
-  { value: 'large', label: 'Large' },
-  { value: 'larger', label: 'Larger' },
-]
-
 // Rail sections — ids match the panel ids the anchor links jump to and the
 // IntersectionObserver watches.
 const SECTIONS = [
@@ -126,7 +92,6 @@ const SECTIONS = [
 export default function Profile() {
   const navigate = useNavigate()
   const redirectToLogin = useSessionRedirect()
-  const { settings, update } = useAccessibility()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(() => !!getToken())
@@ -413,52 +378,12 @@ export default function Profile() {
             </form>
           </section>
 
-          {/* Accessibility */}
+          {/* Accessibility (the controls are the shared AccessibilitySettings,
+              also used standalone on the public /accessibility page) */}
           <section id="accessibility" className={styles.panel}>
             <h2 className={styles.panelTitle}>Accessibility</h2>
             <p className={styles.panelHint}>Saved on this device. Changes apply immediately.</p>
-
-            <div className={styles.settingStack}>
-              <SettingToggle
-                label="Reduce motion"
-                description="Turn off animations, the typing placeholder, and the auto-hiding nav bar."
-                checked={settings.reduceMotion}
-                onChange={v => update({ reduceMotion: v })}
-              />
-              <SettingToggle
-                label="High contrast"
-                description="Brighter text and stronger borders for easier reading."
-                checked={settings.highContrast}
-                onChange={v => update({ highContrast: v })}
-              />
-              <SettingToggle
-                label="Underline links"
-                description="Always underline links, not just on hover."
-                checked={settings.underlineLinks}
-                onChange={v => update({ underlineLinks: v })}
-              />
-
-              <div className={styles.settingRow}>
-                <div className={styles.settingText}>
-                  <span className={styles.settingLabel}>Text size</span>
-                  <span className={styles.settingDesc}>Scale everything up for easier reading.</span>
-                </div>
-                <div className={styles.segmented} role="radiogroup" aria-label="Text size">
-                  {TEXT_SIZES.map(s => (
-                    <button
-                      key={s.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={settings.textSize === s.value}
-                      className={`${styles.segment} ${settings.textSize === s.value ? styles.segmentOn : ''}`}
-                      onClick={() => update({ textSize: s.value })}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <AccessibilitySettings />
           </section>
 
           {/* Delete account */}

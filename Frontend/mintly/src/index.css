@@ -69,6 +69,22 @@ p { margin: 0; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Visible keyboard-focus indicator (WCAG 2.4.7) for elements that don't style
+   their own focus: links, buttons, and anything given a tabindex. :focus-visible
+   fires for keyboard / assistive-tech focus but not mouse clicks, so pointer
+   users don't get a ring; modern browsers curve the outline to the element's
+   border-radius, so pills stay pill-shaped. Form fields are intentionally left
+   out — inputs/selects/textareas each style their own focus (a border-color
+   change or a :focus-within wrapper ring), so adding this outline on top would
+   double up (a green ring over the field's own near-white focus border). */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 #root {
   min-height: 100svh;
   display: flex;
