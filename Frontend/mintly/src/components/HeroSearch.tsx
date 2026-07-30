@@ -12,7 +12,14 @@ const EXAMPLES = [
   "eevee prismatic evolutions",
 ];
 
-const QUICK_SEARCHES = ["Charizard", "Pikachu VMAX", "Prismatic Evolutions"];
+const QUICK_SEARCHES = ["Charizard", "Pikachu VMAX", "Prismatic Evolutions", "Umbreon"];
+
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="M16 16l4.5 4.5" />
+  </svg>
+);
 
 // Typewriter effect for the placeholder: type an example, pause, erase, next.
 // All state updates happen inside timeout callbacks (strict react-hooks rule).
@@ -50,8 +57,13 @@ export default function HeroSearch() {
   const navigate = useNavigate();
   const { settings } = useAccessibility();
   const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
   const typed = useTypingPlaceholder(EXAMPLES, !settings.reduceMotion);
+  // Reduce-motion gets a static placeholder; otherwise the animated typed string.
   const placeholder = settings.reduceMotion ? 'Try "charizard base"' : typed;
+  // The mint-caret overlay stands in for a native placeholder while the field is
+  // empty and unfocused; once the user focuses/types, the real input shows.
+  const showOverlay = value === "" && !focused;
 
   function goSearch(query: string) {
     const q = query.trim();
@@ -67,14 +79,25 @@ export default function HeroSearch() {
           goSearch(value);
         }}
       >
-        <input
-          className={styles.heroSearchInput}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={placeholder}
-          aria-label="Search cards"
-        />
-        <button type="submit" className={`btn-primary ${styles.heroSearchBtn}`}>
+        <span className={styles.heroSearchGlyph}>
+          <SearchIcon />
+        </span>
+        <span className={styles.heroSearchField}>
+          <input
+            className={styles.heroSearchInput}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            aria-label="Search cards by name"
+          />
+          {showOverlay && (
+            <span className={styles.heroSearchPlaceholder} aria-hidden="true">
+              {placeholder}
+            </span>
+          )}
+        </span>
+        <button type="submit" className={styles.heroSearchBtn}>
           Search
         </button>
       </form>

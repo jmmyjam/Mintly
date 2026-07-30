@@ -98,6 +98,38 @@
   text-decoration: none;
 }
 
+/* Signed-out auth slot: a quiet "Log in" text link + a cream "Sign up" pill */
+.login-link {
+  font-size: 14.5px;
+  font-weight: 590;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.login-link:hover {
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.signup-btn {
+  background: var(--cream);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 14.5px;
+  font-weight: 590;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.signup-btn:hover {
+  opacity: 0.85;
+  text-decoration: none;
+}
+
 /* The one structural breakpoint kept on purpose: the nav bar can't flow like a
    grid of cards — its brand, centered pill, and auth button have to shrink
    together to fit a narrow screen. (The auth button is the global .btn-outline,
@@ -108,21 +140,35 @@
   .brand-logo { width: 28px; height: 28px; }
   .nav-pill { padding: 4px; gap: 2px; }
   .nav-link { padding: 6px 12px; font-size: 14px; }
-  .navbar-right :global(.btn-outline) { padding: 8px 15px; font-size: 14px; }
+  .navbar-right { gap: 6px; }
+  .login-link { font-size: 13.5px; }
+  .signup-btn { padding: 8px 16px; font-size: 13.5px; }
   .avatar { width: 36px; height: 36px; }
 }
 
-/* Smallest phones: the leaf logo alone links home so the wordmark can go,
-   guaranteeing the nav row fits without crowding the pill. */
-@media (max-width: 380px) {
+/* Phones: the leaf logo alone links home so the wordmark can go, and the rigid
+   1fr/auto/1fr grid gives way to flex — otherwise the tiny leaf reserves as much
+   width as the two auth items, clipping "Sign up". Auto margins keep the pill
+   centered in the space left between the brand and the auth links. */
+@media (max-width: 460px) {
   .brand-text { display: none; }
+  .navbar { display: flex; gap: 8px; padding: 12px 12px; }
+  /* Auto margins keep the pill centered in what's left between brand and auth */
+  .nav-pill { margin: 0 auto; padding: 3px; gap: 0; }
+  .nav-link { padding: 6px 9px; font-size: 13px; }
+}
+
+/* Small phones (SE / mini and below): the "Log in" text link drops so the pill
+   and the cream Sign up pill keep their room. */
+@media (max-width: 374px) {
+  .login-link { display: none; }
 }
 
 /* Ultra-narrow (folded phones, tablet split-screen ~280-340px): the nav's last
-   structural step — tighten the pill and button so all three still fit. */
+   structural step — tighten the pill and Sign up pill so it all still fits. */
 @media (max-width: 340px) {
   .navbar { gap: 6px; }
-  .nav-link { padding: 6px 9px; }
-  .navbar-right :global(.btn-outline) { padding: 7px 11px; }
+  .nav-link { padding: 6px 8px; }
+  .signup-btn { padding: 7px 13px; }
   .avatar { width: 32px; height: 32px; }
 }

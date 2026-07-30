@@ -1,24 +1,37 @@
 import { Link } from "react-router-dom";
+import { getToken } from "../api";
 import HeroSearch from "../components/HeroSearch";
 import styles from "./Home.module.css";
 
+// Rounded catalog size shown in the proof strip. There's no public count
+// endpoint (and adding one for a signed-out page isn't worth it), so keep this
+// as a conservative constant and bump it as the catalog grows — the real figure
+// is on the Admin dashboard under Data health -> "catalog cards".
+const CATALOG_SIZE = "21,400+";
+
 export default function Home() {
+  const loggedIn = !!getToken();
+
   return (
     <div className={styles.home}>
-      <div className={styles.homeHero}>
-        <div className={styles.homeHeroLeft}>
-          <h1 className={styles.homeTitle}>
-            Your cards. Their prices. One portfolio.
+      <section className={styles.hero}>
+        <div className={styles.heroLeft}>
+          <h1 className={styles.title}>
+            Your cards.
+            <br />
+            Their prices.
+            <br />
+            One portfolio.
           </h1>
-          <HeroSearch />
-          <div className={styles.homeHeroDivider} />
-          <p className={styles.homeSubtitle}>
-            Mintly tracks every card you own against live TCGPlayer prices.
-            Search the full catalog, add your cards, and watch your portfolio's
-            value build over time.
+          <div className={styles.searchWrap}>
+            <HeroSearch />
+          </div>
+          <p className={styles.subtitle}>
+            Track every card you own against live market prices. Free to use, no scan limits, no
+            credits.
           </p>
         </div>
-        <div className={styles.homeHeroCards} aria-hidden="true">
+        <div className={styles.heroCards} aria-hidden="true">
           <img
             className={`${styles.heroCard} ${styles.heroCard1}`}
             src="https://images.pokemontcg.io/sv3pt5/200_hires.png"
@@ -37,49 +50,44 @@ export default function Home() {
             loading="lazy"
           />
         </div>
-      </div>
+      </section>
 
-      <div className={styles.homeFeatures}>
-        <div className={styles.feature}>
-          <div className={styles.featureNum}>01</div>
-          <h3>Search</h3>
-          <p>
-            Find any card by name, set, or number from the full Pokemon TCG
-            catalog.
-          </p>
+      <section className={styles.proof}>
+        <div className={styles.proofCell}>
+          <div className={`${styles.proofFigure} num`}>{CATALOG_SIZE}</div>
+          <div className={styles.proofLabel}>cards in the catalog</div>
         </div>
-        <div className={styles.feature}>
-          <div className={styles.featureNum}>02</div>
-          <h3>Live Prices</h3>
-          <p>See current market prices pulled from TCGPlayer for every card.</p>
+        <div className={styles.proofCell}>
+          <div className={styles.proofFigure}>Daily</div>
+          <div className={styles.proofLabel}>price refresh</div>
         </div>
-        <div className={styles.feature}>
-          <div className={styles.featureNum}>03</div>
-          <h3>Portfolio</h3>
-          <p>Track what you paid vs. what your cards are worth today.</p>
+        <div className={styles.proofCell}>
+          <div className={styles.proofFigure}>Unlimited</div>
+          <div className={styles.proofLabel}>camera scans</div>
         </div>
-      </div>
+        <div className={styles.proofCell}>
+          <div className={`${styles.proofFigure} num`}>$0</div>
+          <div className={styles.proofLabel}>to track your collection</div>
+        </div>
+      </section>
 
       <section className={styles.scanSection}>
         <div className={styles.scanCopy}>
           <span className={styles.scanEyebrow}>Camera scanner</span>
-          <h2 className={styles.scanTitle}>Scan any card with your camera</h2>
+          <h2 className={styles.scanTitle}>Scan a stack in one sitting</h2>
           <p className={styles.scanText}>
-            Point your phone at a card and Mintly identifies it instantly,
-            matching the photo against its full catalog, then add it to your
-            portfolio in a tap. No typing set names or hunting for card numbers.
+            Point your phone at a card and Mintly identifies it against the full catalog. Batch mode
+            queues card after card, then adds the whole pile to your portfolio at once.
           </p>
           <div className={styles.scanBadges}>
             <span className={styles.scanBadge}>✓ Free forever</span>
             <span className={styles.scanBadge}>✓ Unlimited scans</span>
           </div>
-          <p className={styles.scanFinePrint}>
-            No scan limits, no credits, no cost.
-          </p>
-          <Link to="/scan" className="btn-primary btn-lg">
-            Scan a card
-          </Link>
         </div>
+        {/* DOM order is copy -> visual -> button so the single-column mobile
+            layout reads copy, card, then a full-width button; on desktop the
+            three are explicitly grid-placed, so their source order doesn't
+            matter (button under the copy, card spanning the right). */}
         <div className={styles.scanVisual} aria-hidden="true">
           <div className={styles.scanFrame}>
             <img
@@ -94,19 +102,25 @@ export default function Home() {
             <span className={`${styles.scanCorner} ${styles.scanCornerBr}`} />
           </div>
         </div>
+        <Link to="/scan" className={`btn-primary btn-lg ${styles.scanBtn}`}>
+          Scan a card
+        </Link>
       </section>
 
-      <div className={styles.homeCta}>
+      <div className={styles.cta}>
         <div>
           <h2>Start tracking your collection.</h2>
-          <p>
-            Add your cards once, and Mintly keeps the prices and history up to
-            date.
-          </p>
+          <p>Add your cards once, and Mintly keeps the prices and history up to date.</p>
         </div>
-        <Link to="/portfolio" className="btn-primary btn-lg">
-          Open my portfolio
-        </Link>
+        {loggedIn ? (
+          <Link to="/portfolio" className="btn-primary btn-lg">
+            Open my portfolio
+          </Link>
+        ) : (
+          <Link to="/login" state={{ register: true }} className="btn-primary btn-lg">
+            Create a free account
+          </Link>
+        )}
       </div>
     </div>
   );

@@ -58,7 +58,14 @@ export default function Navbar() {
             </svg>
           </Link>
         ) : (
-          <Link to="/login" className="btn-outline">Login</Link>
+          <>
+            <Link to="/login" className={styles.loginLink}>
+              Log in
+            </Link>
+            <Link to="/login" state={{ register: true }} className={styles.signupBtn}>
+              Sign up
+            </Link>
+          </>
         )}
       </div>
     </nav>

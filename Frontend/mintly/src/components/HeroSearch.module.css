@@ -1,17 +1,35 @@
-/* Hero search — one pill housing the input and the submit button */
+/* Hero search — the app's search pill (matches /search), housing the glyph, the
+   typewriter placeholder, and a cream submit button. */
 .hero-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 6px 6px 6px 24px;
-  max-width: 560px;
+  padding: 6px 6px 6px 20px;
+  max-width: 520px;
   transition: border-color 0.2s;
 }
 
-.hero-search:focus-within { border-color: var(--text-h); }
+.hero-search:focus-within {
+  border-color: var(--text-h);
+}
+
+.hero-search-glyph {
+  display: inline-flex;
+  color: var(--text);
+  flex: none;
+}
+
+/* Wrapper so the mint-caret placeholder overlay can sit over the empty input */
+.hero-search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
 
 .hero-search-input {
   flex: 1;
@@ -19,26 +37,64 @@
   background: transparent;
   border: none;
   outline: none;
-  font-size: 16px;
+  font-family: var(--font-ui);
+  font-size: 16.5px;
   color: var(--text-h);
   padding: 8px 0;
 }
 
-.hero-search-input::placeholder { color: var(--text); }
+/* Fake placeholder: the animated typed string plus a mint caret (its right
+   border). aria-hidden + pointer-events:none so it's purely decorative; the
+   real input carries the static aria-label. */
+.hero-search-placeholder {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  padding-right: 2px;
+  border-right: 1.5px solid var(--accent);
+  font-size: 16.5px;
+  line-height: 1.3;
+  color: var(--text);
+  pointer-events: none;
+}
 
-.hero-search-btn { flex-shrink: 0; }
+.hero-search-btn {
+  flex: none;
+  background: var(--cream);
+  color: var(--ink);
+  border: none;
+  border-radius: 999px;
+  padding: 11px 24px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 590;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
 
+.hero-search-btn:hover {
+  opacity: 0.85;
+}
+
+/* "Try" label + quick-search chips */
 .hero-chips {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 16px;
+  margin-top: 14px;
 }
 
 .hero-chips-label {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
   margin-right: 2px;
 }
 
@@ -46,12 +102,49 @@
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 7px 14px;
+  font-family: inherit;
   font-size: 13px;
-  color: var(--text);
+  font-weight: 590;
+  color: var(--text-h);
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.2s, border-color 0.2s;
 }
 
-.chip:hover { color: var(--text-h); border-color: var(--text-h); }
+.chip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Mobile: smaller pill + horizontally scrolling chip row (the 4th chip can slide
+   off-screen) instead of wrapping. */
+@media (max-width: 600px) {
+  .hero-search {
+    gap: 9px;
+    padding: 6px 6px 6px 16px;
+  }
+  .hero-search-glyph svg {
+    width: 18px;
+    height: 18px;
+  }
+  .hero-search-input,
+  .hero-search-placeholder {
+    font-size: 15px;
+  }
+  .hero-search-btn {
+    padding: 11px 20px;
+    font-size: 14.5px;
+  }
+  .hero-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hero-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .hero-chips-label {
+    flex: none;
+  }
+}
