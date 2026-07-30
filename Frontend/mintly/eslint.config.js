@@ -19,4 +19,14 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Test files and helpers: allow `any` for mock shapes/type stubs, and skip
+    // the Fast-Refresh export rule (utils.tsx intentionally exports helpers
+    // alongside a probe component — it's never HMR-refreshed).
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

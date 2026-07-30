@@ -31,10 +31,14 @@ export default function PriceQtyForm({
 }: PriceQtyFormProps) {
   const sm = smallButtons ? ' btn-sm' : ''
 
+  // In labeled mode the wrapping <label> names each input; in compact mode the
+  // fields carry only a visual placeholder, so give them an aria-label too (a
+  // placeholder is not an accessible name).
   const priceInput = (
     <input
       type="number"
       placeholder={labeled ? undefined : 'Price paid($)'}
+      aria-label={labeled ? undefined : 'Price paid ($)'}
       value={price}
       onChange={e => onPriceChange(e.target.value)}
       className="mini-input"
@@ -46,6 +50,7 @@ export default function PriceQtyForm({
     <input
       type="number"
       placeholder={labeled ? undefined : 'Qty'}
+      aria-label={labeled ? undefined : 'Quantity'}
       value={quantity}
       onChange={e => onQuantityChange(e.target.value)}
       className="mini-input mini-qty"

@@ -1,0 +1,12 @@
+{
+  // Type-checks the test suite (excluded from the production tsconfig.app.json).
+  // Run with `npm run test:typecheck`; the editor also uses it for src/**/*.test.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "types": ["vite/client", "vitest/globals"],
+    "noEmit": true
+  },
+  "include": ["src"],
+  "exclude": []
+}

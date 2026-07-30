@@ -6,11 +6,23 @@ React 19 + TypeScript + Vite + React Router 7 + Recharts. Global rules live in t
 
 Run from `Frontend/mintly/` — NOT the repo root:
 ```bash
-npm run dev        # Vite dev server on :5173
-npm run build      # tsc + vite build — use this to verify changes compile
-npx eslint src/    # lint
+npm run dev            # Vite dev server on :5173
+npm run build          # tsc + vite build — use this to verify changes compile
+npx eslint src/        # lint
+npm test               # Vitest watch mode
+npm run test:run       # Vitest single run (what CI/verification should use)
+npm run test:typecheck # type-check the test suite (tsc -p tsconfig.test.json)
 ```
-The API base URL comes from `VITE_API_BASE` (baked in at build; unset defaults to `http://localhost:8000`). The frontend has no tests yet.
+The API base URL comes from `VITE_API_BASE` (baked in at build; unset defaults to `http://localhost:8000`).
+
+## Tests
+
+Vitest + React Testing Library (jsdom) with **jest-axe** for accessibility, wired into `vite.config.ts`'s `test` block; global setup is `src/test/setup.ts`, shared helpers (`renderWithRouter`, a `LocationProbe`, and a preconfigured `axe`) are in `src/test/utils.tsx`. Tests are **co-located** as `*.test.ts(x)` beside the code they cover. Coverage today: the shared logic modules (`format`, `portfolio`, `variants`, `affiliate`, `accessibility`, `owned`) and the module-less presentational components plus `CardImage`/`Footer`/`Navbar`/`HeroSearch`/`PageMessage`, each with an axe no-violations check.
+
+- Scripts pin `TZ=UTC` so the date-formatting helpers assert deterministically — run tests via the npm scripts, not a bare `vitest`, or the local-time assertions in `portfolio.test.ts` will drift.
+- Test files are **excluded from the production build** (`tsconfig.app.json`) so `npm run build` stays scoped to shipped code; they're type-checked separately by `tsconfig.test.json` (`npm run test:typecheck`) and by Vitest at runtime.
+- `setup.ts` installs an in-memory `localStorage` (Node's experimental global one is inert under jsdom) and stubs `matchMedia`/`ResizeObserver`; the axe helper disables the page-level `region` and (unrenderable) `color-contrast` rules for isolated-component checks.
+- `PriceQtyForm`'s compact (non-`labeled`) variant carries an `aria-label` per input in addition to the visual placeholder (a placeholder is not an accessible name), so both variants pass axe.
 
 ## Shared modules (`src/`)
 
