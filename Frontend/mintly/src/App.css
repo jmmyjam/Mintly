@@ -247,6 +247,11 @@
 /* Legal pages (Terms, Privacy) */
 .legal-page { max-width: 760px; }
 
+/* The page title is a large heading (36px), so it takes the Display optical
+   variant to match every other page's title (Home/Profile/etc.); the smaller
+   17px section headings below stay on the Text variant (the root default). */
+.legal-page h1 { font-family: var(--font-display); }
+
 .legal-page h2 {
   font-size: 17px;
   margin: 28px 0 8px;
