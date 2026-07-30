@@ -38,6 +38,10 @@ export default function Portfolio() {
   const [nameFilter, setNameFilter] = useState('')
   const [plFilter, setPlFilter] = useState<PLFilter>('all')
   const [range, setRange] = useState<Range>('1M')
+  // The right-edge marker on the value chart waits for the area's reveal
+  // animation to finish (onAnimationEnd) so it doesn't sit there while the line
+  // is still drawing; reset to false whenever the range toggle re-animates it.
+  const [showChartDot, setShowChartDot] = useState(false)
   // The token is already cleared by authedFetch — send the user back to login
   const redirectToLogin = useSessionRedirect()
 
@@ -210,7 +214,7 @@ export default function Portfolio() {
                 <button
                   key={r}
                   className={`segmented-item${range === r ? ' is-selected' : ''}`}
-                  onClick={() => setRange(r)}
+                  onClick={() => { setRange(r); setShowChartDot(false) }}
                 >
                   {r}
                 </button>
@@ -243,8 +247,15 @@ export default function Portfolio() {
                 contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
                 labelStyle={{ color: 'var(--text)' }}
               />
-              <Area type="monotone" dataKey="total_value" stroke="var(--accent)" strokeWidth={2.5} fill="url(#portfolioFill)" />
-              {!isPlaceholder && (
+              <Area
+                type="monotone"
+                dataKey="total_value"
+                stroke="var(--accent)"
+                strokeWidth={2.5}
+                fill="url(#portfolioFill)"
+                onAnimationEnd={() => { if (!isPlaceholder) setShowChartDot(true) }}
+              />
+              {!isPlaceholder && showChartDot && (
                 <ReferenceDot x={lastPoint.date} y={lastPoint.total_value} r={4.5} fill="var(--accent)" stroke="none" ifOverflow="extendDomain" />
               )}
             </AreaChart>

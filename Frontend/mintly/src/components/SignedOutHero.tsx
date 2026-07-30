@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom'
-import { getCardImageUrl } from '../api'
-import styles from './SignedOutHero.module.css'
+import { Link } from "react-router-dom";
+import { getCardImageUrl } from "../api";
+import styles from "./SignedOutHero.module.css";
 
 // Promotional surface shown in place of a plain login prompt when a signed-out
 // user lands on an account-only page (Portfolio, Scan). Both variants share the
@@ -10,21 +10,34 @@ import styles from './SignedOutHero.module.css'
 // portfolio, a numbered how-it-works + dead viewfinder for scan).
 
 interface SignedOutHeroProps {
-  variant: 'scan' | 'portfolio'
+  variant: "scan" | "portfolio";
 }
 
 // Real card art blurred behind the gate — art only, no numbers or prices.
-const CARD_BACKDROP = ['sv3pt5-199', 'sv3pt5-200', 'sv3pt5-198', 'base1-4', 'base1-2', 'base1-15']
+const CARD_BACKDROP = [
+  "sv3pt5-199",
+  "sv3pt5-200",
+  "sv3pt5-198",
+  "base1-4",
+  "base1-2",
+  "base1-15",
+];
 
 // The three steps of the scan flow, answering "what happens when I log in".
 const SCAN_STEPS = [
-  { lead: 'Frame the card.', rest: 'The viewfinder locks on when it’s readable.' },
-  { lead: 'Confirm the match.', rest: 'Pick from candidates if it’s a close call.' },
-  { lead: 'Queue the stack.', rest: 'Batch mode adds the whole pile at once.' },
-]
+  {
+    lead: "Frame the card.",
+    rest: "The viewfinder locks on when it’s readable.",
+  },
+  {
+    lead: "Confirm the match.",
+    rest: "Pick from candidates if it’s a close call.",
+  },
+  { lead: "Queue the stack.", rest: "Batch mode adds the whole pile at once." },
+];
 
 export default function SignedOutHero({ variant }: SignedOutHeroProps) {
-  return variant === 'scan' ? <ScanHero /> : <PortfolioHero />
+  return variant === "scan" ? <ScanHero /> : <PortfolioHero />;
 }
 
 // Blurred, scrimmed backdrop of real card art, shared by both gates. Sits behind
@@ -35,13 +48,19 @@ function GatedBackdrop() {
       <div className={styles.backdrop} aria-hidden="true">
         <div className={styles.backdropGrid}>
           {CARD_BACKDROP.map((id) => (
-            <img key={id} className={styles.backdropCard} src={getCardImageUrl(id)} alt="" loading="lazy" />
+            <img
+              key={id}
+              className={styles.backdropCard}
+              src={getCardImageUrl(id)}
+              alt=""
+              loading="lazy"
+            />
           ))}
         </div>
       </div>
       <div className={styles.scrim} aria-hidden="true" />
     </>
-  )
+  );
 }
 
 // Shared CTA row: a cream Log in pill plus the register-tab link. Both pages use
@@ -53,13 +72,13 @@ function AuthActions({ label }: { label: string }) {
         {label}
       </Link>
       <span className={styles.secondary}>
-        New to Mintly?{' '}
+        New to Mintly?{" "}
         <Link to="/login" state={{ register: true }}>
           Create a free account
         </Link>
       </span>
     </div>
-  )
+  );
 }
 
 function PortfolioHero() {
@@ -70,11 +89,13 @@ function PortfolioHero() {
         <div className={styles.pitchInner}>
           <div className={styles.copy}>
             <span className={styles.eyebrow}>Your collection</span>
-            <h1 className={styles.title}>Track your collection's value over time</h1>
+            <h1 className={styles.title}>
+              Track your collection's value over time
+            </h1>
             <p className={styles.text}>
-              Add the cards you own and Mintly prices them against live TCGplayer data, so you
-              see what you paid versus what they're worth today, with daily changes and a
-              value-over-time chart.
+              Add the cards you own and Mintly prices them against live
+              TCGplayer data, so you see what you paid versus what they're worth
+              today, with daily changes and a value-over-time chart.
             </p>
             <div className={styles.badges}>
               <span className={styles.badge}>✓ Live TCGplayer prices</span>
@@ -106,7 +127,7 @@ function PortfolioHero() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function ScanHero() {
@@ -123,8 +144,9 @@ function ScanHero() {
               free and unlimited
             </h1>
             <p className={styles.text}>
-              Point your phone at a card and Mintly matches the photo against its full catalog,
-              then adds it to your portfolio in a tap. No scan limits, no credits, no cost.
+              Point your phone at a card and Mintly matches the photo against
+              its full catalog, then adds it to your portfolio in a tap. No scan
+              limits, no credits, no cost.
             </p>
             <ol className={styles.steps}>
               {SCAN_STEPS.map((s, i) => (
@@ -138,7 +160,7 @@ function ScanHero() {
                 </li>
               ))}
             </ol>
-            <AuthActions label="Log in to scan" />
+            <AuthActions label="Log in" />
           </div>
 
           <div className={styles.scanVisual} aria-hidden="true">
@@ -160,8 +182,8 @@ function ScanHero() {
               </svg>
               <span className={styles.cameraOffTitle}>Camera off</span>
               <span className={styles.cameraOffText}>
-                Log in and Mintly will ask for camera access. Nothing is uploaded until you
-                confirm a match.
+                Log in and Mintly will ask for camera access. Nothing is
+                uploaded until you confirm a match.
               </span>
             </div>
             <span className={`${styles.corner} ${styles.cornerTl}`} />
@@ -172,5 +194,5 @@ function ScanHero() {
         </div>
       </div>
     </div>
-  )
+  );
 }

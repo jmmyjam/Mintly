@@ -65,8 +65,11 @@
 
 .switch-knob {
   position: absolute;
-  top: 3px;
-  left: 3px;
+  /* 2px, not 3px: top/left are measured inside the 1px border, so with the
+     27px track and 21px knob this leaves a symmetric 3px gap on every side
+     (3px was 1px short at the bottom, making the knob sit low). */
+  top: 2px;
+  left: 2px;
   width: 21px;
   height: 21px;
   border-radius: 999px;
