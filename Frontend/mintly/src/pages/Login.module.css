@@ -1,170 +1,58 @@
-/* Auth */
-
-/* Row that holds the form card and the illustrative preview side by side,
-   centered as a unit. The preview drops away below 720px (see the media query
-   at the bottom), leaving the single form card centered — the original look. */
+/* Auth — two-column layout: form left, illustrative portfolio preview right.
+   The preview drops away below 720px (see the media query at the bottom),
+   leaving the single-column form centered. */
 .auth-layout {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(32px, 6vw, 72px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(32px, 6vw, 56px);
+  align-items: start;
   width: 100%;
   max-width: 1000px;
+  margin: 0 auto;
   text-align: left;
 }
 
-.auth-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: clamp(28px, 3vw, 40px);
-  flex: 1 1 420px;
-  min-width: 0;
-  max-width: 440px;
-}
-
-/* Heading above the tabs — gives the form presence instead of empty space */
+/* Heading above the tabs */
 .auth-intro {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .auth-title {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 6vw, 2.75rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.04em;
   color: var(--text-h);
-  margin: 0 0 6px;
 }
 
 .auth-subtitle {
-  font-size: 14px;
+  margin: 12px 0 0;
+  font-size: 15.5px;
   color: var(--text);
-  margin: 0;
 }
 
-/* ----- Illustrative portfolio preview (sample data, aria-hidden) ----- */
-.preview {
-  flex: 1 1 380px;
-  min-width: 0;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
+/* ----- Tabs — a segmented pill sized to its contents ----------------------- */
+.auth-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 5px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 26px 24px;
-}
-
-.preview-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.preview-label {
-  font-size: 13px;
-  color: var(--text);
-}
-
-.example-tag {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text);
-  border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 3px 8px;
-}
-
-.preview-value-row {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  margin-bottom: 14px;
-}
-
-.preview-value {
-  color: var(--text-h);
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.spark {
-  width: 100%;
-  height: 44px;
-  display: block;
-  margin-bottom: 6px;
-}
-
-.holdings {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.holding {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 0;
-}
-
-.holding + .holding {
-  border-top: 1px solid var(--border);
-}
-
-.thumb {
-  width: 30px;
-  flex: none;
-}
-
-.holding-name {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-h);
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.holding-price {
-  color: var(--text-h);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Trim the shared DayChange chip a touch so name + price + change fit one row */
-.holding :global(.day-change) {
-  font-size: 11px;
-}
-
-.auth-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 24px;
-  background: var(--bg-elevated);
-  border-radius: 999px;
-  padding: 4px;
+  margin: 28px 0 0;
+  width: fit-content;
 }
 
 .tab {
-  flex: 1;
   background: transparent;
   border: none;
   color: var(--text);
-  padding: 8px;
+  padding: 8px 26px;
   border-radius: 999px;
   cursor: pointer;
+  font-family: inherit;
   font-size: 14px;
   font-weight: 600;
   transition: background 0.2s, color 0.2s;
@@ -175,71 +63,322 @@
   color: var(--ink);
 }
 
+/* ----- Form ---------------------------------------------------------------- */
 .auth-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 24px;
+  max-width: 400px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
 }
 
 .form-input {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 16px;
-  font-size: 15px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-family: inherit;
+  font-size: 15.5px;
   color: var(--text-h);
   outline: none;
   width: 100%;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.form-input:focus { border-color: var(--text-h); }
+.form-input::placeholder { color: var(--text-dim); }
 
-.form-hint {
+.form-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(86, 207, 158, 0.12);
+}
+
+/* Password field: the border + focus ring live on the wrapper so the inline
+   Show/Hide toggle sits inside the same 14px-radius control. */
+.password-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.password-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(86, 207, 158, 0.12);
+}
+
+.password-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 14px 0;
+  font-family: inherit;
+  font-size: 15.5px;
+  color: var(--text-h);
+}
+
+.password-input::placeholder { color: var(--text-dim); }
+
+.show-toggle {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
-  font-size: 12px;
-  margin-top: -6px;
+  cursor: pointer;
+  transition: color 0.2s;
 }
 
-/* "Forgot password?" under the password field, kept quiet until hovered */
+.show-toggle:hover { color: var(--text-h); }
+
+/* "Forgot password?" under the password field (login tab) */
 .forgot-row {
   display: flex;
   justify-content: flex-end;
-  margin: -6px 0 0;
+  margin: 0;
 }
 
 .forgot-link {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .forgot-link:hover { color: var(--text-h); }
 
+/* Password strength meter (register tab) — three bars fill left to right as the
+   length / letter / number rules pass. Decorative: the rules line beside them
+   (id="pw-strength-desc") is what screen readers get via aria-describedby. */
+.strength {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.strength-bars {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.strength-bar {
+  width: 38px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dot);
+  transition: background 0.2s;
+}
+
+.strength-bar-filled { background: var(--accent); }
+
+.strength-text {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
 .terms-row {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  font-size: 13px;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 13.5px;
   color: var(--text);
   cursor: pointer;
   line-height: 150%;
 }
 
 .terms-row input {
-  margin: 2px 0 0;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
-.form-input::placeholder { color: var(--text); }
+
+.terms-row a {
+  color: var(--text-h);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Redirect notice ("Your session expired…") shown above the form */
+.form-hint {
+  color: var(--text);
+  font-size: 13px;
+  margin: 16px 0 -8px;
+}
 
 .auth-form :global(.btn-primary) {
   justify-content: center;
-  padding: 10px;
+  width: 100%;
+  padding: 15px 28px;
+  font-size: 15.5px;
+  border-radius: 999px;
+  margin-top: 4px;
 }
 
-/* Below this width the illustrative preview drops away so the form takes the
-   full focus — mirrors how the Home hero hides its card spread when narrow. */
+/* "New to Mintly? Create a free account" — swaps to the register tab */
+.switch-line {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--text);
+  text-align: center;
+}
+
+.switch-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.switch-btn:hover { text-decoration: underline; }
+
+/* ----- Illustrative portfolio preview (sample data, aria-hidden) ----------- */
+.preview {
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 26px;
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.example-tag {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.preview-value-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+}
+
+.preview-value {
+  font-family: var(--font-display);
+  color: var(--text-h);
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-change { font-size: 14px; }
+
+.spark {
+  width: 100%;
+  height: 64px;
+  display: block;
+  margin-top: 16px;
+}
+
+/* Rows sit over a hairline-colored track with 1px gaps, so the dividers read as
+   hairlines without per-row borders. */
+.holdings {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.holding {
+  display: grid;
+  grid-template-columns: 36px 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  padding: 12px 14px;
+}
+
+.thumb {
+  width: 36px;
+  flex: none;
+}
+
+.holding-name {
+  min-width: 0;
+  color: var(--text-h);
+  font-size: 14.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holding-price {
+  color: var(--text-h);
+  font-size: 14.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trim + right-align the shared DayChange chip so each row balances */
+.row-change {
+  font-size: 12px;
+  justify-content: flex-end;
+}
+
+/* Below this width the preview drops and the form takes the full focus. */
 @media (max-width: 720px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+    max-width: 440px;
+  }
   .preview { display: none; }
-  .auth-card { max-width: 440px; }
 }

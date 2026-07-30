@@ -15,6 +15,12 @@ function passwordError(password: string): string | null {
   return null
 }
 
+// The three register password rules, in the same order the strength meter fills
+// left to right (length, then a letter, then a number).
+function passwordRules(password: string): boolean[] {
+  return [password.length >= 8, /[A-Za-z]/.test(password), /\d/.test(password)]
+}
+
 // Illustrative-only preview shown beside the form (marked "Example" and
 // aria-hidden): a taste of what the portfolio looks like, with real Base Set
 // card art but sample prices/changes — there's no real account to read when
@@ -47,12 +53,15 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   // e.g. "Your session expired. Please log in again." when redirected here on a 401
   const notice = (location.state as { notice?: string } | null)?.notice
+
+  const passedRules = passwordRules(password).filter(Boolean).length
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -89,136 +98,187 @@ export default function Login() {
     setEmail('')
     setUsername('')
     setPassword('')
+    setShowPassword(false)
     setAgreedToTerms(false)
   }
 
   return (
     <div className="page centered">
       <div className={styles.authLayout}>
-      <div className={styles.authCard}>
-        <div className={styles.authIntro}>
-          <h1 className={styles.authTitle}>
-            {mode === 'login' ? 'Welcome back' : 'Create your account'}
-          </h1>
-          <p className={styles.authSubtitle}>
-            {mode === 'login'
-              ? 'Log in to track your collection.'
-              : 'Start tracking your portfolio today.'}
-          </p>
-        </div>
-        <div className={styles.authTabs}>
-          <button type="button" className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`} onClick={() => switchMode('login')}>
-            Login
-          </button>
-          <button type="button" className={`${styles.tab} ${mode === 'register' ? styles.active : ''}`} onClick={() => switchMode('register')}>
-            Register
-          </button>
-        </div>
-
-        {notice && !error && <p className={styles.formHint}>{notice}</p>}
-
-        <form onSubmit={handleSubmit} className={styles.authForm}>
-          {mode === 'register' && (
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="Email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              className={styles.formInput}
-            />
-          )}
-          <input
-            type="text"
-            name="username"
-            autoComplete="username"
-            placeholder="Username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            required
-            className={styles.formInput}
-          />
-          <input
-            type="password"
-            name="password"
-            // login reads an existing password, register creates one — the
-            // right hint lets password managers autofill/submit cleanly
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            className={styles.formInput}
-          />
-          {mode === 'login' && (
-            <p className={styles.forgotRow}>
-              <Link to="/reset-password" className={styles.forgotLink}>Forgot password?</Link>
+        <div>
+          <div className={styles.authIntro}>
+            <h1 className={styles.authTitle}>
+              {mode === 'login' ? 'Welcome back' : 'Create your account'}
+            </h1>
+            <p className={styles.authSubtitle}>
+              {mode === 'login'
+                ? 'Log in to track your collection.'
+                : 'Free, unlimited scans, no card required.'}
             </p>
-          )}
-          {mode === 'register' && (
-            <p className={styles.formHint}>At least 8 characters, with a letter and a number.</p>
-          )}
-          {mode === 'register' && (
-            <label className={styles.termsRow}>
+          </div>
+
+          <div className={styles.authTabs}>
+            <button type="button" className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`} onClick={() => switchMode('login')}>
+              Log in
+            </button>
+            <button type="button" className={`${styles.tab} ${mode === 'register' ? styles.active : ''}`} onClick={() => switchMode('register')}>
+              Register
+            </button>
+          </div>
+
+          {notice && !error && <p className={styles.formHint}>{notice}</p>}
+
+          <form onSubmit={handleSubmit} className={styles.authForm}>
+            {mode === 'register' && (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Email</span>
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className={styles.formInput}
+                />
+              </label>
+            )}
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Username</span>
               <input
-                type="checkbox"
-                checked={agreedToTerms}
-                onChange={e => setAgreedToTerms(e.target.checked)}
+                type="text"
+                name="username"
+                autoComplete="username"
+                placeholder={mode === 'login' ? 'Your username' : 'Pick a username'}
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                required
+                className={styles.formInput}
               />
-              <span>
-                I agree to the <Link to="/terms">Terms of Service</Link> and{' '}
-                <Link to="/privacy">Privacy Policy</Link>
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Password</span>
+              <span className={styles.passwordField}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  // login reads an existing password, register creates one — the
+                  // right hint lets password managers autofill/submit cleanly
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  placeholder={mode === 'login' ? 'Enter your password' : 'Create a password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  aria-describedby={mode === 'register' ? 'pw-strength-desc' : undefined}
+                  className={styles.passwordInput}
+                />
+                <button
+                  type="button"
+                  className={styles.showToggle}
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-pressed={showPassword}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
               </span>
             </label>
-          )}
-          {error && <p className="error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}
-          </button>
-        </form>
-      </div>
 
-      {/* Illustrative preview — decorative sample data, hidden from screen
-          readers and dropped on narrow screens so the form stays the focus */}
-      <aside className={styles.preview} aria-hidden="true">
-        <div className={styles.previewHead}>
-          <span className={styles.previewLabel}>Portfolio value</span>
-          <span className={styles.exampleTag}>Example</span>
+            {mode === 'login' && (
+              <p className={styles.forgotRow}>
+                <Link to="/reset-password" className={styles.forgotLink}>Forgot password?</Link>
+              </p>
+            )}
+
+            {mode === 'register' && (
+              <div className={styles.strength}>
+                <span className={styles.strengthBars} aria-hidden="true">
+                  {[0, 1, 2].map(i => (
+                    <span
+                      key={i}
+                      className={`${styles.strengthBar} ${i < passedRules ? styles.strengthBarFilled : ''}`}
+                    />
+                  ))}
+                </span>
+                <span id="pw-strength-desc" className={styles.strengthText}>
+                  At least 8 characters, with a letter and a number
+                </span>
+              </div>
+            )}
+
+            {mode === 'register' && (
+              <label className={styles.termsRow}>
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={e => setAgreedToTerms(e.target.checked)}
+                />
+                <span>
+                  I agree to the <Link to="/terms">Terms of Service</Link> and{' '}
+                  <Link to="/privacy">Privacy Policy</Link>
+                </span>
+              </label>
+            )}
+
+            {error && <p className="error">{error}</p>}
+
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Please wait...' : mode === 'login' ? 'Log in' : 'Create account'}
+            </button>
+
+            {mode === 'login' && (
+              <p className={styles.switchLine}>
+                New to Mintly?{' '}
+                <button type="button" className={styles.switchBtn} onClick={() => switchMode('register')}>
+                  Create a free account
+                </button>
+              </p>
+            )}
+          </form>
         </div>
-        <div className={styles.previewValueRow}>
-          <span className={styles.previewValue}>{money(PREVIEW.value)}</span>
-          <DayChange change={PREVIEW.change} />
-        </div>
-        <svg className={styles.spark} viewBox="0 0 240 46" preserveAspectRatio="none">
-          <path
-            d="M4,36 L30,33 L56,35 L82,26 L108,29 L134,19 L160,22 L186,12 L212,14 L236,7 L236,46 L4,46 Z"
-            fill="var(--accent-bg)"
-          />
-          <path
-            d="M4,36 L30,33 L56,35 L82,26 L108,29 L134,19 L160,22 L186,12 L212,14 L236,7"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          <circle cx="236" cy="7" r="3.5" fill="var(--accent)" />
-        </svg>
-        <ul className={styles.holdings}>
-          {PREVIEW.holdings.map(h => (
-            <li className={styles.holding} key={h.id}>
-              <span className={styles.thumb}>
-                <CardImage src={getCardImageUrl(h.id)} alt={h.name} size="tile" />
-              </span>
-              <span className={styles.holdingName}>{h.name}</span>
-              <span className={styles.holdingPrice}>{money(h.price)}</span>
-              <DayChange change={h.change} />
-            </li>
-          ))}
-        </ul>
-      </aside>
+
+        {/* Illustrative preview — decorative sample data, hidden from screen
+            readers and dropped on narrow screens so the form stays the focus */}
+        <aside className={styles.preview} aria-hidden="true">
+          <div className={styles.previewHead}>
+            <span className={styles.previewLabel}>Portfolio value</span>
+            <span className={styles.exampleTag}>Example</span>
+          </div>
+          <div className={styles.previewValueRow}>
+            <span className={styles.previewValue}>{money(PREVIEW.value)}</span>
+            <DayChange change={PREVIEW.change} className={styles.previewChange} />
+          </div>
+          <svg className={styles.spark} viewBox="0 0 240 46" preserveAspectRatio="none">
+            <path
+              d="M4,36 L30,33 L56,35 L82,26 L108,29 L134,19 L160,22 L186,12 L212,14 L236,7 L236,46 L4,46 Z"
+              fill="var(--accent-bg)"
+            />
+            <path
+              d="M4,36 L30,33 L56,35 L82,26 L108,29 L134,19 L160,22 L186,12 L212,14 L236,7"
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+            <circle cx="236" cy="7" r="3.5" fill="var(--accent)" />
+          </svg>
+          <ul className={styles.holdings}>
+            {PREVIEW.holdings.map(h => (
+              <li className={styles.holding} key={h.id}>
+                <span className={styles.thumb}>
+                  <CardImage src={getCardImageUrl(h.id)} alt={h.name} size="tile" />
+                </span>
+                <span className={styles.holdingName}>{h.name}</span>
+                <span className={styles.holdingPrice}>{money(h.price)}</span>
+                <DayChange change={h.change} className={styles.rowChange} />
+              </li>
+            ))}
+          </ul>
+        </aside>
       </div>
     </div>
   )

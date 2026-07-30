@@ -1,30 +1,144 @@
-.danger-zone {
-  margin-top: 48px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border);
+/* Profile "danger zone" — the fourth settings panel, given a red treatment.
+   Tints derive from the app's --negative token (via color-mix) so the red stays
+   consistent with the rest of the app; only the near-black ink used on the
+   solid delete button is a one-off. */
+
+.panel {
+  background: color-mix(in srgb, var(--negative) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--negative) 30%, transparent);
+  border-radius: 24px;
+  padding: 28px 30px;
+  scroll-margin-top: 20px;
 }
 
-.danger-title {
-  font-size: 1.05rem;
-  margin: 0 0 8px;
+/* Border firms up once the typed-confirm gate is showing. */
+.panel-open {
+  border-color: color-mix(in srgb, var(--negative) 45%, transparent);
 }
 
-.danger-text {
-  color: var(--text);
-  font-size: 0.9rem;
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--negative);
+}
+
+.text {
+  margin: 8px 0 0;
+  font-size: 14px;
   line-height: 1.5;
-  margin: 0 0 14px;
-  max-width: 54ch;
+  color: var(--text);
+  max-width: 520px;
 }
 
-.confirm-row {
+/* Closed-state trigger — outline pill in the danger color */
+.trigger {
+  display: inline-block;
+  margin-top: 18px;
+  border: 1px solid color-mix(in srgb, var(--negative) 50%, transparent);
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 590;
+  color: var(--negative);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.trigger:hover {
+  border-color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 8%, transparent);
+}
+
+/* Typed "DELETE" confirm field */
+.confirm-field {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 20px;
+  max-width: 420px;
+}
+
+.confirm-label {
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--text);
+}
+
+.confirm-word {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  color: var(--text-h);
 }
 
 .confirm-input {
-  max-width: 160px;
-  min-width: 0;
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--negative) 45%, transparent);
+  border-radius: 14px;
+  padding: 13px 15px;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: var(--text-h);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
+
+.confirm-input::placeholder { color: var(--text-dim); }
+
+.confirm-input:focus {
+  border-color: var(--negative);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--negative) 15%, transparent);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* Solid delete button — enabled only once "DELETE" is typed */
+.delete-pill {
+  border: none;
+  border-radius: 999px;
+  padding: 11px 22px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 590;
+  background: var(--negative);
+  color: #180d0d;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.delete-pill:hover:not(:disabled) { opacity: 0.88; }
+
+.delete-pill:disabled {
+  background: var(--hairline);
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+/* Cancel — neutral outline pill */
+.cancel-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 11px 22px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 590;
+  color: var(--text-h);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.cancel-pill:hover:not(:disabled) { border-color: var(--cream); }
+
+.cancel-pill:disabled { opacity: 0.5; cursor: not-allowed; }

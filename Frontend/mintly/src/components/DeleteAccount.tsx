@@ -48,45 +48,55 @@ export default function DeleteAccount() {
   }
 
   return (
-    <section className={styles.dangerZone} aria-label="Account settings">
-      <h2 className={styles.dangerTitle}>Delete account</h2>
+    <section
+      id="delete"
+      className={`${styles.panel} ${open ? styles.panelOpen : ''}`}
+      aria-label="Delete account"
+    >
+      <h2 className={styles.title}>Delete account</h2>
       {!open ? (
         <>
-          <p className={styles.dangerText}>
+          <p className={styles.text}>
             Permanently delete your account and everything in your portfolio.
             This can't be undone.
           </p>
-          <button className="btn-outline btn-sm btn-danger" onClick={() => setOpen(true)}>
+          <button type="button" className={styles.trigger} onClick={() => setOpen(true)}>
             Delete account
           </button>
         </>
       ) : (
         <>
-          <p className={styles.dangerText}>
+          <p className={styles.text}>
             This permanently removes your login and all of your portfolio
-            records. Type <strong>DELETE</strong> to confirm.
+            records. It can't be undone.
           </p>
-          <div className={styles.confirmRow}>
+          <label className={styles.confirmField}>
+            <span className={styles.confirmLabel}>
+              Type <span className={styles.confirmWord}>DELETE</span> to confirm
+            </span>
             <input
-              className={`filter-select ${styles.confirmInput}`}
+              className={styles.confirmInput}
               value={confirmText}
               onChange={e => setConfirmText(e.target.value)}
               placeholder="DELETE"
               aria-label="Type DELETE to confirm"
               autoFocus
             />
+          </label>
+          {error && <StatusMessage ok={false}>{error}</StatusMessage>}
+          <div className={styles.actions}>
             <button
-              className="btn-outline btn-sm btn-danger"
+              type="button"
+              className={styles.deletePill}
               onClick={handleDelete}
               disabled={!canDelete || busy}
             >
               {busy ? 'Deleting…' : 'Permanently delete'}
             </button>
-            <button className="btn-outline btn-sm" onClick={cancel} disabled={busy}>
+            <button type="button" className={styles.cancelPill} onClick={cancel} disabled={busy}>
               Cancel
             </button>
           </div>
-          {error && <StatusMessage ok={false}>{error}</StatusMessage>}
         </>
       )}
     </section>
