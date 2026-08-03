@@ -37,7 +37,7 @@ class PasswordResetToken(Base):
 class PortfolioCard(Base):
     __tablename__ = "portfolio_cards"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)  # every portfolio query filters on it
     card_id = Column(String)          # e.g. "base1-4" from Pokemon TCG API
     card_name = Column(String)
     quantity = Column(Integer, default=1)
