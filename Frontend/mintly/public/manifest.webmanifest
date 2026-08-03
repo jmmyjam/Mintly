@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Mintly - Pokémon TCG Portfolio Tracker",
+  "short_name": "Mintly",
+  "description": "Track your Pokémon TCG collection's value over time.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#151517",
+  "theme_color": "#151517",
+  "categories": ["finance", "utilities"],
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "maskable" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}
