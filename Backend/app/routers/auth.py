@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, PortfolioCard, PasswordResetToken, EmailVerificationToken, utcnow
+from app.models import User, Portfolio, PortfolioCard, PasswordResetToken, EmailVerificationToken, utcnow
 from app.services import mailer
 from app.services.admin_access import is_admin
 from app.services.rate_limit import rate_limit
@@ -513,11 +513,15 @@ def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
 
 @router.delete("/me")
 def delete_account(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Remove the user's portfolio lots and any pending reset tokens first —
-    # neither FK has an ON DELETE cascade, so Postgres would reject deleting a
-    # parent row they still reference. The shared per-card price snapshots
-    # aren't tied to a user (Privacy §5), so they stay.
+    # Remove the user's portfolio lots, their portfolios, and any pending reset
+    # tokens first — none of these FKs has an ON DELETE cascade, so Postgres
+    # would reject deleting a parent row they still reference. Lots reference
+    # portfolios, so lots go before portfolios. The shared per-card price
+    # snapshots aren't tied to a user (Privacy §5), so they stay.
     db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).delete(
+        synchronize_session=False
+    )
+    db.query(Portfolio).filter(Portfolio.user_id == current_user.id).delete(
         synchronize_session=False
     )
     db.query(PasswordResetToken).filter(

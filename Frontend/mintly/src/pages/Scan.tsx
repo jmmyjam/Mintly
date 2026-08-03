@@ -14,9 +14,11 @@ import CardImage from "../components/CardImage";
 import CandidatePickerModal from "../components/CandidatePickerModal";
 import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
+import PortfolioPicker from "../components/PortfolioPicker";
 import SignedOutHero from "../components/SignedOutHero";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard, useSessionRedirect } from "../hooks";
+import { usePortfolios } from "../portfolios";
 import { money } from "../format";
 import styles from "./Scan.module.css";
 
@@ -123,6 +125,11 @@ export default function Scan() {
 
   // Shared add-to-portfolio flow (single mode), same as Search/CardDetail
   const { add, busy: addBusy, status: addStatus } = useAddCard();
+  // Which portfolio scanned cards go to (defaults to the active one). Batch add
+  // can also create a new one inline via the picker's allowCreate.
+  const { activeId } = usePortfolios();
+  const [batchTarget, setBatchTarget] = useState<number | null>(null);
+  const [singleTarget, setSingleTarget] = useState<number | null>(null);
   // Single-mode best-guess add (its price/qty row is always visible)
   const [bestPrice, setBestPrice] = useState("");
   const [bestQty, setBestQty] = useState("1");
@@ -248,7 +255,7 @@ export default function Scan() {
   }
 
   function handleAdd(card: Card) {
-    add(card.id, purchasePrice, quantity, () => {
+    add(card.id, purchasePrice, quantity, singleTarget ?? activeId, () => {
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
@@ -335,7 +342,7 @@ export default function Scan() {
           quantity: parseInt(it.quantity, 10) || 1,
         };
       });
-      const result = await addCardBatch(items);
+      const result = await addCardBatch(items, batchTarget ?? activeId);
       if (result.failed.length === 0) {
         setBatchStatus({ msg: result.message, ok: true });
         setQueue([]);
@@ -657,6 +664,13 @@ export default function Scan() {
                 )}
               </div>
               <div className={styles.queueActions}>
+                <PortfolioPicker
+                  value={batchTarget}
+                  onChange={setBatchTarget}
+                  allowCreate
+                  label="Add to"
+                  ariaLabel="Add batch to portfolio"
+                />
                 {queue.length > 0 &&
                   (confirmClearAll ? (
                     <span className={styles.clearConfirm}>
@@ -814,6 +828,12 @@ export default function Scan() {
                       </StatusMessage>
                     ) : (
                       <div className={styles.bestActions}>
+                        <PortfolioPicker
+                          value={singleTarget}
+                          onChange={setSingleTarget}
+                          label="Add to"
+                          className={styles.bestPortfolio}
+                        />
                         <input
                           type="number"
                           className={`${styles.bestPriceInput} num`}
@@ -836,7 +856,7 @@ export default function Scan() {
                         <button
                           className={styles.bestAdd}
                           disabled={addBusy}
-                          onClick={() => add(best.id, bestPrice, bestQty)}
+                          onClick={() => add(best.id, bestPrice, bestQty, singleTarget ?? activeId)}
                         >
                           {addBusy ? "Adding…" : "Add to portfolio"}
                         </button>

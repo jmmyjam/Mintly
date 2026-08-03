@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CONNECTION_ERROR, deleteAccount, SessionExpiredError } from '../api'
 import { useSessionRedirect } from '../hooks'
+import { clearPortfolios } from '../portfolios'
 import StatusMessage from './StatusMessage'
 import styles from './DeleteAccount.module.css'
 
@@ -24,6 +25,7 @@ export default function DeleteAccount() {
     setError('')
     try {
       await deleteAccount()
+      clearPortfolios() // drop the cached portfolio list + active selection
       navigate('/login', {
         state: { notice: 'Your account and all its data have been deleted.' },
       })

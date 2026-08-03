@@ -1,0 +1,37 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.select {
+  max-width: 100%;
+}
+
+/* Inline "create a new portfolio" row, shown after choosing New portfolio… */
+.createRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.createInput {
+  min-width: 0;
+  width: clamp(120px, 40vw, 180px);
+}
+
+.error {
+  color: var(--negative);
+  font-size: 12px;
+  flex-basis: 100%;
+}

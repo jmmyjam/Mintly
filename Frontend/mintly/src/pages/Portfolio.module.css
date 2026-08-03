@@ -1,4 +1,4 @@
-/* Visually-hidden page heading — the hero panel is the visible title. */
+/* Visually-hidden page heading — the portfolio selector is the visible title. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -9,6 +9,19 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Header row: the portfolio switcher (left) and the CSV kebab (right). The CSV
+   column grows so its right-aligned kebab and any import panel span the row. */
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.header-csv {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ---- Hero panel: value + all-time change + stat grid (left), chart (right) ---

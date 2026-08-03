@@ -134,6 +134,16 @@ export interface PortfolioCard {
   image_url: string | null
 }
 
+// A named portfolio. Every user has at least one (the auto-created default);
+// cards live in exactly one. See src/portfolios.ts for the active-selection store.
+export interface Portfolio {
+  id: number
+  name: string
+  is_default: boolean
+  created_at: string
+  card_count: number
+}
+
 // The logged-in user's account details, shown/edited on the Profile page
 export interface UserProfile {
   email: string
@@ -155,7 +165,7 @@ export interface AdminStats {
   users: { total: number; new_7d: number; new_30d: number; with_portfolio: number }
   signups_by_day: { date: string; count: number }[]
   recent_users: { id: number; username: string; email: string; created_at: string; lots: number }[]
-  portfolio: { lots: number; distinct_cards: number; total_quantity: number }
+  portfolio: { portfolios: number; lots: number; distinct_cards: number; total_quantity: number }
   catalog: { cards: number; stale_prices: number; last_full_sync: string | null }
   snapshots: { rows: number; today: number; latest: string | null }
   db_size_bytes: number | null
@@ -444,27 +454,73 @@ export async function scanCard(blob: Blob): Promise<CardPage> {
   return res.json()
 }
 
+// ----- Portfolio management calls (authed) ----------------------------------------
+
+// The user's named portfolios (default first). Always non-empty — the backend
+// creates the default portfolio on first call.
+export async function getPortfolios(): Promise<Portfolio[]> {
+  const res = await authedFetch('/portfolios')
+  if (!res.ok) throw new Error('Failed to fetch portfolios')
+  return res.json()
+}
+
+export async function createPortfolio(name: string): Promise<Portfolio> {
+  const res = await authedFetch('/portfolios', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || "We couldn't create that portfolio. Please try again.")
+  return data as Portfolio
+}
+
+export async function renamePortfolio(id: number, name: string): Promise<void> {
+  const res = await authedFetch(`/portfolios/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.detail || "We couldn't rename that portfolio. Please try again.")
+  }
+}
+
+export async function deletePortfolio(id: number): Promise<void> {
+  const res = await authedFetch(`/portfolios/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.detail || "We couldn't delete that portfolio. Please try again.")
+  }
+}
+
 // ----- Portfolio calls (authed) ---------------------------------------------------
 
-export async function getPortfolio(): Promise<PortfolioCard[]> {
-  const res = await authedFetch('/portfolio')
+// No portfolioId = every lot across all the user's portfolios (what owned.ts's
+// "Owned ×N" badge relies on); a portfolioId scopes to that one collection.
+export async function getPortfolio(portfolioId?: number | null): Promise<PortfolioCard[]> {
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : ''
+  const res = await authedFetch(`/portfolio${qs}`)
   if (!res.ok) throw new Error('Failed to fetch portfolio')
   return res.json()
 }
 
-export async function getPortfolioHistory(): Promise<HistoryPoint[]> {
-  const res = await authedFetch('/portfolio/history')
+export async function getPortfolioHistory(portfolioId?: number | null): Promise<HistoryPoint[]> {
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : ''
+  const res = await authedFetch(`/portfolio/history${qs}`)
   if (!res.ok) throw new Error('Failed to fetch portfolio history')
   return res.json()
 }
 
-// purchase_price null = backend uses the current market price
+// purchase_price null = backend uses the current market price.
+// portfolioId null/omitted = the user's default portfolio.
 // Returns the server message, e.g. "Card added" or "Merged — you now have 3"
-export async function addCard(card_id: string, purchase_price: number | null, quantity: number): Promise<string> {
+export async function addCard(card_id: string, purchase_price: number | null, quantity: number, portfolioId?: number | null): Promise<string> {
   const res = await authedFetch('/portfolio/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ card_id, purchase_price, quantity }),
+    body: JSON.stringify({ card_id, purchase_price, quantity, portfolio_id: portfolioId ?? null }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || "We couldn't add that card. Please try again.")
@@ -490,11 +546,12 @@ export interface BatchAddResult {
 
 // Batch add for the scanner's batch mode: one request for a stack of scanned
 // cards (up to 100). Reports per-item failures rather than failing the whole set.
-export async function addCardBatch(items: BatchAddItem[]): Promise<BatchAddResult> {
+// portfolioId null/omitted = the user's default portfolio.
+export async function addCardBatch(items: BatchAddItem[], portfolioId?: number | null): Promise<BatchAddResult> {
   const res = await authedFetch('/portfolio/add-batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ items, portfolio_id: portfolioId ?? null }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || "We couldn't add those cards. Please try again.")

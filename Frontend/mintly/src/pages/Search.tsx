@@ -11,8 +11,10 @@ import {
 import CardImage from "../components/CardImage";
 import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
+import PortfolioPicker from "../components/PortfolioPicker";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard } from "../hooks";
+import { usePortfolios } from "../portfolios";
 import { getOwnedQty } from "../owned";
 import { money } from "../format";
 import styles from "./Search.module.css";
@@ -103,8 +105,10 @@ export default function Search() {
   const [adding, setAdding] = useState<string | null>(null);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [addTarget, setAddTarget] = useState<number | null>(null);
   const [ownedQty, setOwnedQty] = useState<Map<string, number>>(new Map());
   const { add: addToPortfolio, busy: addBusy, status: addStatus } = useAddCard();
+  const { activeId } = usePortfolios();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // The first search after mount honors the URL's ?page= (so Back from a card
@@ -235,7 +239,7 @@ export default function Search() {
   const removeType = (v: string) => setTypes((p) => p.filter((x) => x !== v));
 
   function handleAdd(card: Card) {
-    addToPortfolio(card.id, purchasePrice, quantity, () => {
+    addToPortfolio(card.id, purchasePrice, quantity, addTarget ?? activeId, () => {
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
@@ -491,6 +495,11 @@ export default function Search() {
                   <StatusMessage ok={status.ok}>{status.msg}</StatusMessage>
                 ) : isAdding ? (
                   <div className={styles.quickAdd}>
+                    <PortfolioPicker
+                      value={addTarget}
+                      onChange={setAddTarget}
+                      label="Add to"
+                    />
                     <PriceQtyForm
                       className={styles.quickAddForm}
                       price={purchasePrice}
@@ -514,6 +523,7 @@ export default function Search() {
                     className={styles.tileBtn}
                     onClick={() => {
                       setAdding(card.id);
+                      setAddTarget(activeId);
                       // Priceless cards can't fall back to a market price on
                       // add — seed the form with the eBay estimate instead
                       if (price == null && est != null) {

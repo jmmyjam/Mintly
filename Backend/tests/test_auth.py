@@ -1,4 +1,4 @@
-from app.models import PortfolioCard
+from app.models import Portfolio, PortfolioCard
 from conftest import TestingSessionLocal, make_card
 
 REGISTER = {"email": "ash@example.com", "username": "ash", "password": "pikachu1",
@@ -228,7 +228,7 @@ class TestDeleteAccount:
         # re-registering the same credentials succeeds — the account is really gone
         assert register(client).status_code == 200
 
-    def test_deletes_portfolio_cards(self, client, auth_headers, upstream):
+    def test_deletes_portfolio_cards_and_portfolios(self, client, auth_headers, upstream):
         upstream.add(make_card("base1-4", "Charizard", price=500.0))
         add = client.post("/portfolio/add",
                           json={"card_id": "base1-4", "quantity": 2},
@@ -236,12 +236,14 @@ class TestDeleteAccount:
         assert add.status_code == 200
         db = TestingSessionLocal()
         assert db.query(PortfolioCard).count() == 1
+        assert db.query(Portfolio).count() == 1  # the auto-created default
         db.close()
 
         client.delete("/auth/me", headers=auth_headers)
 
         db = TestingSessionLocal()
         assert db.query(PortfolioCard).count() == 0
+        assert db.query(Portfolio).count() == 0
         db.close()
 
     def test_only_deletes_own_account(self, client, auth_headers, second_auth_headers):

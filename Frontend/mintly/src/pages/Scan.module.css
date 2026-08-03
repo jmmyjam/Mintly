@@ -604,6 +604,12 @@
   gap: 8px;
 }
 
+/* The portfolio target chooser sits on its own line above the price/qty row
+   (only shows with 2+ portfolios). */
+.bestPortfolio {
+  flex-basis: 100%;
+}
+
 .bestPriceInput,
 .bestQtyInput {
   background: #191a1c;

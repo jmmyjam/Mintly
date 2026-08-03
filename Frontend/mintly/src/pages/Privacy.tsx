@@ -10,7 +10,8 @@ export default function Privacy() {
         version of your password (never the password itself), and the time you
         accepted the Terms of Service. When you use the portfolio we store the
         cards you add: card id, name, quantity, purchase price, and purchase
-        date. To protect against abuse (such as password-guessing), our servers
+        date, along with the names of any portfolios you create to organize
+        them. To protect against abuse (such as password-guessing), our servers
         also keep a short-lived, in-memory count of recent requests per network
         address; these counts are not stored durably or linked to your account.
         If you request a password reset, we store a hashed, single-use reset

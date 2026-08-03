@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 
 from app.database import get_db
-from app.models import PortfolioCard, CardPriceSnapshot
+from app.models import Portfolio, PortfolioCard, CardPriceSnapshot
 from app.routers.auth import get_current_user
 from app.services import card_catalog, tcgcsv
 from app.services.price_history import (
@@ -57,17 +57,32 @@ class AddCardRequest(BaseModel):
     # None = stamp the lot with now (the column default). Set only by CSV import,
     # so a Mintly-exported backup restores each lot's original purchase date.
     purchase_date: datetime | None = None
+    # Which portfolio to add to; None = the user's default portfolio. On batch add
+    # the target lives on AddBatchRequest, so per-item values here are ignored.
+    portfolio_id: int | None = None
 
 
 class AddBatchRequest(BaseModel):
     # Camera scanner's batch mode: one "Add all" for a stack of scanned cards.
     # Capped so a single request can't queue unbounded work.
     items: list[AddCardRequest] = Field(..., min_length=1, max_length=100)
+    # One target portfolio for the whole batch; None = the user's default.
+    portfolio_id: int | None = None
 
 
 class UpdateCardRequest(BaseModel):
     purchase_price: float | None = Field(None, ge=0)
     quantity: int | None = Field(None, ge=1)
+
+
+# Portfolio names: trimmed, 1-60 chars. Uniqueness (case-insensitive, per user)
+# is enforced in the route so a clash can return a specific 409.
+class CreatePortfolioRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+
+
+class RenamePortfolioRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
 
 
 # ----- Helpers ----------------------------------------------------------------
@@ -181,7 +196,141 @@ def fetch_prices(card_ids: list[str], db: Session | None = None) -> tuple[dict[s
     return prices, images
 
 
+# ----- Portfolio helpers ------------------------------------------------------
+
+def ensure_default_portfolio(db: Session, user) -> Portfolio:
+    """The user's default portfolio, created on first need. Every user always
+    has at least one portfolio; this is the fallback single-add/batch/import
+    target and covers pre-existing zero-card users the migration didn't backfill."""
+    existing = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id == user.id)
+        .order_by(Portfolio.is_default.desc(), Portfolio.id)
+        .first()
+    )
+    if existing is not None:
+        return existing
+    portfolio = Portfolio(user_id=user.id, name="My Portfolio", is_default=True)
+    db.add(portfolio)
+    db.commit()
+    db.refresh(portfolio)
+    return portfolio
+
+
+def _owned_portfolio(db: Session, user, portfolio_id: int) -> Portfolio:
+    """Fetch a portfolio the user owns, or 404. The ownership guard for every
+    route that takes a portfolio_id from the client."""
+    portfolio = (
+        db.query(Portfolio)
+        .filter(Portfolio.id == portfolio_id, Portfolio.user_id == user.id)
+        .first()
+    )
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    return portfolio
+
+
+def _resolve_target(db: Session, user, portfolio_id: int | None) -> Portfolio:
+    """The portfolio an add should land in: the requested one (ownership-checked)
+    or the user's default when none was given."""
+    if portfolio_id is not None:
+        return _owned_portfolio(db, user, portfolio_id)
+    return ensure_default_portfolio(db, user)
+
+
+def _name_taken(db: Session, user, name: str, exclude_id: int | None = None) -> bool:
+    """Case-insensitive name clash within the user's own portfolios."""
+    q = db.query(Portfolio).filter(
+        Portfolio.user_id == user.id,
+        func.lower(Portfolio.name) == name.lower(),
+    )
+    if exclude_id is not None:
+        q = q.filter(Portfolio.id != exclude_id)
+    return db.query(q.exists()).scalar()
+
+
 # ----- Routes ----------------------------------------------------------------
+
+@router.get("/portfolios")
+def list_portfolios(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """The user's portfolios (default first, then oldest), each with its lot
+    count. Creates the default portfolio on first call so the list is never empty."""
+    ensure_default_portfolio(db, current_user)
+    counts = dict(
+        db.query(PortfolioCard.portfolio_id, func.count(PortfolioCard.id))
+        .filter(PortfolioCard.user_id == current_user.id)
+        .group_by(PortfolioCard.portfolio_id)
+        .all()
+    )
+    portfolios = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id == current_user.id)
+        .order_by(Portfolio.is_default.desc(), Portfolio.id)
+        .all()
+    )
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "is_default": p.is_default,
+            "created_at": p.created_at,
+            "card_count": counts.get(p.id, 0),
+        }
+        for p in portfolios
+    ]
+
+
+@router.post("/portfolios")
+def create_portfolio(body: CreatePortfolioRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Portfolio name can't be empty")
+    # Make sure the default exists so the first user-made portfolio is never the
+    # only one (delete-the-last is blocked below).
+    ensure_default_portfolio(db, current_user)
+    if _name_taken(db, current_user, name):
+        raise HTTPException(status_code=409, detail="You already have a portfolio with that name")
+    portfolio = Portfolio(user_id=current_user.id, name=name, is_default=False)
+    db.add(portfolio)
+    db.commit()
+    db.refresh(portfolio)
+    return {
+        "id": portfolio.id,
+        "name": portfolio.name,
+        "is_default": portfolio.is_default,
+        "created_at": portfolio.created_at,
+        "card_count": 0,
+    }
+
+
+@router.patch("/portfolios/{portfolio_id}")
+def rename_portfolio(portfolio_id: int, body: RenamePortfolioRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    portfolio = _owned_portfolio(db, current_user, portfolio_id)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Portfolio name can't be empty")
+    if _name_taken(db, current_user, name, exclude_id=portfolio.id):
+        raise HTTPException(status_code=409, detail="You already have a portfolio with that name")
+    portfolio.name = name
+    db.commit()
+    return {"message": "Portfolio renamed"}
+
+
+@router.delete("/portfolios/{portfolio_id}")
+def delete_portfolio(portfolio_id: int, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    portfolio = _owned_portfolio(db, current_user, portfolio_id)
+    total = db.query(func.count(Portfolio.id)).filter(Portfolio.user_id == current_user.id).scalar()
+    if total <= 1:
+        raise HTTPException(status_code=400, detail="You can't delete your only portfolio")
+    # Deleting a portfolio deletes the lots it holds (there's no FK cascade).
+    db.query(PortfolioCard).filter(
+        PortfolioCard.portfolio_id == portfolio.id,
+        PortfolioCard.user_id == current_user.id,
+    ).delete(synchronize_session=False)
+    db.delete(portfolio)
+    db.commit()
+    return {"message": "Portfolio deleted"}
+
 
 @router.post("/portfolio/add")
 def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -217,8 +366,10 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         if purchase_price is None:
             raise HTTPException(status_code=400, detail="No market price available for this card. Enter a purchase price.")
 
+    target = _resolve_target(db, current_user, body.portfolio_id)
     card = PortfolioCard(
         user_id=current_user.id,
+        portfolio_id=target.id,
         card_id=body.card_id,
         card_name=card_name,
         purchase_price=purchase_price,
@@ -233,6 +384,7 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
     db.refresh(card)
     total = db.query(func.sum(PortfolioCard.quantity)).filter(
         PortfolioCard.user_id == current_user.id,
+        PortfolioCard.portfolio_id == target.id,
         PortfolioCard.card_id == body.card_id,
     ).scalar()
     if total > body.quantity:
@@ -247,6 +399,7 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
     GET per card) and any auto-priced items (no purchase_price given) are filled
     from ONE batched `fetch_prices` pass. A per-item failure is reported, not
     fatal, so one bad id doesn't sink the rest of the batch."""
+    target = _resolve_target(db, current_user, body.portfolio_id)
     rows = card_catalog.get_cards(db, [item.card_id for item in body.items])
 
     # Resolve market price for the auto-priced items in one freshest-first pass
@@ -271,6 +424,7 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
                 continue
         card = PortfolioCard(
             user_id=current_user.id,
+            portfolio_id=target.id,
             card_id=item.card_id,
             card_name=card_catalog.card_payload(row).get("name", "Unknown"),
             purchase_price=purchase_price,
@@ -295,8 +449,18 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
 
 
 @router.get("/portfolio")
-def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    cards = db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).all()
+def get_portfolio(
+    portfolio_id: int | None = Query(None),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # No portfolio_id = all of the user's lots across every portfolio (what the
+    # owned-badge cache relies on); a portfolio_id scopes to that one collection.
+    query = db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id)
+    if portfolio_id is not None:
+        _owned_portfolio(db, current_user, portfolio_id)
+        query = query.filter(PortfolioCard.portfolio_id == portfolio_id)
+    cards = query.all()
 
     prices, images = fetch_prices([c.card_id for c in cards], db)
     record_snapshots(db, prices)
@@ -330,8 +494,16 @@ def get_portfolio(current_user=Depends(get_current_user), db: Session = Depends(
 
 
 @router.get("/portfolio/history")
-def get_portfolio_history(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    cards = db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id).all()
+def get_portfolio_history(
+    portfolio_id: int | None = Query(None),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = db.query(PortfolioCard).filter(PortfolioCard.user_id == current_user.id)
+    if portfolio_id is not None:
+        _owned_portfolio(db, current_user, portfolio_id)
+        query = query.filter(PortfolioCard.portfolio_id == portfolio_id)
+    cards = query.all()
     if not cards:
         return []
 

@@ -178,6 +178,7 @@ export default function Admin() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Portfolios</h2>
         <div className={styles.tileGrid}>
+          <StatTile label="Portfolios" value={num(stats.portfolio.portfolios)} sub="named collections" />
           <StatTile label="Lots" value={num(stats.portfolio.lots)} sub="one row per purchase" />
           <StatTile label="Distinct cards held" value={num(stats.portfolio.distinct_cards)} />
           <StatTile label="Total cards held" value={num(stats.portfolio.total_quantity)} sub="sum of quantities" />

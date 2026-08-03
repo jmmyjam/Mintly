@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index, JSON, LargeBinary
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, LargeBinary
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 
@@ -32,6 +32,7 @@ class User(Base):
     # as tv=0 (the default), so it stays valid until the first bump.
     token_version = Column(Integer, nullable=False, default=0, server_default="0")
     portfolio = relationship("PortfolioCard", back_populates="owner")
+    portfolios = relationship("Portfolio", back_populates="owner")
 
 class PasswordResetToken(Base):
     # A pending "forgot password" link. Only the sha256 of the emailed token is
@@ -62,16 +63,36 @@ class EmailVerificationToken(Base):
     used_at = Column(DateTime, nullable=True)
 
 
+class Portfolio(Base):
+    # A user's named collection. One user has one or more; the auto-created
+    # "My Portfolio" (is_default=True) is the fallback so every user always has
+    # at least one to hold cards in — the last portfolio can't be deleted.
+    # Cards belong to exactly one portfolio (PortfolioCard.portfolio_id); the
+    # price/snapshot pipeline is card_id-keyed and portfolio-agnostic.
+    __tablename__ = "portfolios"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    name = Column(String)
+    is_default = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_at = Column(DateTime, default=utcnow)
+    owner = relationship("User", back_populates="portfolios")
+    cards = relationship("PortfolioCard", back_populates="portfolio")
+
+
 class PortfolioCard(Base):
     __tablename__ = "portfolio_cards"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)  # every portfolio query filters on it
+    # Which named portfolio this lot lives in. NOT NULL — a lot always has a home
+    # (the add flow resolves the target portfolio, defaulting to the user's default).
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), index=True, nullable=False)
     card_id = Column(String)          # e.g. "base1-4" from Pokemon TCG API
     card_name = Column(String)
     quantity = Column(Integer, default=1)
     purchase_price = Column(Float)    # price paid per card
     purchase_date = Column(DateTime, default=utcnow)
     owner = relationship("User", back_populates="portfolio")
+    portfolio = relationship("Portfolio", back_populates="cards")
 
 class CatalogCard(Base):
     # Local mirror of the upstream card list, so browsing is answered from the

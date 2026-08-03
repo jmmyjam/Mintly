@@ -102,6 +102,11 @@
   margin: 0 0 10px;
 }
 
+/* the portfolio target chooser above the add form (only shows with 2+ portfolios) */
+.buy-portfolio {
+  margin-bottom: 10px;
+}
+
 /* the shared PriceQtyForm rendered inside the buy box (this class replaces the
    form's default .add-form, so it owns the flex layout too) */
 .buy-form {

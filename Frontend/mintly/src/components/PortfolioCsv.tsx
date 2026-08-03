@@ -17,7 +17,7 @@ type ImportResult = { added: number; failed: { card_id: string; reason: string }
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + 's'}`
 
-export default function PortfolioCsv({ cards, onImported }: { cards: PortfolioCard[]; onImported: () => void }) {
+export default function PortfolioCsv({ cards, onImported, portfolioId }: { cards: PortfolioCard[]; onImported: () => void; portfolioId?: number | null }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [parsed, setParsed] = useState<ParsedPortfolioCsv | null>(null)
@@ -104,7 +104,7 @@ export default function PortfolioCsv({ cards, onImported }: { cards: PortfolioCa
       let added = 0
       const failed: ImportResult['failed'] = []
       for (let i = 0; i < parsed.items.length; i += CHUNK) {
-        const res = await addCardBatch(parsed.items.slice(i, i + CHUNK) as BatchAddItem[])
+        const res = await addCardBatch(parsed.items.slice(i, i + CHUNK) as BatchAddItem[], portfolioId)
         added += res.added
         failed.push(...res.failed)
       }

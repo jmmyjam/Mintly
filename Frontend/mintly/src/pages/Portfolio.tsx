@@ -7,8 +7,10 @@ import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
 import PortfolioCsv from '../components/PortfolioCsv'
+import PortfolioSelector from '../components/PortfolioSelector'
 import SignedOutHero from '../components/SignedOutHero'
 import { useSessionRedirect } from '../hooks'
+import { usePortfolios } from '../portfolios'
 import { money, signedMoney } from '../format'
 import { groupByCard, groupMetrics, localISODate, formatChartDate } from '../portfolio'
 import styles from './Portfolio.module.css'
@@ -30,10 +32,22 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 const RANGES: Range[] = ['1M', '6M', '1Y', 'All']
 const RANGE_DAYS: Record<Range, number | null> = { '1M': 30, '6M': 180, '1Y': 365, All: null }
 
+// Outer component: resolves which portfolio is active (from the store) and keys
+// the view to it, so switching portfolios remounts with fresh state — no
+// synchronous setState in an effect (same pattern as Holding.tsx).
 export default function Portfolio() {
+  const { activeId, loaded } = usePortfolios()
+
+  if (!getToken()) return <SignedOutHero variant="portfolio" />
+  if (!loaded || activeId == null) return <PageMessage><p>Loading portfolio...</p></PageMessage>
+
+  return <PortfolioView key={activeId} portfolioId={activeId} />
+}
+
+function PortfolioView({ portfolioId }: { portfolioId: number }) {
   const [cards, setCards] = useState<PortfolioCard[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
-  const [loading, setLoading] = useState(() => !!getToken())
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('recent')
   const [nameFilter, setNameFilter] = useState('')
@@ -46,15 +60,15 @@ export default function Portfolio() {
   // The token is already cleared by authedFetch — send the user back to login
   const redirectToLogin = useSessionRedirect()
 
-  // Load (and reload, after a CSV import) the portfolio + its value history.
+  // Load (and reload, after a CSV import) the active portfolio + its value history.
   function reload() {
-    return getPortfolio()
+    return getPortfolio(portfolioId)
       .then(loaded => {
         // show the portfolio immediately; the chart fills in when history arrives
         setCards(loaded)
         setLoading(false)
         // fetch after the portfolio loads so today's snapshot is included
-        return getPortfolioHistory().then(setHistory).catch(() => {})
+        return getPortfolioHistory(portfolioId).then(setHistory).catch(() => {})
       })
       .catch(err => {
         if (err instanceof SessionExpiredError) {
@@ -71,17 +85,53 @@ export default function Portfolio() {
   }
 
   useEffect(() => {
-    if (!getToken()) return
     reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (!getToken()) {
-    return <SignedOutHero variant="portfolio" />
+  // Header (selector + CSV) stays put through loading/error/empty so the switcher
+  // is always reachable.
+  const header = (
+    <div className={styles.header}>
+      <PortfolioSelector />
+      <div className={styles.headerCsv}>
+        <PortfolioCsv cards={cards} onImported={reload} portfolioId={portfolioId} />
+      </div>
+    </div>
+  )
+
+  if (loading) {
+    return (
+      <div className="page">
+        <h1 className={styles.srOnly}>My Portfolio</h1>
+        {header}
+        <div className="centered"><p>Loading portfolio...</p></div>
+      </div>
+    )
   }
 
-  if (loading) return <PageMessage><p>Loading portfolio...</p></PageMessage>
-  if (error) return <PageMessage><p className="error">{error}</p></PageMessage>
+  if (error) {
+    return (
+      <div className="page">
+        <h1 className={styles.srOnly}>My Portfolio</h1>
+        {header}
+        <div className="centered"><p className="error">{error}</p></div>
+      </div>
+    )
+  }
+
+  if (cards.length === 0) {
+    return (
+      <div className="page">
+        <h1 className={styles.srOnly}>My Portfolio</h1>
+        {header}
+        <div className="centered">
+          <p>No cards in this portfolio yet.</p>
+          <Link to="/search" className="btn-primary" style={{ marginTop: '16px' }}>Search Cards</Link>
+        </div>
+      </div>
+    )
+  }
 
   // ----- Portfolio-wide figures (always the full portfolio, not the filtered view)
   const totalValue = cards.reduce((sum, c) => sum + (c.current_price ?? c.purchase_price) * c.quantity, 0)
@@ -155,25 +205,10 @@ export default function Portfolio() {
   const [dollars, cents] = money(totalValue).split('.')
   const gainDir = totalGainLoss > 0 ? 'positive' : totalGainLoss < 0 ? 'negative' : 'flat'
 
-  if (cards.length === 0) {
-    return (
-      <div className="page">
-        <h1>My Portfolio</h1>
-        {/* Import is reachable with an empty portfolio so a collection can be seeded
-            from a CSV; Export is disabled until there's something to export. */}
-        <PortfolioCsv cards={cards} onImported={reload} />
-        <div className="centered">
-          <p>No cards yet.</p>
-          <Link to="/search" className="btn-primary" style={{ marginTop: '16px' }}>Search Cards</Link>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="page">
       <h1 className={styles.srOnly}>My Portfolio</h1>
-      <PortfolioCsv cards={cards} onImported={reload} />
+      {header}
 
       {/* ---- Hero panel: value + all-time change + stat grid (left), chart (right) */}
       <section className={styles.hero}>

@@ -6,6 +6,7 @@ import {
   CONNECTION_ERROR, errorMessage, SessionExpiredError, type UserProfile,
 } from '../api'
 import { useSessionRedirect } from '../hooks'
+import { clearPortfolios } from '../portfolios'
 import AccessibilitySettings from '../components/AccessibilitySettings'
 import DeleteAccount from '../components/DeleteAccount'
 import PageMessage from '../components/PageMessage'
@@ -263,6 +264,7 @@ export default function Profile() {
   // Logout now lives here (moved off the nav bar), matching the Navbar's old flow
   function handleLogout() {
     clearToken()
+    clearPortfolios() // drop the cached list + active selection for the next account
     navigate('/login', { state: { notice: "You've been logged out successfully." } })
   }
 

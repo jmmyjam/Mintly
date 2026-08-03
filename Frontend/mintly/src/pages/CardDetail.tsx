@@ -10,9 +10,11 @@ import DayChange from '../components/DayChange'
 import PageMessage from '../components/PageMessage'
 import PriceHistoryChart from '../components/PriceHistoryChart'
 import PriceQtyForm from '../components/PriceQtyForm'
+import PortfolioPicker from '../components/PortfolioPicker'
 import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
+import { usePortfolios } from '../portfolios'
 import { tcgplayerBuyLink, ebayBuyLink } from '../affiliate'
 import { money } from '../format'
 import { PRICE_PREFERENCE, mergeHeadline, variantLabel } from '../variants'
@@ -61,6 +63,7 @@ export default function CardDetail() {
   const [error, setError] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [quantity, setQuantity] = useState('1')
+  const [addTarget, setAddTarget] = useState<number | null>(null)
   const [ebay, setEbay] = useState<Estimate | null>(null)
   const [history, setHistory] = useState<CardHistory | null>(null)
   // Other cards sharing this card's set + number: the base card plus its
@@ -68,6 +71,7 @@ export default function CardDetail() {
   // you jump between them since each is its own searchable card.
   const [versions, setVersions] = useState<Card[]>([])
   const { add, busy: addBusy, status: addStatus } = useAddCard()
+  const { activeId } = usePortfolios()
 
   // Stable identity so the chart's fetch effect doesn't re-run per render
   const handleHistory = useCallback((h: CardHistory) => setHistory(h), [])
@@ -297,18 +301,26 @@ export default function CardDetail() {
             {addStatus ? (
               <StatusMessage ok={addStatus.ok}>{addStatus.msg}</StatusMessage>
             ) : (
-              <PriceQtyForm
-                className={styles.buyForm}
-                labeled
-                price={purchasePrice}
-                quantity={quantity}
-                onPriceChange={setPurchasePrice}
-                onQuantityChange={setQuantity}
-                onSubmit={() => add(card.id, purchasePrice, quantity)}
-                submitLabel="+ Add to Portfolio"
-                busyLabel="Adding..."
-                busy={addBusy}
-              />
+              <>
+                <PortfolioPicker
+                  value={addTarget}
+                  onChange={setAddTarget}
+                  label="Add to"
+                  className={styles.buyPortfolio}
+                />
+                <PriceQtyForm
+                  className={styles.buyForm}
+                  labeled
+                  price={purchasePrice}
+                  quantity={quantity}
+                  onPriceChange={setPurchasePrice}
+                  onQuantityChange={setQuantity}
+                  onSubmit={() => add(card.id, purchasePrice, quantity, addTarget ?? activeId)}
+                  submitLabel="+ Add to Portfolio"
+                  busyLabel="Adding..."
+                  busy={addBusy}
+                />
+              </>
             )}
             <div className={styles.buyOutbound}>
               <div className={styles.buyLinks}>

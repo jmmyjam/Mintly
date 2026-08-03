@@ -65,7 +65,8 @@ def test_stats_counts(client, auth_headers, second_auth_headers, upstream, monke
         "total": 2, "new_7d": 2, "new_30d": 2, "with_portfolio": 1,
     }
     assert body["portfolio"] == {
-        "lots": 2, "distinct_cards": 2, "total_quantity": 3,
+        # ash's first add auto-creates a default portfolio; gary has none
+        "portfolios": 1, "lots": 2, "distinct_cards": 2, "total_quantity": 3,
     }
     # newest first; lot counts ride along
     lots_by_name = {u["username"]: u["lots"] for u in body["recent_users"]}

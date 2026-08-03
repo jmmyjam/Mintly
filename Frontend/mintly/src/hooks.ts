@@ -25,7 +25,7 @@ export function useAddCard() {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<AddCardStatus | null>(null)
 
-  async function add(cardId: string, priceInput: string, qtyInput: string, onSuccess?: () => void) {
+  async function add(cardId: string, priceInput: string, qtyInput: string, portfolioId?: number | null, onSuccess?: () => void) {
     if (!getToken()) {
       navigate('/login')
       return
@@ -34,7 +34,7 @@ export function useAddCard() {
     setBusy(true)
     try {
       const price = parseFloat(priceInput)
-      const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1)
+      const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1, portfolioId)
       // The portfolio changed — drop the owned-qty cache so Search re-badges
       invalidateOwned()
       onSuccess?.()

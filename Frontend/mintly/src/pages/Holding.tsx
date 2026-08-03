@@ -13,6 +13,7 @@ import PriceQtyForm from '../components/PriceQtyForm'
 import SignedOutHero from '../components/SignedOutHero'
 import StatusMessage from '../components/StatusMessage'
 import { useAddCard, useSessionRedirect } from '../hooks'
+import { usePortfolios } from '../portfolios'
 import { money, signedMoney } from '../format'
 import { groupByCard, groupMetrics, formatLotDate, lotISODate, parseUTCDate } from '../portfolio'
 import styles from './Holding.module.css'
@@ -54,10 +55,13 @@ function HoldingInner({ cardId }: { cardId: string }) {
   const [addPrice, setAddPrice] = useState('')
   const [addQty, setAddQty] = useState('1')
   const { add, busy: addBusy, status: addStatus } = useAddCard()
+  // Scope this holding to the active portfolio — you reach it from a portfolio's
+  // grid, so the position, purchases, and prev/next pager reflect that portfolio.
+  const { activeId } = usePortfolios()
 
   useEffect(() => {
     let cancelled = false
-    getPortfolio()
+    getPortfolio(activeId)
       .then(all => {
         if (cancelled) return
         setLots(all.filter(c => c.card_id === cardId))
@@ -74,7 +78,7 @@ function HoldingInner({ cardId }: { cardId: string }) {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardId])
+  }, [cardId, activeId])
 
   // Left / right arrow keys page between holdings (ignored while typing)
   useEffect(() => {
@@ -92,7 +96,7 @@ function HoldingInner({ cardId }: { cardId: string }) {
   }, [order, cardId, navigate])
 
   function refetchLots() {
-    getPortfolio()
+    getPortfolio(activeId)
       .then(all => { setLots(all.filter(c => c.card_id === cardId)); setOrder(orderedCardIds(all)) })
       .catch(() => {})
   }
@@ -344,7 +348,7 @@ function HoldingInner({ cardId }: { cardId: string }) {
                     quantity={addQty}
                     onPriceChange={setAddPrice}
                     onQuantityChange={setAddQty}
-                    onSubmit={() => add(cardId, addPrice, addQty, refetchLots)}
+                    onSubmit={() => add(cardId, addPrice, addQty, activeId, refetchLots)}
                     submitLabel="Add purchase"
                     busyLabel="Adding..."
                     busy={addBusy}

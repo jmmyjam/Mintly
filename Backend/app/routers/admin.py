@@ -17,6 +17,7 @@ from app.models import (
     CardPriceSnapshot,
     CatalogCard,
     CatalogMeta,
+    Portfolio,
     PortfolioCard,
     User,
     utcnow,
@@ -110,6 +111,7 @@ def admin_stats(admin: User = Depends(get_admin_user),
         func.count(func.distinct(PortfolioCard.card_id)),
         func.coalesce(func.sum(PortfolioCard.quantity), 0),
     ).one()
+    total_portfolios = db.query(func.count(Portfolio.id)).scalar() or 0
 
     # ----- Catalog & price history -------------------------------------------
     catalog_cards = db.query(func.count(CatalogCard.card_id)).scalar() or 0
@@ -152,6 +154,7 @@ def admin_stats(admin: User = Depends(get_admin_user),
         "signups_by_day": signups_by_day,
         "recent_users": recent_users,
         "portfolio": {
+            "portfolios": total_portfolios,
             "lots": total_lots,
             "distinct_cards": distinct_cards,
             "total_quantity": int(total_quantity),
