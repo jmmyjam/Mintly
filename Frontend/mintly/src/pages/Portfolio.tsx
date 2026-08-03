@@ -6,6 +6,7 @@ import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
+import PortfolioCsv from '../components/PortfolioCsv'
 import SignedOutHero from '../components/SignedOutHero'
 import { useSessionRedirect } from '../hooks'
 import { money, signedMoney } from '../format'
@@ -45,9 +46,9 @@ export default function Portfolio() {
   // The token is already cleared by authedFetch — send the user back to login
   const redirectToLogin = useSessionRedirect()
 
-  useEffect(() => {
-    if (!getToken()) return
-    getPortfolio()
+  // Load (and reload, after a CSV import) the portfolio + its value history.
+  function reload() {
+    return getPortfolio()
       .then(loaded => {
         // show the portfolio immediately; the chart fills in when history arrives
         setCards(loaded)
@@ -67,6 +68,11 @@ export default function Portfolio() {
         )
         setLoading(false)
       })
+  }
+
+  useEffect(() => {
+    if (!getToken()) return
+    reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -153,6 +159,9 @@ export default function Portfolio() {
     return (
       <div className="page">
         <h1>My Portfolio</h1>
+        {/* Import is reachable with an empty portfolio so a collection can be seeded
+            from a CSV; Export is disabled until there's something to export. */}
+        <PortfolioCsv cards={cards} onImported={reload} />
         <div className="centered">
           <p>No cards yet.</p>
           <Link to="/search" className="btn-primary" style={{ marginTop: '16px' }}>Search Cards</Link>
@@ -164,6 +173,7 @@ export default function Portfolio() {
   return (
     <div className="page">
       <h1 className={styles.srOnly}>My Portfolio</h1>
+      <PortfolioCsv cards={cards} onImported={reload} />
 
       {/* ---- Hero panel: value + all-time change + stat grid (left), chart (right) */}
       <section className={styles.hero}>

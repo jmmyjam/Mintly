@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-from datetime import date
+from datetime import date, datetime
 import time
 import requests
 import certifi
@@ -54,6 +54,9 @@ class AddCardRequest(BaseModel):
     card_id: str
     purchase_price: float | None = Field(None, ge=0)  # None = use current market price
     quantity: int = Field(1, ge=1)
+    # None = stamp the lot with now (the column default). Set only by CSV import,
+    # so a Mintly-exported backup restores each lot's original purchase date.
+    purchase_date: datetime | None = None
 
 
 class AddBatchRequest(BaseModel):
@@ -221,6 +224,10 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         purchase_price=purchase_price,
         quantity=body.quantity,
     )
+    # Set the date only when supplied — passing None would write NULL and suppress
+    # the column's default=utcnow.
+    if body.purchase_date is not None:
+        card.purchase_date = body.purchase_date
     db.add(card)
     db.commit()
     db.refresh(card)
@@ -262,13 +269,17 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
             if purchase_price is None:
                 failed.append({"card_id": item.card_id, "reason": "No market price available"})
                 continue
-        to_add.append(PortfolioCard(
+        card = PortfolioCard(
             user_id=current_user.id,
             card_id=item.card_id,
             card_name=card_catalog.card_payload(row).get("name", "Unknown"),
             purchase_price=purchase_price,
             quantity=item.quantity,
-        ))
+        )
+        # Preserve an imported lot's original date; None keeps the default=utcnow.
+        if item.purchase_date is not None:
+            card.purchase_date = item.purchase_date
+        to_add.append(card)
 
     for card in to_add:
         db.add(card)

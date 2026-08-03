@@ -471,11 +471,14 @@ export async function addCard(card_id: string, purchase_price: number | null, qu
   return data.message || 'Added to portfolio!'
 }
 
-// One item in a batch add: card_id, purchase_price (null = market price), quantity
+// One item in a batch add: card_id, purchase_price (null = market price), quantity.
+// purchase_date is optional and only sent by CSV import (backup/restore) — omit it
+// and the backend stamps the lot with the current date.
 export interface BatchAddItem {
   card_id: string
   purchase_price: number | null
   quantity: number
+  purchase_date?: string | null
 }
 
 // Result of a batch add: how many landed, which items failed and why, and a message

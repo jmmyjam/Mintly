@@ -73,6 +73,20 @@ class TestAdd:
         # one row per lot — prices are never merged or averaged
         assert sorted(r["purchase_price"] for r in rows) == [100.0, 200.0]
 
+    def test_explicit_purchase_date_is_preserved(self, client, auth_headers, upstream):
+        # CSV import (backup/restore) sends the lot's original date
+        upstream.add(make_card("base1-4", price=500.0))
+        add(client, auth_headers, purchase_price=350.0, purchase_date="2021-03-04T00:00:00")
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["purchase_date"].startswith("2021-03-04")
+
+    def test_omitted_purchase_date_defaults_to_now(self, client, auth_headers, upstream):
+        # No date -> the column's default=utcnow fires (not NULL)
+        upstream.add(make_card("base1-4", price=500.0))
+        add(client, auth_headers, purchase_price=1.0)
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["purchase_date"] is not None
+
 
 class TestAddBatch:
     """Batch add for the scanner's batch mode. Scanned ids are catalog rows, so
@@ -129,6 +143,18 @@ class TestAddBatch:
         seed_catalog_card(make_card("base1-4", "Charizard", price=500.0))
         self.batch(client, auth_headers, [{"card_id": "base1-4", "purchase_price": 10.0}])
         assert client.get("/portfolio", headers=second_auth_headers).json() == []
+
+    def test_preserves_purchase_date_and_defaults_when_omitted(self, client, auth_headers):
+        # CSV import round-trip: a dated lot keeps its date; an undated one defaults to now
+        seed_catalog_card(make_card("base1-4", "Charizard", price=500.0))
+        self.batch(client, auth_headers, [
+            {"card_id": "base1-4", "purchase_price": 10.0, "purchase_date": "2019-11-08T00:00:00"},
+            {"card_id": "base1-4", "purchase_price": 20.0},
+        ])
+        rows = client.get("/portfolio", headers=auth_headers).json()
+        by_price = {r["purchase_price"]: r for r in rows}
+        assert by_price[10.0]["purchase_date"].startswith("2019-11-08")
+        assert by_price[20.0]["purchase_date"] is not None
 
 
 class TestGetPortfolio:
