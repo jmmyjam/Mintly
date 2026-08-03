@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: July 25, 2026</p>
+      <p className="legal-updated">Last updated: August 3, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -14,16 +14,19 @@ export default function Privacy() {
         also keep a short-lived, in-memory count of recent requests per network
         address; these counts are not stored durably or linked to your account.
         If you request a password reset, we store a hashed, single-use reset
-        code that expires after 30 minutes.
+        code that expires after 30 minutes. We also record whether and when you
+        have confirmed your email address, and store a hashed, single-use
+        verification code the same way when a verification email is sent.
       </p>
 
       <h2>2. How it's used</h2>
       <p>
         This data exists solely to run the service: logging you in, showing
         your portfolio, and computing its value over time. Your email address
-        is used only for signing in and for sending a password-reset link when
-        you request one; we don&apos;t send marketing email. We do not sell
-        your data or share it with advertisers.
+        is used only for signing in, for confirming your address with a
+        verification link, and for sending a password-reset link when you
+        request one; we don&apos;t send marketing email. We do not sell your
+        data or share it with advertisers.
       </p>
 
       <h2>3. Cookies and local storage</h2>
@@ -31,7 +34,9 @@ export default function Privacy() {
         Mintly stores a login token in your browser's local storage so you stay
         signed in for up to 7 days, along with your display and accessibility
         preferences (such as reduced motion or larger text), which stay on your
-        device and are never sent to our servers. No third-party tracking
+        device and are never sent to our servers. You can end every active
+        session at any time from your profile page (Sign out of other devices),
+        which invalidates outstanding login tokens. No third-party tracking
         cookies are used on Mintly itself. If you follow an outbound link to
         TCGplayer or eBay, that retailer or its affiliate network may set its
         own cookies after you leave Mintly, governed by their privacy policies.
@@ -56,9 +61,10 @@ export default function Privacy() {
         TCGCSV, a public daily mirror, and may also query recent sold listings
         on eBay to estimate a value. Your account details are never sent to any
         of these services, only the card name, number, or set needed to find
-        results and prices. Password-reset emails are delivered through an
-        email provider, which processes your email address solely to deliver
-        that message. The site itself is served through Cloudflare, which sits
+        results and prices. Account emails (the password-reset link and the
+        email-verification link) are delivered through an email provider, which
+        processes your email address solely to deliver those messages. The site
+        itself is served through Cloudflare, which sits
         between your browser and our server to route traffic securely and
         protect against attacks; to do this it processes connection metadata
         such as your IP address, subject to its own privacy policy. Some

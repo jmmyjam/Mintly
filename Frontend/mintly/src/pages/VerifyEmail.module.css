@@ -1,0 +1,38 @@
+/* Email verification landing — a single centered card matching the reset page */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: clamp(28px, 3vw, 40px);
+  width: 100%;
+  max-width: 440px;
+  text-align: left;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 150%;
+  margin: 0 0 24px;
+}
+
+.note {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 150%;
+  margin: 0;
+}
+
+.back-row {
+  margin: 20px 0 0;
+  font-size: 13px;
+}

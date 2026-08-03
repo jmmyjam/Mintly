@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  getMe, updateProfile, changePassword, getToken, clearToken,
+  getMe, updateProfile, changePassword, resendVerification, signOutOtherDevices,
+  getToken, clearToken,
   CONNECTION_ERROR, errorMessage, SessionExpiredError, type UserProfile,
 } from '../api'
 import { useSessionRedirect } from '../hooks'
@@ -103,12 +104,20 @@ export default function Profile() {
   const [savingInfo, setSavingInfo] = useState(false)
   const [infoStatus, setInfoStatus] = useState<Status>(null)
 
+  // Email verification (resend)
+  const [resending, setResending] = useState(false)
+  const [verifyStatus, setVerifyStatus] = useState<Status>(null)
+
   // Change-password form
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [savingPw, setSavingPw] = useState(false)
   const [pwStatus, setPwStatus] = useState<Status>(null)
+
+  // Sign out of other devices
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutStatus, setSignOutStatus] = useState<Status>(null)
 
   // Which rail item is highlighted (driven by scroll position)
   const [activeSection, setActiveSection] = useState('account')
@@ -215,6 +224,40 @@ export default function Profile() {
   function flashPw(ok: boolean, text: string) {
     setPwStatus({ ok, text })
     setTimeout(() => setPwStatus(null), 4000)
+  }
+
+  async function resend() {
+    if (resending) return
+    setResending(true)
+    setVerifyStatus(null)
+    try {
+      const msg = await resendVerification()
+      setVerifyStatus({ ok: true, text: msg })
+      setTimeout(() => setVerifyStatus(null), 6000)
+    } catch (err) {
+      if (err instanceof SessionExpiredError) { redirectToLogin(); return }
+      setVerifyStatus({ ok: false, text: errorMessage(err, "We couldn't send the email. Please try again.") })
+      setTimeout(() => setVerifyStatus(null), 6000)
+    } finally {
+      setResending(false)
+    }
+  }
+
+  async function signOutOthers() {
+    if (signingOut) return
+    setSigningOut(true)
+    setSignOutStatus(null)
+    try {
+      const msg = await signOutOtherDevices()
+      setSignOutStatus({ ok: true, text: msg })
+      setTimeout(() => setSignOutStatus(null), 4000)
+    } catch (err) {
+      if (err instanceof SessionExpiredError) { redirectToLogin(); return }
+      setSignOutStatus({ ok: false, text: errorMessage(err, "We couldn't sign out your other devices. Please try again.") })
+      setTimeout(() => setSignOutStatus(null), 4000)
+    } finally {
+      setSigningOut(false)
+    }
   }
 
   // Logout now lives here (moved off the nav bar), matching the Navbar's old flow
@@ -328,6 +371,28 @@ export default function Profile() {
                 )}
               </div>
             </form>
+            {/* Email verification state + resend (verification is soft — the
+                account works either way, this just confirms the address) */}
+            {profile && (
+              <div className={styles.verifyRow}>
+                {profile.email_verified ? (
+                  <span className={styles.verifiedTag}>Email verified</span>
+                ) : (
+                  <>
+                    <span className={styles.unverifiedTag}>Email not verified</span>
+                    <button
+                      type="button"
+                      className={styles.resendBtn}
+                      onClick={resend}
+                      disabled={resending}
+                    >
+                      {resending ? 'Sending...' : 'Resend verification email'}
+                    </button>
+                  </>
+                )}
+                {verifyStatus && <StatusMessage ok={verifyStatus.ok}>{verifyStatus.text}</StatusMessage>}
+              </div>
+            )}
           </section>
 
           {/* Password */}
@@ -376,6 +441,25 @@ export default function Profile() {
                 {pwStatus && <StatusMessage ok={pwStatus.ok}>{pwStatus.text}</StatusMessage>}
               </div>
             </form>
+            {/* Kill switch for a leaked token: ends every other session but keeps
+                this one (the backend hands back a fresh token for it) */}
+            <div className={styles.securityRow}>
+              <div className={styles.securityText}>
+                <p className={styles.securityLabel}>Sign out of other devices</p>
+                <p className={styles.securityHint}>
+                  Ends every other active session. Use this if you signed in somewhere you don&apos;t recognize.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.headerPill}
+                onClick={signOutOthers}
+                disabled={signingOut}
+              >
+                {signingOut ? 'Signing out...' : 'Sign out others'}
+              </button>
+            </div>
+            {signOutStatus && <StatusMessage ok={signOutStatus.ok}>{signOutStatus.text}</StatusMessage>}
           </section>
 
           {/* Accessibility (the controls are the shared AccessibilitySettings,

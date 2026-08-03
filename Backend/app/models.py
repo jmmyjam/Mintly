@@ -19,6 +19,18 @@ class User(Base):
     # When the user accepted the Terms of Service at registration;
     # nullable because accounts created before the requirement have no record
     accepted_terms_at = Column(DateTime, nullable=True)
+    # When the user confirmed control of their email via a verification link
+    # (NULL = unverified). Verification is *soft*: an unverified user still uses
+    # the app normally — this powers the Profile badge + resend and closes the
+    # "reset goes to a typo'd address" gap. Existing accounts were grandfathered
+    # verified at migration time. Changing the email (PATCH /me) clears it.
+    email_verified_at = Column(DateTime, nullable=True)
+    # Bumped to invalidate every outstanding JWT for this user (sign-out-all,
+    # password change, password reset). The login token carries this value as
+    # its "tv" claim; get_current_user rejects a token whose tv != this. A
+    # legacy token minted before this column existed has no tv claim and is read
+    # as tv=0 (the default), so it stays valid until the first bump.
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
     portfolio = relationship("PortfolioCard", back_populates="owner")
 
 class PasswordResetToken(Base):
@@ -33,6 +45,22 @@ class PasswordResetToken(Base):
     created_at = Column(DateTime, default=utcnow)
     expires_at = Column(DateTime)
     used_at = Column(DateTime, nullable=True)
+
+class EmailVerificationToken(Base):
+    # A pending email-verification link — same shape and handling as
+    # PasswordResetToken: only the sha256 of the emailed token is stored (a DB
+    # leak must not yield working links), single-use (used_at set on consume),
+    # one live row per user (a new send supersedes the old one). Cleared on
+    # account deletion (no FK cascade). Longer-lived than reset links (24h) —
+    # verification isn't as time-sensitive.
+    __tablename__ = "email_verification_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    token_hash = Column(String, unique=True)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime)
+    used_at = Column(DateTime, nullable=True)
+
 
 class PortfolioCard(Base):
     __tablename__ = "portfolio_cards"

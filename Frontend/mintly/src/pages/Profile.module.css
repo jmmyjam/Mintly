@@ -313,6 +313,77 @@
   color: var(--text); /* AA 4.5:1 at 13.5px — "No changes yet" is real content */
 }
 
+/* ----- Email verification row (Account panel) ------------------------------ */
+.verify-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13.5px;
+}
+
+.verified-tag {
+  color: var(--accent);
+  font-weight: 590;
+}
+
+.unverified-tag {
+  color: var(--text); /* real content — keep AA contrast, not a dim gray */
+  font-weight: 590;
+}
+
+.resend-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--accent);
+  text-decoration: underline; /* affordance without relying on color alone */
+  cursor: pointer;
+}
+
+.resend-btn:disabled {
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+/* ----- Sign out of other devices (Password panel) -------------------------- */
+.security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+.security-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.security-label {
+  font-size: 14px;
+  font-weight: 590;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.security-hint {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 150%;
+  margin: 0;
+}
+
 /* The Accessibility panel's controls now live in the shared
    AccessibilitySettings component (and its own CSS module). */
 

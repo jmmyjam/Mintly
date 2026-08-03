@@ -166,10 +166,47 @@ class TestChangePassword:
                           json={"current_password": "pikachu1", "new_password": "newpass123"},
                           headers=auth_headers)
         assert res.status_code == 200
-        assert res.json() == {"message": "Password updated"}
+        body = res.json()
+        assert body["message"] == "Password updated"
+        # a fresh token is returned so THIS device stays logged in...
+        new_headers = {"Authorization": f"Bearer {body['access_token']}"}
+        assert client.get("/auth/me", headers=new_headers).status_code == 200
+        # ...while the token from before the change is now revoked (token_version bumped)
+        assert client.get("/auth/me", headers=auth_headers).status_code == 401
         # old password no longer works, new one does
         assert client.post("/auth/login", data={"username": "ash", "password": "pikachu1"}).status_code == 401
         assert client.post("/auth/login", data={"username": "ash", "password": "newpass123"}).status_code == 200
+
+
+class TestSessionRevocation:
+    """token_version: sign-out-of-all-other-devices kills every outstanding JWT
+    but keeps the calling session alive via a freshly-issued token."""
+
+    def _login(self, client):
+        res = client.post("/auth/login", data={"username": "ash", "password": "pikachu1"})
+        return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+    def test_requires_auth(self, client):
+        assert client.post("/auth/me/sign-out-others").status_code == 401
+
+    def test_keeps_current_revokes_prior_token(self, client, auth_headers):
+        res = client.post("/auth/me/sign-out-others", headers=auth_headers)
+        assert res.status_code == 200
+        fresh = {"Authorization": f"Bearer {res.json()['access_token']}"}
+        # the pre-bump token is dead; the returned one still works
+        assert client.get("/auth/me", headers=auth_headers).status_code == 401
+        assert client.get("/auth/me", headers=fresh).status_code == 200
+
+    def test_kills_every_other_session(self, client, auth_headers):
+        other = self._login(client)  # a second concurrent session for the account
+        assert client.get("/auth/me", headers=other).status_code == 200
+        res = client.post("/auth/me/sign-out-others", headers=auth_headers)
+        fresh = {"Authorization": f"Bearer {res.json()['access_token']}"}
+        # every session that existed before the bump is revoked...
+        assert client.get("/auth/me", headers=auth_headers).status_code == 401
+        assert client.get("/auth/me", headers=other).status_code == 401
+        # ...only the freshly-issued token survives
+        assert client.get("/auth/me", headers=fresh).status_code == 200
 
 
 class TestDeleteAccount:

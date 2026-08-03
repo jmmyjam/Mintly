@@ -140,6 +140,10 @@ export interface UserProfile {
   username: string
   created_at: string
   accepted_terms_at: string | null
+  // True once the user has confirmed their email via a verification link.
+  // Verification is soft (the app works unverified) — this drives the Profile
+  // badge + resend control.
+  email_verified: boolean
   // True when this account is on the backend's ADMIN_EMAILS list — shows the
   // admin-dashboard link on the Profile page
   is_admin: boolean
@@ -289,10 +293,47 @@ export async function changePassword(current_password: string, new_password: str
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current_password, new_password }),
   })
+  const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
     throw new Error(data.detail || "We couldn't change your password. Please try again.")
   }
+  // The backend bumps token_version (revoking every other session) and returns a
+  // fresh token for THIS one — swap it in so changing the password doesn't log
+  // the current tab out.
+  if (data.access_token) setToken(data.access_token)
+}
+
+// Re-send the email-verification link to the current user's address (authed).
+export async function resendVerification(): Promise<string> {
+  const res = await authedFetch('/auth/verify-email/send', { method: 'POST' })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || "We couldn't send the verification email. Please try again.")
+  return data.message
+}
+
+// Confirm an email address with the token from a verification email (unauthed —
+// the link works whether or not the browser opening it is logged in).
+export async function verifyEmail(token: string): Promise<void> {
+  const res = await fetch(`${BASE}/auth/verify-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || "We couldn't verify your email. Please try again.")
+  }
+}
+
+// Sign out of every OTHER device (kills a leaked token). The backend bumps
+// token_version and hands back a fresh token for the current session — store it
+// so we stay signed in here.
+export async function signOutOtherDevices(): Promise<string> {
+  const res = await authedFetch('/auth/me/sign-out-others', { method: 'POST' })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || "We couldn't sign out your other devices. Please try again.")
+  if (data.access_token) setToken(data.access_token)
+  return data.message
 }
 
 // Request a password-reset email. The backend answers identically whether or

@@ -40,6 +40,12 @@ def token_from(messages) -> str:
     return re.search(r"token=([A-Za-z0-9_-]+)", messages[-1]["body"]).group(1)
 
 
+def reset_mails(messages) -> list[dict]:
+    """Just the password-reset emails — registration also fires a verification
+    email into the same capture list."""
+    return [m for m in messages if "/reset-password?token=" in m["body"]]
+
+
 def reset(client, token, new_password="newpass123"):
     return client.post("/auth/reset-password",
                        json={"token": token, "new_password": new_password})
@@ -51,12 +57,14 @@ class TestForgotPassword:
         res = request_reset(client)
         assert res.status_code == 200
         assert res.json() == {"message": GENERIC}
-        assert len(sent) == 1
-        assert sent[0]["to"] == "ash@example.com"
-        assert "/reset-password?token=" in sent[0]["body"]
+        # register also sends a verification email, so filter to the reset one
+        resets = reset_mails(sent)
+        assert len(resets) == 1
+        assert resets[0]["to"] == "ash@example.com"
+        assert "/reset-password?token=" in resets[0]["body"]
         # the HTML alternative carries the same link
-        assert "/reset-password?token=" in sent[0]["html"]
-        assert token_from(sent) in sent[0]["html"]
+        assert "/reset-password?token=" in resets[0]["html"]
+        assert token_from(sent) in resets[0]["html"]
 
     def test_unknown_email_same_response_no_email(self, client, sent):
         register(client)
@@ -65,7 +73,7 @@ class TestForgotPassword:
         # identical bodies — the endpoint must not confirm which emails exist
         assert unknown.status_code == known.status_code == 200
         assert unknown.json() == known.json()
-        assert len(sent) == 1  # only the known address got mail
+        assert len(reset_mails(sent)) == 1  # only the known address got a reset link
 
     def test_token_stored_hashed(self, client, sent):
         register(client)
@@ -122,6 +130,17 @@ class TestResetPassword:
             "username": "ash", "password": "pikachu1"}).status_code == 401
         assert client.post("/auth/login", data={
             "username": "ash", "password": "newpass123"}).status_code == 200
+
+    def test_reset_revokes_existing_sessions(self, client, sent):
+        # a live session predating the reset must die once the password changes
+        register(client)
+        login = client.post("/auth/login", data={"username": "ash", "password": "pikachu1"})
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert client.get("/auth/me", headers=headers).status_code == 200
+        request_reset(client)
+        reset(client, token_from(sent))
+        # token_version bumped on reset — the old JWT is now rejected
+        assert client.get("/auth/me", headers=headers).status_code == 401
 
     def test_token_single_use(self, client, sent):
         register(client)
