@@ -1,0 +1,65 @@
+/* Social sign-in buttons on the Login page: slim full-width outline buttons with
+   the provider's brand mark inline, then an "or" divider separating them from
+   the email/password form. Matches the form width. (The Terms/Privacy consent
+   line lives at the bottom of the Login tab's form, not here.) */
+.wrap {
+  max-width: 400px;
+  margin-top: 22px;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 18px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text-h);
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.button:hover {
+  border-color: var(--text-dim);
+  background: var(--bg-card);
+  text-decoration: none;
+}
+
+/* Brand mark inline at its own colors — no chip. The multicolor marks read fine
+   on the dark card surface, and dropping the white square lightens the button. */
+.icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Divider: a hairline rule with a centered "or" label. */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}

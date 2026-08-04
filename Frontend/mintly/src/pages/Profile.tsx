@@ -42,6 +42,10 @@ function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase()
 }
 
+// Display names for linked social providers (Connected accounts + the
+// social-only Password note).
+const PROVIDER_LABELS: Record<string, string> = { google: 'Google', microsoft: 'Microsoft' }
+
 type Status = { ok: boolean; text: string } | null
 
 // A password input with an inline Show/Hide toggle. The border + focus ring live
@@ -395,11 +399,34 @@ export default function Profile() {
                 {verifyStatus && <StatusMessage ok={verifyStatus.ok}>{verifyStatus.text}</StatusMessage>}
               </div>
             )}
+            {/* Linked social sign-ins (Google/Microsoft) */}
+            {profile && profile.oauth_providers.length > 0 && (
+              <div className={styles.connectedRow}>
+                <span className={styles.connectedLabel}>Connected accounts</span>
+                <span className={styles.connectedChips}>
+                  {profile.oauth_providers.map(p => (
+                    <span key={p} className={styles.providerChip}>
+                      {PROVIDER_LABELS[p] ?? p}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
           </section>
 
           {/* Password */}
           <section id="password" className={styles.panel}>
             <h2 className={styles.panelTitle}>Password</h2>
+            {profile && !profile.has_password ? (
+              // Social-only account (no password set). There's no current
+              // password to change; the reset flow (they have a verified email)
+              // sets the first one.
+              <p className={styles.pwSocialNote}>
+                You sign in with {profile.oauth_providers.map(p => PROVIDER_LABELS[p] ?? p).join(' and ')}.
+                To add a password you can also use, request one from the{' '}
+                <Link to="/reset-password">Forgot password</Link> page and we&apos;ll email you a link to set it.
+              </p>
+            ) : (
             <form className={styles.pwForm} onSubmit={savePassword}>
               <PasswordField
                 label="Current password"
@@ -443,8 +470,10 @@ export default function Profile() {
                 {pwStatus && <StatusMessage ok={pwStatus.ok}>{pwStatus.text}</StatusMessage>}
               </div>
             </form>
+            )}
             {/* Kill switch for a leaked token: ends every other session but keeps
-                this one (the backend hands back a fresh token for it) */}
+                this one (the backend hands back a fresh token for it). Available
+                to social-only accounts too — it doesn't depend on a password. */}
             <div className={styles.securityRow}>
               <div className={styles.securityText}>
                 <p className={styles.securityLabel}>Sign out of other devices</p>

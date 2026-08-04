@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from jose import JWTError, jwt
@@ -6,8 +7,10 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Portfolio, PortfolioCard, PasswordResetToken, EmailVerificationToken, utcnow
-from app.services import mailer
+from app.models import (User, Portfolio, PortfolioCard, PasswordResetToken,
+                        EmailVerificationToken, OAuthAccount, utcnow)
+from app.services import mailer, oauth
+from app.services.oauth import OAuthError, OAuthIdentity
 from app.services.admin_access import is_admin
 from app.services.rate_limit import rate_limit
 import hashlib
@@ -128,6 +131,9 @@ def valid_email(email: str) -> bool:
 def user_info(user: User) -> dict:
     # The account fields the profile page reads — never the password hash.
     # is_admin lets the frontend show the admin-dashboard link to admins only.
+    # has_password is False for social-only accounts (the Profile page swaps the
+    # change-password form for a "set one via reset" note); oauth_providers lists
+    # the linked social identities so Profile can show "Connected accounts".
     return {
         "email": user.email,
         "username": user.username,
@@ -135,7 +141,109 @@ def user_info(user: User) -> dict:
         "accepted_terms_at": user.accepted_terms_at,
         "email_verified": user.email_verified_at is not None,
         "is_admin": is_admin(user),
+        "has_password": user.hashed_password is not None,
+        "oauth_providers": sorted({a.provider for a in user.oauth_accounts}),
     }
+
+
+# ----- Social sign-in (OAuth/OIDC) -------------------------------------------
+
+def _generate_username(db: Session, identity: OAuthIdentity) -> str:
+    # Derive a unique username for a brand-new social account from the provider
+    # name, falling back to the email local part, then "user"; dedupe with a
+    # numeric suffix. (The user can rename it later from Profile.)
+    for source in (identity.name, (identity.email or "").split("@")[0]):
+        base = re.sub(r"[^a-zA-Z0-9]+", "", source or "").lower()[:20]
+        if base:
+            break
+    else:
+        base = "user"
+    base = base or "user"
+    candidate, n = base, 0
+    while db.query(User).filter(User.username == candidate).first():
+        n += 1
+        candidate = f"{base}{n}"
+    return candidate
+
+
+def _link_oauth_account(db: Session, user: User, identity: OAuthIdentity) -> None:
+    db.add(OAuthAccount(
+        user_id=user.id,
+        provider=identity.provider,
+        provider_account_id=identity.sub,
+        email=identity.email,
+    ))
+
+
+def _create_oauth_user(db: Session, identity: OAuthIdentity, *, email_verified: bool) -> User:
+    user = User(
+        email=identity.email,
+        username=_generate_username(db, identity),
+        hashed_password=None,  # social-only until a password is set via reset
+        # Clicking "Continue with <provider>" accepts the Terms — the button
+        # carries the "By continuing you agree…" line (see the frontend).
+        accepted_terms_at=utcnow(),
+        email_verified_at=utcnow() if email_verified else None,
+    )
+    db.add(user)
+    db.flush()  # populate user.id for the FK on the linked account
+    _link_oauth_account(db, user, identity)
+    db.commit()
+    return user
+
+
+def resolve_oauth_user(db: Session, identity: OAuthIdentity) -> tuple[User, bool]:
+    """Turn a verified provider identity into a Mintly user, returning
+    (user, is_new). Precedence:
+
+    1. This exact provider identity is already linked -> that user (login).
+    2. Provider-VERIFIED email matches an existing account -> link the provider
+       to it and log in (the requested account MERGE — no duplicate).
+    3. Provider-verified email, no existing account -> create a new account.
+    4. Unverified email colliding with an existing account -> refuse (we can't
+       prove the caller owns the address, so we won't hand over its data).
+    5. Otherwise -> create a new (unverified) account.
+    """
+    link = db.query(OAuthAccount).filter(
+        OAuthAccount.provider == identity.provider,
+        OAuthAccount.provider_account_id == identity.sub,
+    ).first()
+    if link:
+        user = db.get(User, link.user_id)
+        if user is not None:
+            if identity.email:
+                link.email = identity.email
+            # If the linked account's own email is now provider-confirmed, stamp it
+            if (identity.email_verified and user.email_verified_at is None
+                    and user.email == identity.email):
+                user.email_verified_at = utcnow()
+            db.commit()
+            return user, False
+        db.delete(link)  # orphaned link — drop it and treat as a fresh sign-in
+        db.commit()
+
+    if identity.email and identity.email_verified:
+        existing = db.query(User).filter(User.email == identity.email).first()
+        if existing:
+            _link_oauth_account(db, existing, identity)
+            if existing.email_verified_at is None:
+                existing.email_verified_at = utcnow()
+            db.commit()
+            return existing, False
+        return _create_oauth_user(db, identity, email_verified=True), True
+
+    if identity.email:
+        clash = db.query(User).filter(User.email == identity.email).first()
+        if clash:
+            raise OAuthError(
+                "email_unverified",
+                f"{identity.provider} did not verify ownership of {identity.email}")
+    return _create_oauth_user(db, identity, email_verified=False), True
+
+
+def _oauth_error_redirect(code: str) -> RedirectResponse:
+    # Bounce back to the login page with a code the frontend maps to a message.
+    return RedirectResponse(f"{FRONTEND_BASE_URL}/login?oauth_error={code}", status_code=302)
 
 
 # ----- Routes ----------------------------------------------------------------
@@ -177,12 +285,58 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
     user = db.query(User).filter(
         (User.email == form.username) | (User.username == form.username)
     ).first()
-    if not user or not pwd_context.verify(form.password, user.hashed_password):
+    # A social-only account has no password hash — never let verify() run on None
+    if not user or not user.hashed_password or not pwd_context.verify(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return {
         "access_token": mint_token(user),
         "token_type": "bearer"
         }
+
+
+@router.get("/oauth/providers")
+def oauth_providers():
+    # Only providers with credentials configured — the frontend renders a button
+    # per entry, so an unconfigured provider never appears (config-gated).
+    return {"providers": oauth.enabled_providers()}
+
+
+@router.get("/oauth/{provider}/start",
+            dependencies=[Depends(rate_limit("oauth", times=30, seconds=300,
+                                             what="sign-in attempts"))])
+def oauth_start(provider: str):
+    # Redirect the browser to the provider's consent screen. An unknown or
+    # unconfigured provider 404s (nothing to reveal about what's available).
+    try:
+        url = oauth.start_login(provider)
+    except OAuthError:
+        raise HTTPException(status_code=404, detail="Not found")
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/oauth/{provider}/callback")
+def oauth_callback(provider: str, code: str | None = None, state: str | None = None,
+                   error: str | None = None, db: Session = Depends(get_db)):
+    # Where the provider sends the user back. We validate `state` (CSRF), trade
+    # the code for a verified identity, resolve/merge the account, and hand the
+    # browser our own JWT via the frontend callback route. Every failure bounces
+    # to /login with a code the frontend turns into a friendly message.
+    if error or not code or not state:
+        return _oauth_error_redirect("cancelled" if error == "access_denied" else "provider_error")
+    pending = oauth.take_pending(state)
+    if not pending or pending["provider"] != provider:
+        return _oauth_error_redirect("expired")
+    try:
+        identity = oauth.complete_login(
+            provider, code, pending["code_verifier"], pending["nonce"])
+        user, _ = resolve_oauth_user(db, identity)
+    except OAuthError as exc:
+        return _oauth_error_redirect(exc.code)
+    # The token rides in the URL fragment (never sent to a server, kept out of
+    # logs/Referer); the frontend /auth/callback route stores it and scrubs it.
+    return RedirectResponse(
+        f"{FRONTEND_BASE_URL}/auth/callback#token={mint_token(user)}",
+        status_code=302)
 
 
 @router.get("/me")
@@ -239,6 +393,13 @@ def update_me(body: UpdateProfileRequest,
 def change_password(body: ChangePasswordRequest,
                     current_user: User = Depends(get_current_user),
                     db: Session = Depends(get_db)):
+    if current_user.hashed_password is None:
+        # Social-only account: there's no current password to verify against.
+        # The forgot-password flow (they have a verified email) sets the first one.
+        raise HTTPException(
+            status_code=400,
+            detail='Your account uses social sign-in. Use the "Forgot password" '
+                   'link on the login page to set a password first.')
     if not pwd_context.verify(body.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     error = password_error(body.new_password)
@@ -529,6 +690,9 @@ def delete_account(current_user: User = Depends(get_current_user), db: Session =
     ).delete(synchronize_session=False)
     db.query(EmailVerificationToken).filter(
         EmailVerificationToken.user_id == current_user.id
+    ).delete(synchronize_session=False)
+    db.query(OAuthAccount).filter(
+        OAuthAccount.user_id == current_user.id
     ).delete(synchronize_session=False)
     db.delete(current_user)
     db.commit()

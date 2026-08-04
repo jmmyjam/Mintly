@@ -262,6 +262,22 @@
 
 .switch-btn:hover { text-decoration: underline; }
 
+/* Passive consent line at the bottom of the Login tab (covers social sign-in,
+   which accepts the Terms on the button click). Quiet, centered fine print. */
+.legal-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text); /* AA 4.5:1 at 12px — real content, not decoration */
+  text-align: center;
+}
+
+.legal-note a {
+  color: var(--text-h);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* ----- Illustrative portfolio preview (sample data, aria-hidden) ----------- */
 .preview {
   min-width: 0;

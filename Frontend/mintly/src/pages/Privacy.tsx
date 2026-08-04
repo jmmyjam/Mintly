@@ -17,7 +17,13 @@ export default function Privacy() {
         If you request a password reset, we store a hashed, single-use reset
         code that expires after 30 minutes. We also record whether and when you
         have confirmed your email address, and store a hashed, single-use
-        verification code the same way when a verification email is sent.
+        verification code the same way when a verification email is sent. If you
+        sign in with a third-party provider such as Google or Microsoft, we
+        store the provider name and the account identifier it gives us (so we can
+        recognize you on your next sign-in), along with the email address and
+        name it shares; a provider account is linked to a matching Mintly account
+        by email rather than creating a duplicate. We never receive or store
+        your provider password.
       </p>
 
       <h2>2. How it's used</h2>
@@ -62,10 +68,15 @@ export default function Privacy() {
         TCGCSV, a public daily mirror, and may also query recent sold listings
         on eBay to estimate a value. Your account details are never sent to any
         of these services, only the card name, number, or set needed to find
-        results and prices. Account emails (the password-reset link and the
-        email-verification link) are delivered through an email provider, which
-        processes your email address solely to deliver those messages. The site
-        itself is served through Cloudflare, which sits
+        results and prices. If you choose to sign in with a third-party provider
+        such as Google or Microsoft, you authenticate on that provider&apos;s own
+        site and it returns your email address, name, and an account identifier
+        to Mintly so we can sign you in; this happens only when you use that
+        option, and your provider password is never shared with us. Account
+        emails (the password-reset link and the email-verification link) are
+        delivered through an email provider, which processes your email address
+        solely to deliver those messages. The site itself is served through
+        Cloudflare, which sits
         between your browser and our server to route traffic securely and
         protect against attacks; to do this it processes connection metadata
         such as your IP address, subject to its own privacy policy. Some

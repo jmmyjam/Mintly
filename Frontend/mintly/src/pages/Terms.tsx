@@ -2,7 +2,7 @@ export default function Terms() {
   return (
     <div className="page legal-page">
       <h1>Terms of Service</h1>
-      <p className="legal-updated">Last updated: July 24, 2026</p>
+      <p className="legal-updated">Last updated: August 3, 2026</p>
 
       <h2>1. The service</h2>
       <p>
@@ -14,13 +14,18 @@ export default function Terms() {
       <h2>2. Your account</h2>
       <p>
         You are responsible for the accuracy of the information you provide
-        and for keeping your login credentials private. You can update your
-        account details from your profile page, and if you forget your
-        password you can request a reset link sent to your account&apos;s email
-        address. You must not use the service
-        for anything unlawful or attempt to disrupt or gain unauthorized access
-        to it. You may delete your account at any time from your profile page,
-        which permanently removes your account and all of your portfolio data.
+        and for keeping your login credentials private. You can create an
+        account with an email and password, or sign in with a third-party
+        provider such as Google or Microsoft. If you sign in with a provider
+        whose email address matches an existing Mintly account, the two are
+        linked to the same account rather than creating a duplicate. You can
+        update your account details from your profile page, and if you forget
+        your password (or signed up with a provider and want to add one) you can
+        request a reset link sent to your account&apos;s email address. You must
+        not use the service for anything unlawful or attempt to disrupt or gain
+        unauthorized access to it. You may delete your account at any time from
+        your profile page, which permanently removes your account and all of
+        your portfolio data.
       </p>
 
       <h2>3. Prices and data</h2>

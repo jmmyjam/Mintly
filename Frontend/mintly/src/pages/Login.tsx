@@ -1,11 +1,24 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { errorMessage, login, register, getCardImageUrl } from '../api'
 import type { PriceChange } from '../api'
 import { money } from '../format'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
+import SocialSignIn from '../components/SocialSignIn'
 import styles from './Login.module.css'
+
+// Failure codes the OAuth callback bounces back on (?oauth_error=…) mapped to
+// user-facing messages. Keep the keys in sync with the backend's redirects
+// (auth.py: cancelled / expired / provider_error / email_unverified / unavailable).
+const OAUTH_ERRORS: Record<string, string> = {
+  cancelled: 'Sign-in was cancelled.',
+  expired: 'That sign-in request expired. Please try again.',
+  email_unverified:
+    "We couldn't confirm your email with that provider. Log in with your password instead.",
+  provider_error: "We couldn't complete sign-in. Please try again.",
+  unavailable: 'That sign-in option is not available right now.',
+}
 
 // Mirrors the backend rules in auth.py so users get instant feedback
 function passwordError(password: string): string | null {
@@ -50,12 +63,15 @@ export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>(
     () => ((location.state as { register?: boolean } | null)?.register ? 'register' : 'login'),
   )
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
-  const [error, setError] = useState('')
+  // Seed the error from an OAuth callback failure (?oauth_error=…) so a bounced
+  // social sign-in shows why; cleared once the user acts on the form.
+  const [error, setError] = useState(() => OAUTH_ERRORS[searchParams.get('oauth_error') ?? ''] ?? '')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   // e.g. "Your session expired. Please log in again." when redirected here on a 401
@@ -127,6 +143,10 @@ export default function Login() {
           </div>
 
           {notice && !error && <p className={styles.formHint}>{notice}</p>}
+
+          {/* Google/Microsoft buttons — renders nothing when no provider is
+              configured. Both tabs use it (the buttons do the same thing). */}
+          <SocialSignIn />
 
           <form onSubmit={handleSubmit} className={styles.authForm}>
             {mode === 'register' && (
@@ -237,6 +257,15 @@ export default function Login() {
                 </button>
               </p>
             )}
+
+            {/* Consent line for the social sign-in path, which creates an
+                account on the button click with no checkbox. Shown on both tabs
+                since the Google/Microsoft buttons appear on both; the Register
+                tab's checkbox is the separate enforced gate for the email path. */}
+            <p className={styles.legalNote}>
+              By continuing, you agree to Mintly&apos;s <Link to="/terms">Terms of Service</Link>{' '}
+              and <Link to="/privacy">Privacy Policy</Link>.
+            </p>
           </form>
         </div>
 

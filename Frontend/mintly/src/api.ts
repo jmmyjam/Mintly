@@ -157,6 +157,13 @@ export interface UserProfile {
   // True when this account is on the backend's ADMIN_EMAILS list — shows the
   // admin-dashboard link on the Profile page
   is_admin: boolean
+  // False for social-only accounts (signed up via Google/Microsoft, no password
+  // set) — the Profile page swaps the change-password form for a "set one via
+  // reset" note when this is false.
+  has_password: boolean
+  // The social providers linked to this account ("google", "microsoft"), for the
+  // Profile page's "Connected accounts" display.
+  oauth_providers: string[]
 }
 
 // Site-wide stats for the admin dashboard (GET /admin/stats, admins only)
@@ -263,6 +270,27 @@ export async function login(username: string, password: string): Promise<void> {
   }
   const data = await res.json()
   setToken(data.access_token)
+}
+
+// The social sign-in providers the backend has configured ("google",
+// "microsoft"). Empty when none are set up — the buttons then don't render.
+// Unauthed; a failure resolves to [] so a hiccup never blocks the login form.
+export async function getOAuthProviders(): Promise<string[]> {
+  try {
+    const res = await fetch(`${BASE}/auth/oauth/providers`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data.providers) ? data.providers : []
+  } catch {
+    return []
+  }
+}
+
+// The URL that kicks off a provider's sign-in — a full-page navigation, not a
+// fetch (the backend 302-redirects to the provider's consent screen, then back
+// to /auth/callback with our token). Must be same-origin-friendly: BASE + path.
+export function oauthLoginUrl(provider: string): string {
+  return `${BASE}/auth/oauth/${provider}/start`
 }
 
 export async function register(email: string, username: string, password: string, acceptedTerms: boolean): Promise<void> {

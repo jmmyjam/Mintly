@@ -25,6 +25,13 @@ os.environ.setdefault("EBAY_EPN_CAMPAIGN_ID", "")
 # a dev .env may name a real admin account — pin "no admins" so the suite's
 # 404/is_admin assertions hold (tests grant admin by monkeypatching the set)
 os.environ.setdefault("ADMIN_EMAILS", "")
+# a dev .env may carry real OAuth client credentials — pin them empty so the
+# suite sees "no providers configured" by default (tests enabling a provider
+# monkeypatch.setenv these). Set before app import so auth.py's load_dotenv
+# (override=False) can't fill them from Backend/.env.
+for _var in ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
+             "MICROSOFT_OAUTH_CLIENT_ID", "MICROSOFT_OAUTH_CLIENT_SECRET"):
+    os.environ.setdefault(_var, "")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -15,6 +15,7 @@ import Profile from './pages/Profile'
 import Admin from './pages/Admin'
 import CardDetail from './pages/CardDetail'
 import Login from './pages/Login'
+import OAuthCallback from './pages/OAuthCallback'
 import ResetPassword from './pages/ResetPassword'
 import VerifyEmail from './pages/VerifyEmail'
 import Terms from './pages/Terms'
@@ -95,6 +96,7 @@ export default function App() {
           <Route path="/admin" element={<Admin />} />
           <Route path="/card/:cardId" element={<CardDetail />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<OAuthCallback />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/terms" element={<Terms />} />

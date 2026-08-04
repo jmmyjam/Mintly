@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, LargeBinary
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 
@@ -14,7 +14,10 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     email = Column(String, unique=True, index=True)
     username = Column(String, unique=True)
-    hashed_password = Column(String)
+    # Nullable: an account created via social sign-in (Google/Microsoft) has no
+    # password until it sets one through the forgot-password flow. The password
+    # login and change-password routes guard against a NULL hash.
+    hashed_password = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     # When the user accepted the Terms of Service at registration;
     # nullable because accounts created before the requirement have no record
@@ -33,6 +36,31 @@ class User(Base):
     token_version = Column(Integer, nullable=False, default=0, server_default="0")
     portfolio = relationship("PortfolioCard", back_populates="owner")
     portfolios = relationship("Portfolio", back_populates="owner")
+    oauth_accounts = relationship("OAuthAccount", back_populates="owner")
+
+class OAuthAccount(Base):
+    # A social sign-in identity (Google/Microsoft) linked to a Mintly account.
+    # One user may link several providers; a single provider identity maps to at
+    # most one user (the unique constraint below). Account MERGING keys on the
+    # provider-verified email: signing in with Google/Microsoft whose verified
+    # email matches an existing account links to that account instead of making a
+    # duplicate (see resolve_oauth_user in routers/auth.py). Cleared on account
+    # deletion (no FK cascade). `email` is the address at link time, kept only
+    # for reference — the live email lives on the User row.
+    __tablename__ = "oauth_accounts"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    provider = Column(String, nullable=False)              # "google" | "microsoft"
+    provider_account_id = Column(String, nullable=False)   # the OIDC subject ("sub")
+    email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    owner = relationship("User", back_populates="oauth_accounts")
+    # One identity per provider maps to one Mintly account; the composite index
+    # also serves the returning-user lookup by (provider, sub)
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_account_id",
+                         name="uq_oauth_provider_account"),
+    )
 
 class PasswordResetToken(Base):
     # A pending "forgot password" link. Only the sha256 of the emailed token is
