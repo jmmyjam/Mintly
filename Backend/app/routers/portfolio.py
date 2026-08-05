@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from app.database import get_db
 from app.models import Portfolio, PortfolioCard, CardPriceSnapshot
 from app.routers.auth import get_current_user
+from app.routers import cards as cards_router
 from app.services import card_catalog, tcgcsv
 from app.services.price_history import (
     extract_price, record_snapshots, change_baselines, price_change, latest_prices,
@@ -537,6 +538,71 @@ def get_portfolio_history(
         total = sum(price * quantities[card_id] for card_id, price in latest_prices.items())
         history.append({"date": day.isoformat(), "total_value": round(total, 2)})
     return history
+
+
+@router.get("/portfolio/set-completion")
+def get_set_completion(
+    portfolio_id: int | None = Query(None),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Per-set completion for the sets the user owns cards in: how many distinct
+    cards of each set they hold vs the set's master total (`total`, secret rares
+    included — the "own everything" number). No portfolio_id = account-wide (all
+    the user's portfolios); a portfolio_id scopes to that collection. Synthetic
+    stamp/mark varieties are excluded — a `~v` card isn't one of the set's
+    printed cards. Best-effort: a catalog/sets hiccup returns a partial list,
+    never a 500."""
+    query = (
+        db.query(PortfolioCard.card_id)
+        .filter(PortfolioCard.user_id == current_user.id)
+        .distinct()
+    )
+    if portfolio_id is not None:
+        _owned_portfolio(db, current_user, portfolio_id)
+        query = query.filter(PortfolioCard.portfolio_id == portfolio_id)
+    card_ids = [cid for (cid,) in query.all() if cid and not tcgcsv.is_variety_id(cid)]
+    if not card_ids:
+        return []
+
+    try:
+        # set_id from the catalog (authoritative); fall back to parsing the id —
+        # a real pokemontcg.io id is "<set_id>-<number>" and set ids carry no
+        # hyphen, so a held card not yet in the catalog still maps correctly.
+        rows = card_catalog.get_cards(db, card_ids)
+        owned_by_set: dict[str, int] = {}
+        for cid in card_ids:
+            row = rows.get(cid)
+            set_id = row.set_id if row and row.set_id else cid.rsplit("-", 1)[0]
+            if set_id:
+                owned_by_set[set_id] = owned_by_set.get(set_id, 0) + 1
+
+        sets = cards_router.sets_by_id()
+    except Exception:  # noqa: BLE001 — never 500 a best-effort rollup
+        return []
+
+    result = []
+    for set_id, owned in owned_by_set.items():
+        s = sets.get(set_id) or {}
+        images = s.get("images") or {}
+        total = s.get("total") or card_catalog.set_count(db, set_id) or owned
+        result.append({
+            "set_id": set_id,
+            "set_name": s.get("name") or set_id,
+            "series": s.get("series"),
+            "release_date": s.get("releaseDate"),
+            "printed_total": s.get("printedTotal"),
+            "owned": owned,
+            "total": total,
+            "logo": images.get("logo"),
+            "symbol": images.get("symbol"),
+        })
+    # Nearest-to-complete first, then newest set, then name — a friendly default
+    # the frontend can re-sort. Stable sort, applied least-significant key first.
+    result.sort(key=lambda r: r["set_name"])
+    result.sort(key=lambda r: r["release_date"] or "", reverse=True)
+    result.sort(key=lambda r: (r["owned"] / r["total"]) if r["total"] else 0, reverse=True)
+    return result
 
 
 @router.patch("/portfolio/{portfolio_card_id}")

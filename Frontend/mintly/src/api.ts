@@ -134,6 +134,22 @@ export interface PortfolioCard {
   image_url: string | null
 }
 
+// One set the user owns cards in, with how far along they are toward the master
+// set. `total` is the set's full size incl. secret rares (the "own everything"
+// number); `printed_total` is the number printed on the card ("4/102"), shown
+// only where the two differ. From GET /portfolio/set-completion.
+export interface SetCompletion {
+  set_id: string
+  set_name: string
+  series: string | null
+  release_date: string | null
+  printed_total: number | null
+  owned: number
+  total: number
+  logo: string | null
+  symbol: string | null
+}
+
 // A named portfolio. Every user has at least one (the auto-created default);
 // cards live in exactly one. See src/portfolios.ts for the active-selection store.
 export interface Portfolio {
@@ -538,6 +554,16 @@ export async function getPortfolioHistory(portfolioId?: number | null): Promise<
   const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : ''
   const res = await authedFetch(`/portfolio/history${qs}`)
   if (!res.ok) throw new Error('Failed to fetch portfolio history')
+  return res.json()
+}
+
+// Per-set completion for the sets you own cards in. No portfolioId = account-wide
+// (all portfolios); pass one to scope. See src/setCompletion.ts for the cached
+// account-wide accessor CardDetail reads.
+export async function getSetCompletion(portfolioId?: number | null): Promise<SetCompletion[]> {
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : ''
+  const res = await authedFetch(`/portfolio/set-completion${qs}`)
+  if (!res.ok) throw new Error('Failed to fetch set completion')
   return res.json()
 }
 

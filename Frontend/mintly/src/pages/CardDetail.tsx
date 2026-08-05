@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   CONNECTION_ERROR, filterCards, getCard, getCardPrice, getEbayEstimate,
   type Card, type CardHistory, type EbayEstimate as Estimate,
-  type PriceChange, type PriceVariant,
+  type PriceChange, type PriceVariant, type SetCompletion,
 } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
@@ -11,9 +11,11 @@ import PageMessage from '../components/PageMessage'
 import PriceHistoryChart from '../components/PriceHistoryChart'
 import PriceQtyForm from '../components/PriceQtyForm'
 import PortfolioPicker from '../components/PortfolioPicker'
+import SetCompletionMeter from '../components/SetCompletionMeter'
 import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
 import { useAddCard } from '../hooks'
+import { getOwnedSetCompletion } from '../setCompletion'
 import { usePortfolios } from '../portfolios'
 import { tcgplayerBuyLink, ebayBuyLink } from '../affiliate'
 import { money } from '../format'
@@ -70,6 +72,10 @@ export default function CardDetail() {
   // stamp/mark varieties (a [Staff] stamp, error print, ...). Cross-links let
   // you jump between them since each is its own searchable card.
   const [versions, setVersions] = useState<Card[]>([])
+  // Account-wide completion for THIS card's set, shown under the meta line only
+  // when the user already owns >=1 card from the set (null = signed out, none
+  // owned, or not yet loaded).
+  const [setCompletion, setSetCompletion] = useState<SetCompletion | null>(null)
   const { add, busy: addBusy, status: addStatus } = useAddCard()
   const { activeId } = usePortfolios()
 
@@ -198,6 +204,32 @@ export default function CardDetail() {
     }
   }, [cardId])
 
+  // Set-completion for this card's set (account-wide, cached across cards). Runs
+  // once the card is loaded and re-runs when navigating to a card in another set.
+  const cardSetId = card?.set?.id
+  useEffect(() => {
+    if (!cardSetId) return
+    let cancelled = false
+    // Clears (finds undefined → null) when the set isn't owned, so navigating to
+    // a card in an un-owned set hides the stale meter — all in the callback, so
+    // no synchronous setState in the effect body.
+    getOwnedSetCompletion()
+      .then(list => {
+        if (!cancelled) setSetCompletion(list.find(s => s.set_id === cardSetId) ?? null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [cardSetId])
+
+  // After adding this card the cache is invalidated (useAddCard) — refetch so the
+  // meter reflects the new count (and appears if this was the first card owned).
+  const refreshCompletion = () => {
+    if (!cardSetId) return
+    getOwnedSetCompletion()
+      .then(list => setSetCompletion(list.find(s => s.set_id === cardSetId) ?? null))
+      .catch(() => {})
+  }
+
   if (loading) return <PageMessage><p>Loading card...</p></PageMessage>
   if (error || !card) {
     return (
@@ -260,6 +292,25 @@ export default function CardDetail() {
               {card.set.series ? ` · ${card.set.series}` : ''}
               {card.number ? ` · #${card.number}${card.set.printedTotal ? `/${card.set.printedTotal}` : ''}` : ''}
             </p>
+            {setCompletion && (
+              <Link
+                to={`/search?set=${encodeURIComponent(setCompletion.set_id)}`}
+                className={styles.setCompletion}
+              >
+                <span className={styles.setCompletionLabel}>
+                  Your {card.set.name} set
+                  {setCompletion.printed_total != null && setCompletion.total > setCompletion.printed_total
+                    ? ' (incl. secret rares)'
+                    : ''}
+                </span>
+                <SetCompletionMeter
+                  owned={setCompletion.owned}
+                  total={setCompletion.total}
+                  showPercent
+                  label={`You own ${setCompletion.owned} of ${setCompletion.total} cards in ${card.set.name}`}
+                />
+              </Link>
+            )}
           </div>
 
           <div className={styles.priceBlock}>
@@ -315,7 +366,7 @@ export default function CardDetail() {
                   quantity={quantity}
                   onPriceChange={setPurchasePrice}
                   onQuantityChange={setQuantity}
-                  onSubmit={() => add(card.id, purchasePrice, quantity, addTarget ?? activeId)}
+                  onSubmit={() => add(card.id, purchasePrice, quantity, addTarget ?? activeId, refreshCompletion)}
                   submitLabel="+ Add to Portfolio"
                   busyLabel="Adding..."
                   busy={addBusy}

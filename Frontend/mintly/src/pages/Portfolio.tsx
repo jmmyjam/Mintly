@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceDot, ResponsiveContainer } from 'recharts'
-import { getPortfolio, getPortfolioHistory, getToken, getCardImageUrl, CONNECTION_ERROR, SessionExpiredError, type PortfolioCard, type HistoryPoint } from '../api'
+import { getPortfolio, getPortfolioHistory, getSetCompletion, getToken, getCardImageUrl, CONNECTION_ERROR, SessionExpiredError, type PortfolioCard, type HistoryPoint, type SetCompletion } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
 import PortfolioCsv from '../components/PortfolioCsv'
 import PortfolioSelector from '../components/PortfolioSelector'
+import SetCompletionMeter from '../components/SetCompletionMeter'
 import SignedOutHero from '../components/SignedOutHero'
 import { useSessionRedirect } from '../hooks'
 import { usePortfolios } from '../portfolios'
@@ -47,6 +48,7 @@ export default function Portfolio() {
 function PortfolioView({ portfolioId }: { portfolioId: number }) {
   const [cards, setCards] = useState<PortfolioCard[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
+  const [completion, setCompletion] = useState<SetCompletion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('recent')
@@ -67,6 +69,9 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
         // show the portfolio immediately; the chart fills in when history arrives
         setCards(loaded)
         setLoading(false)
+        // Set completion is derived from the same holdings — scoped to this
+        // portfolio. Best-effort so it never blocks the value chart.
+        getSetCompletion(portfolioId).then(setCompletion).catch(() => {})
         // fetch after the portfolio loads so today's snapshot is included
         return getPortfolioHistory(portfolioId).then(setHistory).catch(() => {})
       })
@@ -380,6 +385,34 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
             <span>Add a card</span>
           </Link>
         </div>
+      )}
+
+      {completion.length > 0 && (
+        <section className={styles.completion} aria-labelledby="set-completion-heading">
+          <h2 id="set-completion-heading" className={styles.completionHead}>Set completion</h2>
+          <p className={styles.completionNote}>
+            How many of each set you own, counting toward the full set including any secret rares. Open a set to fill the gaps.
+          </p>
+          <ul className={styles.completionList}>
+            {completion.map(s => (
+              <li key={s.set_id}>
+                <Link to={`/search?set=${encodeURIComponent(s.set_id)}`} className={styles.completionRow}>
+                  <div className={styles.completionSet}>
+                    <span className={styles.completionName}>{s.set_name}</span>
+                    {s.series && <span className={styles.completionSeries}>{s.series}</span>}
+                  </div>
+                  <SetCompletionMeter
+                    owned={s.owned}
+                    total={s.total}
+                    showPercent
+                    label={`${s.owned} of ${s.total} cards owned in ${s.set_name}`}
+                    className={styles.completionMeter}
+                  />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   )

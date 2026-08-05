@@ -299,3 +299,100 @@ class TestHistory:
         history = client.get("/portfolio/history", headers=auth_headers).json()
         assert len(history) == 1
         assert history[0]["total_value"] == 1000.0  # 500 * qty 2
+
+
+import app.routers.cards as cards_module  # for monkeypatching sets_by_id
+
+# Stubbed sets list (what cards.sets_by_id() serves): master `total` is the
+# denominator; Surging Sparks has secret rares so total (207) != printedTotal (191).
+_SETS = {
+    "base1": {"id": "base1", "name": "Base", "series": "Base",
+              "releaseDate": "1999/01/09", "total": 102, "printedTotal": 102,
+              "images": {"logo": "logo-url", "symbol": "symbol-url"}},
+    "sv8": {"id": "sv8", "name": "Surging Sparks", "series": "Scarlet & Violet",
+            "releaseDate": "2024/11/08", "total": 207, "printedTotal": 191,
+            "images": {}},
+}
+
+
+class TestSetCompletion:
+    def test_requires_auth(self, client):
+        assert client.get("/portfolio/set-completion").status_code == 401
+
+    def test_empty_without_cards(self, client, auth_headers, monkeypatch):
+        monkeypatch.setattr(cards_module, "sets_by_id", lambda: _SETS)
+        assert client.get("/portfolio/set-completion", headers=auth_headers).json() == []
+
+    def test_counts_distinct_cards_per_set(self, client, auth_headers, upstream, monkeypatch):
+        monkeypatch.setattr(cards_module, "sets_by_id", lambda: _SETS)
+        for cid in ("base1-4", "base1-2", "sv8-1"):
+            upstream.add(make_card(cid, price=10.0))
+        add(client, auth_headers, card_id="base1-4")
+        add(client, auth_headers, card_id="base1-4")  # a 2nd lot of the same card
+        add(client, auth_headers, card_id="base1-2")
+        add(client, auth_headers, card_id="sv8-1")
+
+        res = client.get("/portfolio/set-completion", headers=auth_headers)
+        assert res.status_code == 200
+        by_set = {s["set_id"]: s for s in res.json()}
+        # base1: 2 distinct cards owned (the repeat lot doesn't double-count)
+        assert by_set["base1"]["owned"] == 2
+        assert by_set["base1"]["total"] == 102          # master total, secret rares in
+        assert by_set["base1"]["printed_total"] == 102
+        assert by_set["base1"]["set_name"] == "Base"
+        assert by_set["base1"]["logo"] == "logo-url"
+        # sv8: 1 owned against the 207 master total (191 printed)
+        assert by_set["sv8"]["owned"] == 1
+        assert by_set["sv8"]["total"] == 207
+        assert by_set["sv8"]["printed_total"] == 191
+
+    def test_sorted_nearest_to_complete_first(self, client, auth_headers, upstream, monkeypatch):
+        monkeypatch.setattr(cards_module, "sets_by_id", lambda: _SETS)
+        for cid in ("base1-4", "base1-2", "sv8-1"):
+            upstream.add(make_card(cid, price=10.0))
+        add(client, auth_headers, card_id="base1-4")   # base1: 2/102 ~ 2%
+        add(client, auth_headers, card_id="base1-2")
+        add(client, auth_headers, card_id="sv8-1")      # sv8:  1/207 ~ 0.5%
+        result = client.get("/portfolio/set-completion", headers=auth_headers).json()
+        assert [s["set_id"] for s in result] == ["base1", "sv8"]
+
+    def test_excludes_varieties(self, client, auth_headers, upstream, monkeypatch):
+        monkeypatch.setattr(cards_module, "sets_by_id", lambda: _SETS)
+        upstream.add(make_card("base1-4", price=10.0))
+        add(client, auth_headers, card_id="base1-4")
+        # a stamp/mark variety lives only in the catalog — never a set's printed card
+        seed_catalog_card(make_card("base1-4~v999", "Charizard [Staff]", price=20.0))
+        assert add(client, auth_headers, card_id="base1-4~v999").status_code == 200
+
+        [s] = client.get("/portfolio/set-completion", headers=auth_headers).json()
+        assert s["set_id"] == "base1"
+        assert s["owned"] == 1  # the variety is not counted toward completion
+
+    def test_scopes_to_portfolio(self, client, auth_headers, upstream, monkeypatch):
+        monkeypatch.setattr(cards_module, "sets_by_id", lambda: _SETS)
+        upstream.add(make_card("base1-4", price=10.0))
+        upstream.add(make_card("sv8-1", price=10.0))
+        add(client, auth_headers, card_id="base1-4")   # default portfolio
+        binder = client.post("/portfolios", json={"name": "Binder"}, headers=auth_headers).json()
+        add(client, auth_headers, card_id="sv8-1", portfolio_id=binder["id"])
+
+        # account-wide (no portfolio_id) sees both sets
+        allwide = client.get("/portfolio/set-completion", headers=auth_headers).json()
+        assert {s["set_id"] for s in allwide} == {"base1", "sv8"}
+        # scoped to Binder sees only its set
+        scoped = client.get(
+            f"/portfolio/set-completion?portfolio_id={binder['id']}", headers=auth_headers
+        ).json()
+        assert {s["set_id"] for s in scoped} == {"sv8"}
+
+    def test_unknown_set_falls_back_to_owned_total(self, client, auth_headers, upstream, monkeypatch):
+        # A set not in the sets list (and no catalog rows) → total falls back to
+        # the owned count, and the name to the set id.
+        monkeypatch.setattr(cards_module, "sets_by_id", lambda: {})
+        upstream.add(make_card("xy1-1", price=10.0))
+        add(client, auth_headers, card_id="xy1-1")
+        [s] = client.get("/portfolio/set-completion", headers=auth_headers).json()
+        assert s["set_id"] == "xy1"
+        assert s["owned"] == 1
+        assert s["total"] == 1
+        assert s["set_name"] == "xy1"

@@ -265,3 +265,78 @@
   color: var(--accent);
   text-decoration: none;
 }
+
+/* ---- Set completion --------------------------------------------------------- */
+.completion {
+  margin-top: 36px;
+}
+
+.completion-head {
+  font-family: var(--font-display);
+  color: var(--text-h);
+  font-size: clamp(17px, 2.4vw, 20px);
+  margin: 0;
+}
+
+.completion-note {
+  color: var(--text);
+  font-size: 13px;
+  margin: 4px 0 16px;
+  max-width: 60ch;
+}
+
+.completion-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 10px;
+}
+
+.completion-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.completion-row:hover {
+  border-color: rgba(86, 207, 158, 0.45);
+  text-decoration: none;
+}
+
+.completion-set {
+  flex: 1 1 130px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.completion-name {
+  color: var(--text-h);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.completion-series {
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.completion-meter {
+  flex: 1 1 180px;
+  min-width: 0;
+}

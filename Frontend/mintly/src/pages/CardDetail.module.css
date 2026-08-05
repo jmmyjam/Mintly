@@ -47,6 +47,32 @@
   font-size: 13px;
 }
 
+/* ---- "Your {set}" completion meter (shown when you own >=1 in the set) ----- */
+.set-completion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  max-width: 320px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+
+.set-completion:hover {
+  border-color: rgba(86, 207, 158, 0.45);
+  text-decoration: none;
+}
+
+.set-completion-label {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* ---- Price + source ------------------------------------------------------ */
 .price-block { display: flex; flex-direction: column; gap: 6px; }
 

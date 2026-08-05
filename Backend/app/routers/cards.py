@@ -253,6 +253,14 @@ def _fetch_sets_upstream() -> list:
     return data
 
 
+def sets_by_id() -> dict[str, dict]:
+    """The cached sets list keyed by set id — the public accessor other routers
+    (e.g. the portfolio set-completion endpoint) use to read a set's `total`,
+    name, and images without reaching for the private `_fetch_sets`. Same
+    stale-while-revalidate source, so it never blocks on an upstream refresh."""
+    return {s.get("id"): s for s in _fetch_sets() if s.get("id")}
+
+
 # ----- Local catalog ---------------------------------------------------------
 # The card_catalog table (filled by the daily crawl) answers browsing straight
 # from the DB. All catalog access here is best-effort: a DB hiccup drops us
