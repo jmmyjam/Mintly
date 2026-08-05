@@ -297,12 +297,7 @@ export default function CardDetail() {
                 to={`/search?set=${encodeURIComponent(setCompletion.set_id)}`}
                 className={styles.setCompletion}
               >
-                <span className={styles.setCompletionLabel}>
-                  Your {card.set.name} set
-                  {setCompletion.printed_total != null && setCompletion.total > setCompletion.printed_total
-                    ? ' (incl. secret rares)'
-                    : ''}
-                </span>
+                <span className={styles.setCompletionLabel}>Your {card.set.name} set</span>
                 <SetCompletionMeter
                   owned={setCompletion.owned}
                   total={setCompletion.total}

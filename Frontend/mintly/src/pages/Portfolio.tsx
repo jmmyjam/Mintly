@@ -391,7 +391,7 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
         <section className={styles.completion} aria-labelledby="set-completion-heading">
           <h2 id="set-completion-heading" className={styles.completionHead}>Set completion</h2>
           <p className={styles.completionNote}>
-            How many of each set you own, counting toward the full set including any secret rares. Open a set to fill the gaps.
+            How many of each set you own, counting toward the full set. Open a set to fill the gaps.
           </p>
           <ul className={styles.completionList}>
             {completion.map(s => (
