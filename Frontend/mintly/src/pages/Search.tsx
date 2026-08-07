@@ -81,6 +81,12 @@ const PlusIcon = () => (
   </svg>
 );
 
+const FilterIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+    <path d="M4 6h16M7 12h10M10 18h4" />
+  </svg>
+);
+
 export default function Search() {
   // Seed query + filters from the URL (?q=, ?set=, ?rarity=, ?type=, ?number=)
   // so the home hero's ?q= link, shared URLs, and — crucially — pressing Back
@@ -96,6 +102,15 @@ export default function Search() {
   const [rarities, setRarities] = useState<string[]>(() => parseList(searchParams.get("rarity")));
   const [types, setTypes] = useState<string[]>(() => parseList(searchParams.get("type")));
   const [number, setNumber] = useState(searchParams.get("number") ?? "");
+  // Rarity / type / card # collapse behind a "Filters" button; sets stay
+  // exposed. Open the panel on mount if any of those arrived seeded in the URL
+  // (a shared link or Back from a card) so the applied filters are visible.
+  const [filtersOpen, setFiltersOpen] = useState(
+    () =>
+      parseList(searchParams.get("rarity")).length > 0 ||
+      parseList(searchParams.get("type")).length > 0 ||
+      !!(searchParams.get("number") ?? "").trim(),
+  );
   const [cards, setCards] = useState<Card[]>([]);
   const [page, setPage] = useState(initialPage);
   const [totalCount, setTotalCount] = useState(0);
@@ -116,6 +131,8 @@ export default function Search() {
   const firstRunRef = useRef(true);
 
   const hasFilters = !!(setIds.length || rarities.length || types.length || number.trim());
+  // How many of the collapsed (non-set) filters are active — drives the badge
+  const advancedCount = rarities.length + types.length + (number.trim() ? 1 : 0);
   const isDefaultView = !query.trim() && !hasFilters;
 
   // Sets power the filter dropdown and the default view (newest set)
@@ -349,29 +366,16 @@ export default function Search() {
           addSet,
           removeSet,
         )}
-        {multiFilter(
-          rarities,
-          "Any rarity",
-          RARITIES.map((r) => ({ value: r, label: r })),
-          (r) => r,
-          addRarity,
-          removeRarity,
-        )}
-        {multiFilter(
-          types,
-          "Any type",
-          TYPES.map((t) => ({ value: t, label: t })),
-          (t) => t,
-          addType,
-          removeType,
-        )}
-        <input
-          value={number}
-          onChange={(e) => setNumber(e.target.value)}
-          placeholder="Card #"
-          aria-label="Card number"
-          className={styles.numberChip}
-        />
+        <button
+          type="button"
+          className={`${styles.filterToggle} ${filtersOpen ? styles.filterToggleOpen : ""}`}
+          aria-expanded={filtersOpen}
+          aria-controls="more-filters"
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          <FilterIcon /> Filters
+          {advancedCount > 0 && <span className={styles.filterBadge}>{advancedCount}</span>}
+        </button>
         {hasFilters && (
           <button className={styles.clearFilters} onClick={clearFilters}>
             Clear
@@ -381,6 +385,34 @@ export default function Search() {
           <span className={`${styles.filterCount} num`}>{totalCount.toLocaleString()} results</span>
         )}
       </div>
+
+      {filtersOpen && (
+        <div className={styles.moreFilters} id="more-filters">
+          {multiFilter(
+            rarities,
+            "Any rarity",
+            RARITIES.map((r) => ({ value: r, label: r })),
+            (r) => r,
+            addRarity,
+            removeRarity,
+          )}
+          {multiFilter(
+            types,
+            "Any type",
+            TYPES.map((t) => ({ value: t, label: t })),
+            (t) => t,
+            addType,
+            removeType,
+          )}
+          <input
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+            placeholder="Card #"
+            aria-label="Card number"
+            className={styles.numberChip}
+          />
+        </div>
+      )}
 
       {/* Header: browse-the-newest-set eyebrow (default) or a results title */}
       {isDefaultView ? (

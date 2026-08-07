@@ -125,6 +125,53 @@
 
 .chip-x { font-size: 13px; }
 
+/* "Filters" toggle: collapses rarity/type/card # behind one button */
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 15px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text-h);
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.filter-toggle:hover { border-color: var(--text-h); }
+.filter-toggle-open { border-color: var(--accent); color: var(--accent); }
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* The collapsed filters, revealed under the filter row */
+.more-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
 .number-chip {
   width: 78px;
   background: var(--bg-card);
