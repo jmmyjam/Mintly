@@ -358,14 +358,6 @@ export default function Search() {
       </form>
 
       <div className={styles.filterRow}>
-        {multiFilter(
-          setIds,
-          "All sets",
-          sets.map((s) => ({ value: s.id, label: s.name })),
-          setName,
-          addSet,
-          removeSet,
-        )}
         <button
           type="button"
           className={`${styles.filterToggle} ${filtersOpen ? styles.filterToggleOpen : ""}`}
@@ -376,6 +368,14 @@ export default function Search() {
           <FilterIcon /> Filters
           {advancedCount > 0 && <span className={styles.filterBadge}>{advancedCount}</span>}
         </button>
+        {multiFilter(
+          setIds,
+          "All sets",
+          sets.map((s) => ({ value: s.id, label: s.name })),
+          setName,
+          addSet,
+          removeSet,
+        )}
         {hasFilters && (
           <button className={styles.clearFilters} onClick={clearFilters}>
             Clear
