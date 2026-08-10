@@ -336,6 +336,7 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
           value={sortKey}
           onChange={e => setSortKey(e.target.value as SortKey)}
           className="filter-select"
+          aria-label="Sort cards"
         >
           {SORT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
