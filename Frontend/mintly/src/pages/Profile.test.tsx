@@ -131,7 +131,14 @@ describe('Profile', () => {
     renderWithRouter(<Profile />)
     await screen.findByRole('heading', { level: 1, name: 'ashketchum' })
 
-    const newPw = screen.getByLabelText(/^New password/)
+    // Exact accessible names: the inline Show/Hide toggle sits inside the field
+    // <label>, so these must not absorb its text (e.g. "New password Show").
+    // A string matcher is exact, so it would fail if the toggle text bled back in.
+    expect(screen.getByLabelText('Current password')).toBeInTheDocument()
+    expect(screen.getByLabelText('New password')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirm new password')).toBeInTheDocument()
+
+    const newPw = screen.getByLabelText('New password')
     await user.type(newPw, 'abc')
     expect(screen.getByText('8 characters minimum')).toBeInTheDocument()
     await user.clear(newPw)

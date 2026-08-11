@@ -45,6 +45,8 @@ describe('ResetPassword — request-link mode (no token)', () => {
     renderReset('/reset-password')
     expect(screen.getByRole('heading', { name: 'Reset your password' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Email')).toBeInTheDocument()
+    // The input carries an accessible name, not just a placeholder (a11y).
+    expect(screen.getByRole('textbox', { name: 'Email' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument()
   })
 
@@ -85,6 +87,9 @@ describe('ResetPassword — new-password mode (?token=)', () => {
     expect(screen.getByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('New password')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Confirm new password')).toBeInTheDocument()
+    // Password inputs expose no ARIA role, so lock their accessible names via label.
+    expect(screen.getByLabelText('New password')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirm new password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Set new password' })).toBeInTheDocument()
   })
 

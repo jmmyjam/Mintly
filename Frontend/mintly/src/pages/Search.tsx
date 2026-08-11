@@ -115,7 +115,17 @@ export default function Search() {
   const [page, setPage] = useState(initialPage);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize, setPageSize] = useState(50);
-  const [loading, setLoading] = useState(false);
+  // Seed `loading` true when the URL already carries a query or filters: a search
+  // is guaranteed to fire (via the debounce effect below), so start on skeletons
+  // rather than flashing the "No cards match" empty state during the debounce.
+  const [loading, setLoading] = useState(
+    () =>
+      !!(searchParams.get("q") ?? "").trim() ||
+      parseList(searchParams.get("set")).length > 0 ||
+      parseList(searchParams.get("rarity")).length > 0 ||
+      parseList(searchParams.get("type")).length > 0 ||
+      !!(searchParams.get("number") ?? "").trim(),
+  );
   const [error, setError] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [purchasePrice, setPurchasePrice] = useState("");

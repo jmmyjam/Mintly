@@ -69,6 +69,10 @@ function PasswordField({ label, value, onChange, autoComplete, describedBy }: {
           value={value}
           onChange={e => onChange(e.target.value)}
           autoComplete={autoComplete}
+          // Explicit name: the Show/Hide button lives inside the wrapping
+          // <label>, so without this the input's accessible name would absorb
+          // the button text ("New password Show").
+          aria-label={label}
           aria-describedby={describedBy}
           required
         />

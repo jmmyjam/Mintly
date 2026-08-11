@@ -138,6 +138,19 @@ describe('Search', () => {
     expect(await screen.findByText('Charizard')).toBeInTheDocument()
   })
 
+  it('does not flash the empty state during the initial debounce', async () => {
+    // Mounting with a ?q= guarantees a search will fire (after the 400ms
+    // debounce), so `loading` is seeded true and skeletons show — the
+    // "No cards match" empty block must not appear synchronously first.
+    mockSearch.mockResolvedValue(page([card()]))
+    renderWithRouter(<Search />, { route: '/search?q=charizard' })
+
+    expect(screen.queryByText(/No cards match/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Searching…' })).toBeInTheDocument()
+    // Let the debounced search resolve so the timer + state settle.
+    expect(await screen.findByText('Charizard')).toBeInTheDocument()
+  })
+
   it('reveals the quick-add form and sends a signed-out add to /login', async () => {
     const user = userEvent.setup()
     mockSearch.mockResolvedValue(page([card()]))

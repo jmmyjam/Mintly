@@ -78,6 +78,7 @@ export default function ResetPassword() {
                 type="password"
                 autoComplete="new-password"
                 placeholder="New password"
+                aria-label="New password"
                 value={newPw}
                 onChange={e => setNewPw(e.target.value)}
                 required
@@ -87,6 +88,7 @@ export default function ResetPassword() {
                 type="password"
                 autoComplete="new-password"
                 placeholder="Confirm new password"
+                aria-label="Confirm new password"
                 value={confirmPw}
                 onChange={e => setConfirmPw(e.target.value)}
                 required
@@ -123,6 +125,7 @@ export default function ResetPassword() {
                   type="email"
                   autoComplete="email"
                   placeholder="Email"
+                  aria-label="Email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
