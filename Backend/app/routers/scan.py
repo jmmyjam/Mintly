@@ -9,11 +9,14 @@ The route is a sync `def`, so FastAPI runs it in its threadpool — the CPU-boun
 embedding must not block the single-worker event loop.
 """
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models import ScanFeedback
 from app.routers.auth import get_current_user
 from app.services import card_catalog, card_embed
 from app.services.price_history import annotate_price_changes, attach_estimates
@@ -71,3 +74,45 @@ def scan(file: UploadFile = File(...), db: Session = Depends(get_db)):
         logger.warning("scan price annotation failed", exc_info=True)
 
     return {"data": cards, "page": 1, "pageSize": len(cards), "totalCount": len(cards)}
+
+
+# ---- Scan accuracy telemetry (roadmap #10) --------------------------------
+# Passive labels for measuring real-world scanner accuracy. The frontend already
+# knows which candidate the user confirmed (its rank + CLIP score) and the top
+# candidate's score, so it reports them here after a successful add — or reports
+# the explicit "none of these" gestures (searched away / rescanned) as misses.
+# Stored anonymously (no user id): it's aggregate measurement, not per-account
+# data. Login-gated + rate-limited via the router deps as an anti-spam guard, but
+# the caller's identity is deliberately never persisted.
+
+
+class ScanFeedbackEvent(BaseModel):
+    outcome: Literal["confirmed", "searched_away", "rescanned"]
+    candidate_count: int = Field(ge=0)
+    picked_rank: int | None = Field(default=None, ge=0)
+    picked_score: float | None = None
+    top_score: float | None = None
+    top_card_id: str | None = Field(default=None, max_length=128)
+    picked_card_id: str | None = Field(default=None, max_length=128)
+
+
+class ScanFeedbackBody(BaseModel):
+    # A batch commit reports one event per queued card; a single-mode add or a
+    # miss reports one. Cap the list so a bad client can't bulk-insert.
+    events: list[ScanFeedbackEvent] = Field(min_length=1, max_length=200)
+
+
+@router.post("/scan/feedback")
+def scan_feedback(body: ScanFeedbackBody, db: Session = Depends(get_db)):
+    for e in body.events:
+        db.add(ScanFeedback(
+            outcome=e.outcome,
+            picked_rank=e.picked_rank,
+            picked_score=e.picked_score,
+            top_score=e.top_score,
+            candidate_count=e.candidate_count,
+            top_card_id=e.top_card_id,
+            picked_card_id=e.picked_card_id,
+        ))
+    db.commit()
+    return {"recorded": len(body.events)}

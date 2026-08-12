@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   scanCard,
@@ -6,8 +6,11 @@ import {
   getCardPrice,
   getToken,
   errorMessage,
+  reportScanFeedback,
   SessionExpiredError,
   type Card,
+  type ScanFeedbackEvent,
+  type ScanOutcome,
 } from "../api";
 import CameraViewfinder from "../components/CameraViewfinder";
 import CardImage from "../components/CardImage";
@@ -47,6 +50,36 @@ function defaultPriceFor(card: Card): string {
   if (price != null) return price.toFixed(2);
   if (card.estimate) return card.estimate.value.toFixed(2);
   return "";
+}
+
+// Build an anonymous scanner-accuracy event (roadmap #10) from a scan's ranked
+// candidates and the index the user confirmed. picked_rank 0 = the top guess was
+// right; a higher rank means the top guess was wrong and the truth ranked lower.
+function confirmEvent(candidates: Card[], pickedIndex: number): ScanFeedbackEvent {
+  const picked = candidates[pickedIndex];
+  const top = candidates[0];
+  return {
+    outcome: "confirmed",
+    candidate_count: candidates.length,
+    picked_rank: pickedIndex,
+    picked_score: picked?.matchScore ?? null,
+    top_score: top?.matchScore ?? null,
+    top_card_id: top?.id ?? null,
+    picked_card_id: picked?.id ?? null,
+  };
+}
+
+// A "none of these were right" gesture (searched away / rescanned) — no pick, so
+// only the top candidate is recorded. Corrects the survivorship bias in the
+// confirm-only signal (give-up scans would otherwise be invisible).
+function missEvent(candidates: Card[], outcome: ScanOutcome): ScanFeedbackEvent {
+  const top = candidates[0];
+  return {
+    outcome,
+    candidate_count: candidates.length,
+    top_score: top?.matchScore ?? null,
+    top_card_id: top?.id ?? null,
+  };
 }
 
 const PlusIcon = () => (
@@ -137,6 +170,9 @@ export default function Scan() {
   const [adding, setAdding] = useState<string | null>(null);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
+  // At most one accuracy label per single-mode capture (roadmap #10): the first
+  // confirm, or the searched-away miss. Reset on each new capture / reset().
+  const scanReported = useRef(false);
 
   // Batch mode
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -208,6 +244,7 @@ export default function Scan() {
     setResults(null);
     setNotice(null);
     setMatching(true);
+    scanReported.current = false; // a fresh capture is a fresh, unreported scan
     canvas.toBlob(
       (blob) => {
         if (!blob) {
@@ -252,10 +289,21 @@ export default function Scan() {
     setQuantity("1");
     setBestPrice("");
     setBestQty("1");
+    scanReported.current = false;
+  }
+
+  // Log which candidate the user confirmed (single mode), at most once per
+  // capture — the accuracy signal is one truth per scanned card.
+  function reportConfirmPick(pickedIndex: number) {
+    if (!results || pickedIndex < 0 || scanReported.current) return;
+    scanReported.current = true;
+    reportScanFeedback([confirmEvent(results, pickedIndex)]);
   }
 
   function handleAdd(card: Card) {
     add(card.id, purchasePrice, quantity, singleTarget ?? activeId, () => {
+      // The alt tile's rank is its position in the full results list.
+      reportConfirmPick(results ? results.findIndex((c) => c.id === card.id) : -1);
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
@@ -265,7 +313,14 @@ export default function Scan() {
   function manualSearch(e: React.FormEvent) {
     e.preventDefault();
     const q = manualQuery.trim();
-    if (q) navigate(`/search?q=${encodeURIComponent(q)}`);
+    if (!q) return;
+    // "Not it? Search by name" after a scan is an explicit miss — the top-12
+    // didn't contain the card. Only counts if nothing was confirmed first.
+    if (results && results.length > 0 && !scanReported.current) {
+      scanReported.current = true;
+      reportScanFeedback([missEvent(results, "searched_away")]);
+    }
+    navigate(`/search?q=${encodeURIComponent(q)}`);
   }
 
   // ----- Batch helpers -------------------------------------------------------
@@ -343,12 +398,20 @@ export default function Scan() {
         };
       });
       const result = await addCardBatch(items, batchTarget ?? activeId);
+      const failedIds = new Set(result.failed.map((f) => f.card_id));
+      // Report the confirmed pick for every card that actually landed (roadmap
+      // #10). Reporting only the succeeded ones dedupes cleanly: a failed row
+      // stays in the queue and is reported when a later retry succeeds.
+      reportScanFeedback(
+        queue
+          .filter((it) => !failedIds.has(it.candidates[it.selectedIndex].id))
+          .map((it) => confirmEvent(it.candidates, it.selectedIndex)),
+      );
       if (result.failed.length === 0) {
         setBatchStatus({ msg: result.message, ok: true });
         setQueue([]);
       } else {
         // Keep the cards that couldn't be added so they can be fixed and retried
-        const failedIds = new Set(result.failed.map((f) => f.card_id));
         setQueue((q) =>
           q
             .filter((it) => failedIds.has(it.candidates[it.selectedIndex].id))
@@ -856,7 +919,15 @@ export default function Scan() {
                         <button
                           className={styles.bestAdd}
                           disabled={addBusy}
-                          onClick={() => add(best.id, bestPrice, bestQty, singleTarget ?? activeId)}
+                          onClick={() =>
+                            add(
+                              best.id,
+                              bestPrice,
+                              bestQty,
+                              singleTarget ?? activeId,
+                              () => reportConfirmPick(0),
+                            )
+                          }
                         >
                           {addBusy ? "Adding…" : "Add to portfolio"}
                         </button>
@@ -890,7 +961,11 @@ export default function Scan() {
           candidates={overrideItem.candidates}
           selectedIndex={overrideItem.selectedIndex}
           onSelect={chooseCandidate}
-          onRescan={() => removeItem(overrideItem.key)}
+          onRescan={() => {
+            // Rejecting every candidate is an explicit miss for this scan.
+            reportScanFeedback([missEvent(overrideItem.candidates, "rescanned")]);
+            removeItem(overrideItem.key);
+          }}
           onClose={() => setOverrideKey(null)}
         />
       )}

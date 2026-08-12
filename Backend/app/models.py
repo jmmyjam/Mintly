@@ -152,6 +152,32 @@ class CatalogMeta(Base):
     value = Column(String)
 
 
+class ScanFeedback(Base):
+    # Anonymous accuracy telemetry for the camera scanner (roadmap #10:
+    # "measure first, then decide"). One row per confirmed pick or explicit
+    # miss: when the user adds a scanned card we record which candidate they
+    # chose (its rank + CLIP score) and the top candidate's score, so top-K hit
+    # rate and the right-vs-wrong score distribution (which calibrates the
+    # frontend's shaky-match floor) fall straight out of a GROUP BY. Deliberately
+    # NOT linked to a user — it's aggregate measurement, not per-account data, so
+    # it stores no personal info and account deletion has nothing to clear. The
+    # photo is never stored (see Privacy.tsx §4); only these numbers are. The two
+    # card ids let us spot *which* cards get confused (the lookalike-reprint case
+    # that would justify collector-number re-ranking).
+    __tablename__ = "scan_feedback"
+    id = Column(Integer, primary_key=True)
+    # "confirmed" (user added this pick), "searched_away" (gave up and searched
+    # by name — the top-12 missed), or "rescanned" (rejected the match in batch).
+    outcome = Column(String, nullable=False)
+    picked_rank = Column(Integer, nullable=True)   # 0 = top guess; NULL for a miss (no pick)
+    picked_score = Column(Float, nullable=True)    # CLIP cosine of the chosen card
+    top_score = Column(Float, nullable=True)       # CLIP cosine of the rank-0 card
+    candidate_count = Column(Integer, nullable=False)
+    top_card_id = Column(String, nullable=True)    # rank-0 card id (for confusion analysis)
+    picked_card_id = Column(String, nullable=True) # chosen card id (NULL for a miss)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+
 class CardPriceSnapshot(Base):
     # The app-wide daily price history for ANY card (browsed or held), one row
     # per card per variant per UTC day. variant "" is the headline series (the

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from conftest import TestingSessionLocal
 
-from app.models import CatalogCard
+from app.models import CatalogCard, ScanFeedback
 from app.services import card_catalog, card_embed
 
 
@@ -117,3 +117,94 @@ def test_scan_unreadable_image(client, auth_headers, monkeypatch):
 def test_scan_empty_upload(client, auth_headers):
     res = _post(client, auth_headers, content=b"")
     assert res.status_code == 400
+
+
+# ---- Scan accuracy telemetry (POST /scan/feedback) ------------------------
+
+def test_scan_feedback_requires_login(client):
+    # Shares the scan router's login gate — an anonymous post is rejected.
+    res = client.post("/scan/feedback", json={
+        "events": [{"outcome": "confirmed", "candidate_count": 12}],
+    })
+    assert res.status_code == 401
+
+
+def test_scan_feedback_records_a_confirmation(client, auth_headers):
+    res = client.post("/scan/feedback", json={"events": [{
+        "outcome": "confirmed",
+        "candidate_count": 12,
+        "picked_rank": 0,
+        "picked_score": 0.91,
+        "top_score": 0.91,
+        "top_card_id": "base1-4",
+        "picked_card_id": "base1-4",
+    }]}, headers=auth_headers)
+    assert res.status_code == 200
+    assert res.json() == {"recorded": 1}
+
+    db = TestingSessionLocal()
+    try:
+        rows = db.query(ScanFeedback).all()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.outcome == "confirmed"
+        assert row.picked_rank == 0
+        assert row.picked_score == 0.91
+        assert row.picked_card_id == "base1-4"
+        # Deliberately anonymous — there's no user linkage on the row at all.
+        assert not hasattr(row, "user_id")
+    finally:
+        db.close()
+
+
+def test_scan_feedback_records_a_batch_of_events(client, auth_headers):
+    # A batch commit reports one event per queued card in a single call; a pick
+    # at rank > 0 means the top guess was wrong and the truth ranked lower.
+    res = client.post("/scan/feedback", json={"events": [
+        {"outcome": "confirmed", "candidate_count": 12, "picked_rank": 0,
+         "picked_score": 0.9, "top_score": 0.9},
+        {"outcome": "confirmed", "candidate_count": 12, "picked_rank": 3,
+         "picked_score": 0.72, "top_score": 0.81},
+    ]}, headers=auth_headers)
+    assert res.status_code == 200
+    assert res.json() == {"recorded": 2}
+
+    db = TestingSessionLocal()
+    try:
+        ranks = sorted(r.picked_rank for r in db.query(ScanFeedback).all())
+        assert ranks == [0, 3]
+    finally:
+        db.close()
+
+
+def test_scan_feedback_records_a_miss(client, auth_headers):
+    # An explicit "none of these were right" gesture: no pick, so picked_* stay
+    # null. These correct the survivorship bias in the confirm-only signal.
+    res = client.post("/scan/feedback", json={"events": [{
+        "outcome": "searched_away",
+        "candidate_count": 12,
+        "top_score": 0.44,
+        "top_card_id": "base1-58",
+    }]}, headers=auth_headers)
+    assert res.status_code == 200
+
+    db = TestingSessionLocal()
+    try:
+        row = db.query(ScanFeedback).one()
+        assert row.outcome == "searched_away"
+        assert row.picked_rank is None
+        assert row.picked_card_id is None
+    finally:
+        db.close()
+
+
+def test_scan_feedback_rejects_unknown_outcome(client, auth_headers):
+    res = client.post("/scan/feedback", json={"events": [
+        {"outcome": "banana", "candidate_count": 12},
+    ]}, headers=auth_headers)
+    assert res.status_code == 422
+
+
+def test_scan_feedback_rejects_empty_event_list(client, auth_headers):
+    res = client.post("/scan/feedback", json={"events": []}, headers=auth_headers)
+    assert res.status_code == 422

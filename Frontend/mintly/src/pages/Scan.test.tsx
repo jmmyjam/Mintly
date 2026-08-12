@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { UserEvent } from '@testing-library/user-event'
 import Scan from './Scan'
-import { scanCard, addCardBatch, addCard, getToken, type Card } from '../api'
+import { scanCard, addCardBatch, addCard, reportScanFeedback, getToken, type Card } from '../api'
 import { axe, renderWithRouter } from '../test/utils'
 
 // api: keep the pure helpers + the SessionExpiredError class real (getCardPrice,
@@ -16,6 +16,7 @@ vi.mock('../api', async (importActual) => {
     scanCard: vi.fn(),
     addCardBatch: vi.fn(),
     addCard: vi.fn(),
+    reportScanFeedback: vi.fn(),
     getToken: vi.fn(() => 'test-token'),
   }
 })
@@ -237,6 +238,20 @@ describe('Scan page', () => {
         expect(addCard).toHaveBeenCalledWith('sv1-1', 350, 1, 1),
       )
       expect(await screen.findByText('Added to portfolio!')).toBeInTheDocument()
+
+      // Confirming the best guess logs an anonymous accuracy label at rank 0.
+      await waitFor(() =>
+        expect(reportScanFeedback).toHaveBeenCalledWith([
+          expect.objectContaining({
+            outcome: 'confirmed',
+            picked_rank: 0,
+            picked_card_id: 'sv1-1',
+            top_card_id: 'sv1-1',
+            picked_score: 0.9,
+            top_score: 0.9,
+          }),
+        ]),
+      )
     })
 
     it('batch capture prepends the scan to the queue and Add all posts one addCardBatch', async () => {
@@ -277,6 +292,17 @@ describe('Scan page', () => {
           [{ card_id: 'sv1-1', purchase_price: 12.5, quantity: 1 }],
           1,
         ),
+      )
+      // Each committed card logs one confirmed accuracy label (rank 0 here).
+      await waitFor(() =>
+        expect(reportScanFeedback).toHaveBeenCalledWith([
+          expect.objectContaining({
+            outcome: 'confirmed',
+            picked_rank: 0,
+            picked_card_id: 'sv1-1',
+            top_score: 0.93,
+          }),
+        ]),
       )
       // Success clears the queue and shows the backend message.
       expect(await screen.findByText('Added 1 card to portfolio')).toBeInTheDocument()

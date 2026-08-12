@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: August 3, 2026</p>
+      <p className="legal-updated">Last updated: August 11, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -59,6 +59,13 @@ export default function Privacy() {
         shown to anyone, and not kept. It is discarded once the match is made.
         The matching runs entirely on Mintly&apos;s own hardware; the image is
         never sent to any third party.
+      </p>
+      <p>
+        To measure and improve how accurately the scanner recognizes cards, we
+        keep an anonymous record of which suggested card you confirmed (or that
+        none of the suggestions were right) and how strong the match was. This
+        record contains no photo, and it is not linked to your account or to
+        your identity.
       </p>
 
       <h2>5. Third parties</h2>

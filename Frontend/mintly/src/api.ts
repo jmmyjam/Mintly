@@ -498,6 +498,35 @@ export async function scanCard(blob: Blob): Promise<CardPage> {
   return res.json()
 }
 
+// Anonymous scanner-accuracy telemetry (roadmap #10). Reports which candidate
+// the user confirmed (its rank + CLIP score vs the top score) after a successful
+// add, or an explicit "none of these" gesture as a miss. Fire-and-forget: it
+// runs its own fetch rather than authedFetch so a failed/expired-token ping can
+// never clear the session or surface an error to the user, and any failure is
+// swallowed — losing a measurement point must never affect the scan flow.
+export type ScanOutcome = 'confirmed' | 'searched_away' | 'rescanned'
+
+export interface ScanFeedbackEvent {
+  outcome: ScanOutcome
+  candidate_count: number
+  picked_rank?: number | null
+  picked_score?: number | null
+  top_score?: number | null
+  top_card_id?: string | null
+  picked_card_id?: string | null
+}
+
+export function reportScanFeedback(events: ScanFeedbackEvent[]): void {
+  const token = getToken()
+  if (!token || events.length === 0) return
+  void fetch(`${BASE}/scan/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ events }),
+    keepalive: true, // still delivers if the user navigates away right after
+  }).catch(() => {})
+}
+
 // ----- Portfolio management calls (authed) ----------------------------------------
 
 // The user's named portfolios (default first). Always non-empty — the backend
