@@ -90,11 +90,24 @@ def build_query(name: str, number: str | None, set_name: str | None) -> str:
 
 # ----- Fetch -----------------------------------------------------------------
 
+# eBay serves a bot challenge instead of results when it doesn't trust a request.
+# Two shapes seen in the wild: a tiny (~2KB) "Error Page | eBay", and a ~120KB
+# "Pardon Our Interruption" JS challenge (PerimeterX/HUMAN — spinners, no
+# listings). A genuine sold-results page is ~1MB+ even with zero organic results,
+# so treat a page as blocked when it carries a known challenge title OR is far
+# under a real page's size. The size floor is what catches future challenge
+# variants whose title we don't yet know; it sits well above the ~120KB
+# interruption page and well below a real page, and its only false-positive cost
+# is an estimate that degrades to count:0 — the same outcome as a card with no
+# comps. (A real page legitimately contains "something went wrong" buried in its
+# scripts, so we never match on that.)
+_BLOCK_TITLES = ("Error Page | eBay", "Pardon Our Interruption")
+_MIN_REAL_PAGE_BYTES = 250_000
+
+
 def _looks_blocked(html: str) -> bool:
-    # The bot-challenge/error page is tiny and titled "Error Page | eBay"; a real
-    # results page is ~1MB+ (and legitimately contains "something went wrong"
-    # buried in its scripts, so don't match on that).
-    return "Error Page | eBay" in html[:1000] or len(html) < 5000
+    return (any(title in html[:2000] for title in _BLOCK_TITLES)
+            or len(html) < _MIN_REAL_PAGE_BYTES)
 
 
 def _fetch_sold_html(query: str) -> str | None:

@@ -136,8 +136,28 @@ class TestBlockDetection:
     def test_error_page_flagged(self):
         assert ebay_prices._looks_blocked("<title>Error Page | eBay</title> SORRY")
 
+    def test_pardon_interruption_challenge_flagged(self):
+        # eBay's ~120KB PerimeterX/HUMAN bot challenge: a valid 200, but spinners
+        # and no listings. Caught by both the title and the size floor.
+        html = ("<html><head><title>Pardon Our Interruption...</title></head><body>"
+                + "x" * 120_000 + "</body></html>")
+        assert ebay_prices._looks_blocked(html)
+
+    def test_challenge_title_flagged_even_when_large(self):
+        # A challenge page bloated past the size floor is still caught by its title.
+        big = ("<html><head><title>Pardon Our Interruption...</title></head>"
+               + "x" * 300_000 + "</html>")
+        assert ebay_prices._looks_blocked(big)
+
+    def test_small_page_flagged(self):
+        # Any page far under a real ~1MB+ results page is a challenge/interstitial,
+        # even one whose title we don't recognize.
+        assert ebay_prices._looks_blocked("<html>" + "x" * 100_000 + "</html>")
+
     def test_real_page_not_flagged(self):
-        big = "<html>" + "x" * 6000 + " something went wrong in a script </html>"
+        # A genuine results page is ~1MB+; "something went wrong" buried in its
+        # scripts must not trip the detector.
+        big = "<html>" + "x" * 300_000 + " something went wrong in a script </html>"
         assert not ebay_prices._looks_blocked(big)
 
 
