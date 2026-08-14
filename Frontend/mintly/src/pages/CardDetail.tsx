@@ -14,6 +14,7 @@ import PortfolioPicker from '../components/PortfolioPicker'
 import SetCompletionMeter from '../components/SetCompletionMeter'
 import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
+import WatchButton from '../components/WatchButton'
 import { useAddCard } from '../hooks'
 import { getOwnedSetCompletion } from '../setCompletion'
 import { usePortfolios } from '../portfolios'
@@ -394,6 +395,8 @@ export default function CardDetail() {
               )}
             </div>
           </div>
+
+          <WatchButton cardId={card.id} />
 
           {tiles.length > 0 && (
             <div>

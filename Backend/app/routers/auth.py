@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (User, Portfolio, PortfolioCard, PasswordResetToken,
-                        EmailVerificationToken, OAuthAccount, utcnow)
+                        EmailVerificationToken, OAuthAccount, WatchlistItem, utcnow)
 from app.services import mailer, oauth
 from app.services.oauth import OAuthError, OAuthIdentity
 from app.services.admin_access import is_admin
@@ -693,6 +693,9 @@ def delete_account(current_user: User = Depends(get_current_user), db: Session =
     ).delete(synchronize_session=False)
     db.query(OAuthAccount).filter(
         OAuthAccount.user_id == current_user.id
+    ).delete(synchronize_session=False)
+    db.query(WatchlistItem).filter(
+        WatchlistItem.user_id == current_user.id
     ).delete(synchronize_session=False)
     db.delete(current_user)
     db.commit()

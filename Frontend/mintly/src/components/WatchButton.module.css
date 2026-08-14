@@ -1,0 +1,75 @@
+/* The CardDetail "watch this card" control — collapsed trigger, expanded form. */
+.trigger {
+  align-self: flex-start;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  max-width: 460px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 590;
+  color: var(--text-h);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.input {
+  width: 90px;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+}
+
+.input:focus {
+  outline: none;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.done {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.done a {
+  color: var(--accent);
+  font-weight: 590;
+}

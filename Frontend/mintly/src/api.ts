@@ -134,6 +134,24 @@ export interface PortfolioCard {
   image_url: string | null
 }
 
+// A card the user is tracking (without necessarily owning it). `target_price`
+// null = watch only, no alert; otherwise the daily job emails when the price
+// crosses it in `direction`. `triggered` = the alert condition is met right now.
+// From GET /watchlist — priced with the same current_price/price_change/image
+// pipeline as a portfolio row.
+export interface WatchlistItem {
+  id: number
+  card_id: string
+  card_name: string
+  target_price: number | null
+  direction: 'below' | 'above'
+  created_at: string
+  current_price: number | null
+  price_change: PriceChange | null
+  image_url: string | null
+  triggered: boolean
+}
+
 // One set the user owns cards in, with how far along they are toward the master
 // set. `total` is the set's full size incl. secret rares (the "own everything"
 // number); `printed_total` is the number printed on the card ("4/102"), shown
@@ -656,4 +674,45 @@ export async function updateCard(id: number, updates: { purchase_price?: number;
 export async function removeCard(id: number): Promise<void> {
   const res = await authedFetch(`/portfolio/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to remove card')
+}
+
+// ----- Watchlist calls (authed) ---------------------------------------------------
+
+// The user's watched cards (newest first), each priced with its daily-change chip.
+export async function getWatchlist(): Promise<WatchlistItem[]> {
+  const res = await authedFetch('/watchlist')
+  if (!res.ok) throw new Error('Failed to fetch watchlist')
+  return res.json()
+}
+
+// Add a card to the watchlist, or update its alert if already watched (the
+// backend upserts on the (user, card) pair). target_price null = watch only,
+// no email alert. Returns the server message.
+export async function addToWatchlist(card_id: string, target_price: number | null, direction: 'below' | 'above' = 'below'): Promise<string> {
+  const res = await authedFetch('/watchlist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_id, target_price, direction }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || "We couldn't add that card to your watchlist. Please try again.")
+  return data.message || 'Added to watchlist'
+}
+
+// Update a watched card's alert config (replaces target + direction).
+export async function updateWatchlistItem(id: number, target_price: number | null, direction: 'below' | 'above'): Promise<void> {
+  const res = await authedFetch(`/watchlist/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_price, direction }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || "We couldn't update that alert. Please try again.")
+  }
+}
+
+export async function removeFromWatchlist(id: number): Promise<void> {
+  const res = await authedFetch(`/watchlist/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to remove from watchlist')
 }

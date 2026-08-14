@@ -122,6 +122,34 @@ class PortfolioCard(Base):
     owner = relationship("User", back_populates="portfolio")
     portfolio = relationship("Portfolio", back_populates="cards")
 
+class WatchlistItem(Base):
+    # A card a user is tracking without owning it (roadmap: watchlist + price
+    # alerts). One row per (user, card) — a watchlist is a set, not a ledger of
+    # lots like portfolio_cards; the unique constraint below enforces it. Holds
+    # real pokemontcg.io ids AND synthetic stamp/mark variety ids (`~v…`), same
+    # as portfolio_cards. `target_price` NULL = watch-only (no alert); otherwise
+    # the daily job emails the user when the card's price crosses it in
+    # `direction` ("below" — the default, "drops below $X" — or "above", a
+    # sell/recovery target). `last_alerted_at` is the re-arm latch: set when an
+    # alert is sent, cleared when the price crosses back the other way, so a card
+    # sitting past its target isn't re-alerted every day (see
+    # app/services/watchlist_alerts.py). No FK cascade — account deletion clears
+    # these explicitly (like the token tables), so the alert logic never has to
+    # guard orphaned rows.
+    __tablename__ = "watchlist_items"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    card_id = Column(String, nullable=False)
+    card_name = Column(String)
+    target_price = Column(Float, nullable=True)
+    direction = Column(String, nullable=False, default="below", server_default="below")
+    created_at = Column(DateTime, default=utcnow)
+    last_alerted_at = Column(DateTime, nullable=True)
+    __table_args__ = (
+        UniqueConstraint("user_id", "card_id", name="uq_watchlist_user_card"),
+    )
+
+
 class CatalogCard(Base):
     # Local mirror of the upstream card list, so browsing is answered from the
     # DB instead of a 2-5s upstream call. Filled by the daily crawl and topped

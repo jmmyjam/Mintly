@@ -58,7 +58,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
 from app.models import CatalogCard  # noqa: E402
-from app.services import card_catalog, ebay_prices, history_archive, tcgcsv  # noqa: E402
+from app.services import (  # noqa: E402
+    card_catalog, ebay_prices, history_archive, tcgcsv, watchlist_alerts,
+)
 from app.services.price_history import (  # noqa: E402
     extract_price, record_snapshots, record_variant_snapshots, recorded_today,
 )
@@ -713,6 +715,9 @@ def main() -> int:
     parser.add_argument("--no-compact", action="store_true",
                         help="skip archiving months older than the daily window "
                              "to cold storage")
+    parser.add_argument("--no-alerts", action="store_true",
+                        help="skip evaluating watchlist price alerts / sending "
+                             "their emails (for smoke tests)")
     args = parser.parse_args()
 
     started = time.time()
@@ -859,6 +864,19 @@ def main() -> int:
                 log.warning("catalog upsert (recovery) failed: %s — recovered "
                             "prices still snapshotted", exc)
 
+        # Watchlist price alerts: every card's price for today is now recorded,
+        # so evaluate each user's alert thresholds against the fresh snapshots and
+        # email whoever's card crossed. Best-effort and edge-triggered (a re-arm
+        # latch stops a card past its target from re-alerting daily) — see
+        # app/services/watchlist_alerts.py. Never costs the day's snapshots.
+        alerts = watchlist_alerts.AlertRun()
+        if not args.no_alerts:
+            try:
+                alerts = watchlist_alerts.evaluate(db)
+            except Exception as exc:  # best-effort like the fills
+                db.rollback()
+                log.warning("watchlist alert evaluation failed: %s", exc)
+
         compacted: list[dict] = []
         if not args.no_compact:
             try:
@@ -906,6 +924,10 @@ def main() -> int:
                  "  — stopped early" if fill.gave_up else "")
     log.info("  snapshots today   +%s new", f"{recorded:,}")
     log.info("  variant rows      +%s new  (multi-variant cards)", f"{variant_rows:,}")
+    if not args.no_alerts:
+        log.info("  watchlist alerts  %d sent to %d user(s)  (%d re-armed, "
+                 "%d send failures)", alerts.alerts_sent, alerts.users_notified,
+                 alerts.rearmed, alerts.failures)
     if compacted:
         log.info("  compacted         %d month(s) to cold storage", len(compacted))
     if crawl.dropped:

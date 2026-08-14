@@ -11,6 +11,7 @@ from app.routers.health import router as health_router
 from app.routers.portfolio import router as portfolio_router
 from app.routers.scan import router as scan_router
 from app.routers.sitemap import router as sitemap_router
+from app.routers.watchlist import router as watchlist_router
 
 load_dotenv()
 
@@ -40,3 +41,4 @@ app.include_router(health_router)
 app.include_router(sitemap_router)
 app.include_router(admin_router)
 app.include_router(scan_router)
+app.include_router(watchlist_router)

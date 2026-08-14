@@ -8,6 +8,7 @@ import Home from './pages/Home'
 import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
 import Holding from './pages/Holding'
+import Watchlist from './pages/Watchlist'
 // Lazy-loaded: the scanner pulls in the Tesseract OCR runtime, so it's split
 // into its own chunk that only downloads when someone opens /scan.
 const Scan = lazy(() => import('./pages/Scan'))
@@ -92,6 +93,7 @@ export default function App() {
           />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/portfolio/:cardId" element={<Holding />} />
+          <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/card/:cardId" element={<CardDetail />} />

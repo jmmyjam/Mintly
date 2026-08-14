@@ -2,13 +2,14 @@ export default function Terms() {
   return (
     <div className="page legal-page">
       <h1>Terms of Service</h1>
-      <p className="legal-updated">Last updated: August 3, 2026</p>
+      <p className="legal-updated">Last updated: August 13, 2026</p>
 
       <h2>1. The service</h2>
       <p>
         Mintly lets you search Pokémon Trading Card Game cards, view market
-        price estimates, and track the cards you own in a personal portfolio.
-        By creating an account or using the site you agree to these terms.
+        price estimates, track the cards you own in a personal portfolio, and
+        keep a watchlist of cards you don&apos;t own with optional email price
+        alerts. By creating an account or using the site you agree to these terms.
       </p>
 
       <h2>2. Your account</h2>
@@ -25,7 +26,7 @@ export default function Terms() {
         not use the service for anything unlawful or attempt to disrupt or gain
         unauthorized access to it. You may delete your account at any time from
         your profile page, which permanently removes your account and all of
-        your portfolio data.
+        your portfolio and watchlist data.
       </p>
 
       <h2>3. Prices and data</h2>
@@ -40,7 +41,10 @@ export default function Terms() {
         estimates. They can be delayed, incomplete, or wrong, and may be
         missing entirely for some cards or sets. Nothing on Mintly is financial,
         investment, or purchasing advice; portfolio and price values shown are
-        informational only. Links to product pages or search results on
+        informational only. Any price alerts you set on your watchlist use these
+        same estimated figures and are sent on a best-effort basis: they may be
+        delayed, missed, or based on an out-of-date estimate, and are never a
+        recommendation to buy or sell. Links to product pages or search results on
         TCGplayer and eBay may be affiliate links; Mintly may earn a commission
         on qualifying purchases made through them, at no additional cost to
         you. This never affects which prices or estimates are shown.

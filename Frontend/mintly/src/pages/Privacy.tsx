@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: August 11, 2026</p>
+      <p className="legal-updated">Last updated: August 13, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -11,7 +11,10 @@ export default function Privacy() {
         accepted the Terms of Service. When you use the portfolio we store the
         cards you add: card id, name, quantity, purchase price, and purchase
         date, along with the names of any portfolios you create to organize
-        them. To protect against abuse (such as password-guessing), our servers
+        them. If you add a card to your watchlist, we store the card&apos;s id
+        and name, an optional target price, and whether you want to be alerted
+        when the price falls below or rises above it. To protect against abuse
+        (such as password-guessing), our servers
         also keep a short-lived, in-memory count of recent requests per network
         address; these counts are not stored durably or linked to your account.
         If you request a password reset, we store a hashed, single-use reset
@@ -31,9 +34,10 @@ export default function Privacy() {
         This data exists solely to run the service: logging you in, showing
         your portfolio, and computing its value over time. Your email address
         is used only for signing in, for confirming your address with a
-        verification link, and for sending a password-reset link when you
-        request one; we don&apos;t send marketing email. We do not sell your
-        data or share it with advertisers.
+        verification link, for sending a password-reset link when you request
+        one, and for sending the price alerts you set up on your watchlist; we
+        don&apos;t send marketing email. We do not sell your data or share it
+        with advertisers.
       </p>
 
       <h2>3. Cookies and local storage</h2>
@@ -100,7 +104,8 @@ export default function Privacy() {
         profile page, and remove cards from your portfolio at any time, which
         deletes those records. You can also permanently delete your entire
         account from your profile page: this erases your email, username,
-        password hash, and all of your portfolio records, and cannot be undone.
+        password hash, and all of your portfolio and watchlist records, and
+        cannot be undone.
         To build price history, Mintly records a daily market price for cards
         that are searched or viewed; these snapshots are aggregate per-card
         figures, are not tied to your account, and contain nothing personal, so

@@ -42,6 +42,13 @@ export default function Navbar() {
         <Link to="/portfolio" className={location.pathname === '/portfolio' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
           Portfolio
         </Link>
+        {/* Watchlist is an account-only feature — shown to signed-in users only,
+            so the signed-out (and crawler-facing) nav stays at three links. */}
+        {loggedIn && (
+          <Link to="/watchlist" className={location.pathname === '/watchlist' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+            Watchlist
+          </Link>
+        )}
       </div>
       <div className={styles.navbarRight}>
         {loggedIn ? (

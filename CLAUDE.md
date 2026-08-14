@@ -11,8 +11,8 @@ Deep reference — endpoint table, data model, deployment/backup runbooks, obser
 This root file holds only what matters everywhere. Detail lives in directory-scoped `CLAUDE.md` files that Claude Code loads automatically when you work in that tree — so keep a fact in the narrowest file that covers it, and only cross-cutting rules here.
 
 - `Backend/CLAUDE.md` — backend commands, tests, app assembly (`main.py`), data model (`models.py`), deploy + daily-job pointers, backend conventions + gotchas.
-  - `Backend/app/routers/CLAUDE.md` — the HTTP routers (auth, cards, portfolio, admin, health, sitemap).
-  - `Backend/app/services/CLAUDE.md` — the services (card catalog, price history, tcgcsv, ebay, rate limit, mailer, admin access, history archive).
+  - `Backend/app/routers/CLAUDE.md` — the HTTP routers (auth, cards, portfolio, watchlist, scan, admin, health, sitemap).
+  - `Backend/app/services/CLAUDE.md` — the services (card catalog, price history, tcgcsv, ebay, rate limit, mailer, admin access, history archive, watchlist alerts).
   - `Backend/scripts/CLAUDE.md` — the daily snapshot job, history-archive CLI, backup script.
 - `Frontend/mintly/CLAUDE.md` — frontend commands, `api.ts`, shared modules, styling, frontend conventions + gotchas. Run npm/eslint from `Frontend/mintly/`, NOT the repo root.
   - `Frontend/mintly/src/pages/CLAUDE.md` — route pages.
