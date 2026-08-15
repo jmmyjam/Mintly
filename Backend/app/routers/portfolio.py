@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import date, datetime
 import time
 import requests
@@ -49,6 +49,40 @@ _session.headers.update({"X-Api-Key": API_KEY})
 router = APIRouter(dependencies=[Depends(rate_limit("api", times=120, seconds=60))])
 
 
+# ----- Condition / grade (roadmap #7) ----------------------------------------
+
+# The case type of a lot. NULL grading = unset; "Raw" is an ungraded card whose
+# `grade` (if any) is a condition ("Near Mint"…"Damaged"); the graders carry a
+# slab grade ("10", "9.5", "Authentic"). Kept in sync with the frontend's
+# GradingPicker vocabulary.
+GRADING_TYPES = {"Raw", "PSA", "BGS", "CGC", "SGC", "Other"}
+
+
+def _is_graded(grading: str | None) -> bool:
+    """A slab — a graded card that can't be valued from the raw TCGplayer price.
+    Raw/unset lots use the normal price pipeline; graded lots report
+    current_price=None until a graded price source exists (phase 2)."""
+    return grading is not None and grading != "Raw"
+
+
+def _clean_condition(grading: str | None, grade: str | None) -> tuple[str | None, str | None]:
+    """Validate + normalize a (grading, grade) pair. Raises ValueError (surfaced
+    by Pydantic as a 422) on an unknown grading or a graded card missing its
+    grade. A NULL grading clears any grade — a bare grade with no case is
+    meaningless."""
+    if grading is None:
+        return None, None
+    grading = grading.strip()
+    if grading not in GRADING_TYPES:
+        raise ValueError(f"grading must be one of {sorted(GRADING_TYPES)}")
+    grade = grade.strip() if grade else None
+    # A slab (or "Other") with no grade/descriptor tells the user nothing; Raw
+    # may stand alone (condition simply unspecified).
+    if grading != "Raw" and not grade:
+        raise ValueError("grade is required for a graded card")
+    return grading, grade
+
+
 # ----- Request models --------------------------------------------------------
 
 class AddCardRequest(BaseModel):
@@ -61,6 +95,14 @@ class AddCardRequest(BaseModel):
     # Which portfolio to add to; None = the user's default portfolio. On batch add
     # the target lives on AddBatchRequest, so per-item values here are ignored.
     portfolio_id: int | None = None
+    # Condition/grade of this lot (roadmap #7). None grading = unset.
+    grading: str | None = None
+    grade: str | None = Field(None, max_length=24)
+
+    @model_validator(mode="after")
+    def _validate_condition(self):
+        self.grading, self.grade = _clean_condition(self.grading, self.grade)
+        return self
 
 
 class AddBatchRequest(BaseModel):
@@ -74,6 +116,17 @@ class AddBatchRequest(BaseModel):
 class UpdateCardRequest(BaseModel):
     purchase_price: float | None = Field(None, ge=0)
     quantity: int | None = Field(None, ge=1)
+    # Condition/grade edit. grading=None means "leave unchanged" (like the other
+    # fields); the editor always sends a grading (defaulting Raw), so a lot's
+    # condition is settable/fixable in place.
+    grading: str | None = None
+    grade: str | None = Field(None, max_length=24)
+
+    @model_validator(mode="after")
+    def _validate_condition(self):
+        if self.grading is not None:
+            self.grading, self.grade = _clean_condition(self.grading, self.grade)
+        return self
 
 
 # Portfolio names: trimmed, 1-60 chars. Uniqueness (case-insensitive, per user)
@@ -363,6 +416,10 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
 
     purchase_price = body.purchase_price
     if purchase_price is None:
+        # A graded card can't be auto-priced from the raw TCGplayer market —
+        # that figure is the ungraded value, not the slab's. Require the price paid.
+        if _is_graded(body.grading):
+            raise HTTPException(status_code=400, detail="Enter the price you paid for this graded card.")
         purchase_price = market_price
         if purchase_price is None:
             raise HTTPException(status_code=400, detail="No market price available for this card. Enter a purchase price.")
@@ -375,6 +432,8 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
         card_name=card_name,
         purchase_price=purchase_price,
         quantity=body.quantity,
+        grading=body.grading,
+        grade=body.grade,
     )
     # Set the date only when supplied — passing None would write NULL and suppress
     # the column's default=utcnow.
@@ -383,10 +442,14 @@ def add_card(body: AddCardRequest, current_user=Depends(get_current_user), db: S
     db.add(card)
     db.commit()
     db.refresh(card)
+    # Count the same *holding* (card + grading + grade), since a differently-graded
+    # copy of the same card is a separate holding on the Portfolio grid.
     total = db.query(func.sum(PortfolioCard.quantity)).filter(
         PortfolioCard.user_id == current_user.id,
         PortfolioCard.portfolio_id == target.id,
         PortfolioCard.card_id == body.card_id,
+        PortfolioCard.grading == body.grading,
+        PortfolioCard.grade == body.grade,
     ).scalar()
     if total > body.quantity:
         return {"message": f"Added, you now have {total} total", "id": card.id}
@@ -405,7 +468,9 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
 
     # Resolve market price for the auto-priced items in one freshest-first pass
     # (live upstream OR-query in chunks of 100, then TCGCSV/eBay fallbacks).
-    need_price = [item.card_id for item in body.items if item.purchase_price is None]
+    # Graded items are excluded — a slab can't take the raw market price.
+    need_price = [item.card_id for item in body.items
+                  if item.purchase_price is None and not _is_graded(item.grading)]
     market_prices: dict[str, float] = {}
     if need_price:
         market_prices, _ = fetch_prices(need_price, db)
@@ -419,6 +484,9 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
             continue
         purchase_price = item.purchase_price
         if purchase_price is None:
+            if _is_graded(item.grading):
+                failed.append({"card_id": item.card_id, "reason": "Graded cards need a purchase price"})
+                continue
             purchase_price = market_prices.get(item.card_id)
             if purchase_price is None:
                 failed.append({"card_id": item.card_id, "reason": "No market price available"})
@@ -430,6 +498,8 @@ def add_card_batch(body: AddBatchRequest, current_user=Depends(get_current_user)
             card_name=card_catalog.card_payload(row).get("name", "Unknown"),
             purchase_price=purchase_price,
             quantity=item.quantity,
+            grading=item.grading,
+            grade=item.grade,
         )
         # Preserve an imported lot's original date; None keeps the default=utcnow.
         if item.purchase_date is not None:
@@ -471,7 +541,11 @@ def get_portfolio(
 
     result = []
     for c in cards:
-        current_price = prices.get(c.card_id)
+        # A graded lot has no honest current value from the raw TCGplayer price,
+        # so we report current_price=None (like a priceless card): the frontend
+        # then values it at cost and shows "—" for P&L, keeping the portfolio
+        # total honest (raw at market, slabs at cost) until phase-2 graded prices.
+        current_price = None if _is_graded(c.grading) else prices.get(c.card_id)
         gain_loss = round((current_price - c.purchase_price) * c.quantity, 2) if current_price is not None else None
         gain_loss_pct = round(((current_price - c.purchase_price) / c.purchase_price) * 100, 2) if current_price and c.purchase_price else None
         change = None
@@ -490,6 +564,8 @@ def get_portfolio(
             "gain_loss_pct": gain_loss_pct,
             "price_change": change,
             "image_url": images.get(c.card_id),
+            "grading": c.grading,
+            "grade": c.grade,
         })
     return result
 
@@ -617,6 +693,11 @@ def update_card(portfolio_card_id: int, body: UpdateCardRequest, current_user=De
         card.purchase_price = body.purchase_price
     if body.quantity is not None:
         card.quantity = body.quantity
+    # grading=None means "unchanged"; a sent grading (Raw or a grader) sets the
+    # pair — the validator already normalized them together.
+    if body.grading is not None:
+        card.grading = body.grading
+        card.grade = body.grade
     db.commit()
     return {"message": "Card updated"}
 

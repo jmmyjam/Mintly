@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addCard, errorMessage, getToken, SessionExpiredError } from './api'
+import { addCard, errorMessage, getToken, SessionExpiredError, type LotCondition } from './api'
 import { invalidateOwned } from './owned'
 import { invalidateSetCompletion } from './setCompletion'
 
@@ -26,7 +26,7 @@ export function useAddCard() {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<AddCardStatus | null>(null)
 
-  async function add(cardId: string, priceInput: string, qtyInput: string, portfolioId?: number | null, onSuccess?: () => void) {
+  async function add(cardId: string, priceInput: string, qtyInput: string, portfolioId?: number | null, onSuccess?: () => void, condition?: LotCondition | null) {
     if (!getToken()) {
       navigate('/login')
       return
@@ -35,7 +35,7 @@ export function useAddCard() {
     setBusy(true)
     try {
       const price = parseFloat(priceInput)
-      const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1, portfolioId)
+      const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1, portfolioId, condition)
       // The portfolio changed — drop the owned-qty + set-completion caches so
       // Search re-badges and the completion meters refresh
       invalidateOwned()

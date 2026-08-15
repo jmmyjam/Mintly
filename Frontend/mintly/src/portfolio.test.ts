@@ -28,6 +28,8 @@ function lot(overrides: Partial<PortfolioCard> = {}): PortfolioCard {
     gain_loss_pct: 50,
     price_change: null,
     image_url: null,
+    grading: null,
+    grade: null,
     ...overrides,
   }
 }

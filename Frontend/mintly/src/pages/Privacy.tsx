@@ -2,15 +2,16 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: August 13, 2026</p>
+      <p className="legal-updated">Last updated: August 14, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
         When you register we store your email address, username, a hashed
         version of your password (never the password itself), and the time you
         accepted the Terms of Service. When you use the portfolio we store the
-        cards you add: card id, name, quantity, purchase price, and purchase
-        date, along with the names of any portfolios you create to organize
+        cards you add: card id, name, quantity, purchase price, purchase date,
+        and the condition or grade you record for each (for example Near Mint or
+        PSA 10), along with the names of any portfolios you create to organize
         them. If you add a card to your watchlist, we store the card&apos;s id
         and name, an optional target price, and whether you want to be alerted
         when the price falls below or rises above it. To protect against abuse

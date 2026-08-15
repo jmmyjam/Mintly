@@ -18,6 +18,9 @@ import CandidatePickerModal from "../components/CandidatePickerModal";
 import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
 import PortfolioPicker from "../components/PortfolioPicker";
+import GradingPicker from "../components/GradingPicker";
+import { DEFAULT_GRADING, DEFAULT_GRADE, isGraded } from "../grading";
+import type { LotCondition } from "../api";
 import SignedOutHero from "../components/SignedOutHero";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard, useSessionRedirect } from "../hooks";
@@ -170,12 +173,17 @@ export default function Scan() {
   const [adding, setAdding] = useState<string | null>(null);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
+  // Condition/grade for the single-mode adds (best guess + other matches).
+  const [singleCondition, setSingleCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE });
+  const [otherCondition, setOtherCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE });
   // At most one accuracy label per single-mode capture (roadmap #10): the first
   // confirm, or the searched-away miss. Reset on each new capture / reset().
   const scanReported = useRef(false);
 
   // Batch mode
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  // One condition applied to the whole batch (scan stacks are usually one kind).
+  const [batchCondition, setBatchCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE });
   const [overrideKey, setOverrideKey] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [batchStatus, setBatchStatus] = useState<{
@@ -300,6 +308,16 @@ export default function Scan() {
     reportScanFeedback([confirmEvent(results, pickedIndex)]);
   }
 
+  function pickSingleCondition(grading: string | null, grade: string | null) {
+    if (isGraded(grading) && !isGraded(singleCondition.grading)) setBestPrice("");
+    setSingleCondition({ grading, grade });
+  }
+
+  function pickOtherCondition(grading: string | null, grade: string | null) {
+    if (isGraded(grading) && !isGraded(otherCondition.grading)) setPurchasePrice("");
+    setOtherCondition({ grading, grade });
+  }
+
   function handleAdd(card: Card) {
     add(card.id, purchasePrice, quantity, singleTarget ?? activeId, () => {
       // The alt tile's rank is its position in the full results list.
@@ -307,7 +325,7 @@ export default function Scan() {
       setAdding(null);
       setPurchasePrice("");
       setQuantity("1");
-    });
+    }, otherCondition);
   }
 
   function manualSearch(e: React.FormEvent) {
@@ -395,6 +413,8 @@ export default function Scan() {
           card_id: card.id,
           purchase_price: Number.isNaN(price) ? null : price,
           quantity: parseInt(it.quantity, 10) || 1,
+          grading: batchCondition.grading,
+          grade: batchCondition.grade,
         };
       });
       const result = await addCardBatch(items, batchTarget ?? activeId);
@@ -492,28 +512,37 @@ export default function Scan() {
         {status ? (
           <StatusMessage ok={status.ok}>{status.msg}</StatusMessage>
         ) : isAdding ? (
-          <PriceQtyForm
-            className={styles.altAddForm}
-            price={purchasePrice}
-            quantity={quantity}
-            onPriceChange={setPurchasePrice}
-            onQuantityChange={setQuantity}
-            onSubmit={() => handleAdd(card)}
-            submitLabel="Add"
-            busyLabel="Adding…"
-            busy={addBusy}
-            smallButtons
-            onCancel={() => {
-              setAdding(null);
-              setPurchasePrice("");
-              setQuantity("1");
-            }}
-          />
+          <>
+            <GradingPicker
+              variant="compact"
+              grading={otherCondition.grading}
+              grade={otherCondition.grade}
+              onChange={pickOtherCondition}
+            />
+            <PriceQtyForm
+              className={styles.altAddForm}
+              price={purchasePrice}
+              quantity={quantity}
+              onPriceChange={setPurchasePrice}
+              onQuantityChange={setQuantity}
+              onSubmit={() => handleAdd(card)}
+              submitLabel="Add"
+              busyLabel="Adding…"
+              busy={addBusy}
+              smallButtons
+              onCancel={() => {
+                setAdding(null);
+                setPurchasePrice("");
+                setQuantity("1");
+              }}
+            />
+          </>
         ) : (
           <button
             className={styles.altBtn}
             onClick={() => {
               setAdding(card.id);
+              setOtherCondition({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE });
               if (price == null && est != null)
                 setPurchasePrice(est.toFixed(2));
             }}
@@ -768,6 +797,16 @@ export default function Scan() {
               </div>
             </div>
 
+            <div className={styles.batchCondition}>
+              <span className="stat-label">Condition applied to all</span>
+              <GradingPicker
+                variant="compact"
+                grading={batchCondition.grading}
+                grade={batchCondition.grade}
+                onChange={(grading, grade) => setBatchCondition({ grading, grade })}
+              />
+            </div>
+
             {batchStatus && (
               <StatusMessage ok={batchStatus.ok}>
                 {batchStatus.msg}
@@ -897,6 +936,13 @@ export default function Scan() {
                           label="Add to"
                           className={styles.bestPortfolio}
                         />
+                        <GradingPicker
+                          variant="full"
+                          className={styles.bestGrading}
+                          grading={singleCondition.grading}
+                          grade={singleCondition.grade}
+                          onChange={pickSingleCondition}
+                        />
                         <input
                           type="number"
                           className={`${styles.bestPriceInput} num`}
@@ -926,6 +972,7 @@ export default function Scan() {
                               bestQty,
                               singleTarget ?? activeId,
                               () => reportConfirmPick(0),
+                              singleCondition,
                             )
                           }
                         >

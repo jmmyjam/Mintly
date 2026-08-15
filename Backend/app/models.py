@@ -119,6 +119,18 @@ class PortfolioCard(Base):
     quantity = Column(Integer, default=1)
     purchase_price = Column(Float)    # price paid per card
     purchase_date = Column(DateTime, default=utcnow)
+    # Condition/grade of THIS lot (roadmap #7). `grading` is the case type
+    # ("Raw" | "PSA" | "BGS" | "CGC" | "SGC" | "Other"); `grade` is the raw
+    # condition for Raw ("Near Mint"…"Damaged") or the slab grade otherwise
+    # ("10", "9.5", "Authentic"). Both nullable — pre-feature lots and adds that
+    # skip the picker are NULL (unknown). Two lots of the same card with different
+    # grading are SEPARATE holdings: the Portfolio grid groups by
+    # (card_id, grading, grade), not card_id alone. A graded lot can't be valued
+    # from the raw TCGplayer price, so /portfolio reports current_price=None for
+    # it (the frontend then values it at cost) until a graded price source lands
+    # (roadmap #7 phase 2).
+    grading = Column(String, nullable=True)
+    grade = Column(String, nullable=True)
     owner = relationship("User", back_populates="portfolio")
     portfolio = relationship("Portfolio", back_populates="cards")
 

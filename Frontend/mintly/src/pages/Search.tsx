@@ -12,6 +12,9 @@ import CardImage from "../components/CardImage";
 import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
 import PortfolioPicker from "../components/PortfolioPicker";
+import GradingPicker from "../components/GradingPicker";
+import { DEFAULT_GRADING, DEFAULT_GRADE, isGraded } from "../grading";
+import type { LotCondition } from "../api";
 import StatusMessage from "../components/StatusMessage";
 import { useAddCard } from "../hooks";
 import { usePortfolios } from "../portfolios";
@@ -131,6 +134,7 @@ export default function Search() {
   const [purchasePrice, setPurchasePrice] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [addTarget, setAddTarget] = useState<number | null>(null);
+  const [condition, setCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE });
   const [ownedQty, setOwnedQty] = useState<Map<string, number>>(new Map());
   const { add: addToPortfolio, busy: addBusy, status: addStatus } = useAddCard();
   const { activeId } = usePortfolios();
@@ -265,6 +269,13 @@ export default function Search() {
   const addType = (v: string) => setTypes((p) => (p.includes(v) ? p : [...p, v]));
   const removeType = (v: string) => setTypes((p) => p.filter((x) => x !== v));
 
+  function pickCondition(grading: string | null, grade: string | null) {
+    // Switching to a graded slab clears the raw market prefill — a slab's value
+    // isn't the ungraded market figure, so make the user enter what they paid.
+    if (isGraded(grading) && !isGraded(condition.grading)) setPurchasePrice("");
+    setCondition({ grading, grade });
+  }
+
   function handleAdd(card: Card) {
     addToPortfolio(card.id, purchasePrice, quantity, addTarget ?? activeId, () => {
       setAdding(null);
@@ -272,7 +283,7 @@ export default function Search() {
       setQuantity("1");
       // useAddCard already invalidated the owned cache — refresh the badge
       getOwnedQty().then(setOwnedQty).catch(() => {});
-    });
+    }, condition);
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -542,6 +553,12 @@ export default function Search() {
                       onChange={setAddTarget}
                       label="Add to"
                     />
+                    <GradingPicker
+                      variant="compact"
+                      grading={condition.grading}
+                      grade={condition.grade}
+                      onChange={pickCondition}
+                    />
                     <PriceQtyForm
                       className={styles.quickAddForm}
                       price={purchasePrice}
@@ -566,6 +583,7 @@ export default function Search() {
                     onClick={() => {
                       setAdding(card.id);
                       setAddTarget(activeId);
+                      setCondition({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE });
                       // Priceless cards can't fall back to a market price on
                       // add — seed the form with the eBay estimate instead
                       if (price == null && est != null) {

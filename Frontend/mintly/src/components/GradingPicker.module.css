@@ -1,0 +1,73 @@
+/* Root has no explicit width: in a flex column / block parent (the add forms) it
+   fills the width; in a flex row (Scan action bars) it sizes to content unless the
+   caller passes a flex-basis via className. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Full variant: two labeled controls side by side, styled like the price/qty
+   fields they sit with (the selects use the global .mini-input look). They wrap
+   and hold a readable min-width rather than squishing in a tight container. */
+.controls {
+  display: flex;
+  column-gap: 8px;
+  row-gap: 12px;
+  flex-wrap: wrap;
+}
+
+.field {
+  flex: 1 1 120px;
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field select,
+.field input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Compact collapsed chip: a one-line control matching the price input, showing the
+   current condition with a Change affordance; never wraps. */
+/* Sizes to its content (a compact dropdown-like pill) and stays left-aligned,
+   so it reads as a peer of the price box rather than a full-width banner. */
+.summary {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.summary:hover {
+  border-color: var(--text-h);
+}
+
+.summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 590;
+}
+
+.summary-chevron {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}

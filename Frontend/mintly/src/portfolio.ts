@@ -3,11 +3,19 @@
 // quantity, cost basis, average paid, value and P&L exactly the same way.
 
 import type { PortfolioCard, PriceChange } from './api'
+import { holdingKey } from './grading'
 
-// One card can have several lots — separate purchases at different prices.
+// One HOLDING — a card in one condition — can have several lots (separate
+// purchases at different prices). Roadmap #7 Option B: a card held raw and the
+// same card in a slab are DIFFERENT holdings (`key` = card_id + grading + grade),
+// so the grid tiles them apart. `grading`/`grade` are the shared condition of the
+// holding's lots.
 export interface CardGroup {
+  key: string
   card_id: string
   card_name: string
+  grading: string | null
+  grade: string | null
   current_price: number | null
   price_change: PriceChange | null
   image_url: string | null
@@ -42,16 +50,23 @@ export function formatChartDate(d: string): string {
 
 // ----- Grouping + metrics ----------------------------------------------------
 
+// Groups lots into holdings by (card_id, grading, grade) — Option B. Lots with no
+// grading (pre-feature / unset) share a key, so they collapse into one holding as
+// before.
 export function groupByCard(cards: PortfolioCard[]): CardGroup[] {
   const map = new Map<string, CardGroup>()
   for (const c of cards) {
-    const group = map.get(c.card_id)
+    const key = holdingKey(c.card_id, c.grading, c.grade)
+    const group = map.get(key)
     if (group) {
       group.lots.push(c)
     } else {
-      map.set(c.card_id, {
+      map.set(key, {
+        key,
         card_id: c.card_id,
         card_name: c.card_name,
+        grading: c.grading,
+        grade: c.grade,
         current_price: c.current_price,
         price_change: c.price_change,
         image_url: c.image_url,

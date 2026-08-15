@@ -53,6 +53,8 @@ function lot(over: Partial<PortfolioCard> & { id: number; card_id: string; card_
     gain_loss_pct: 0,
     price_change: null,
     image_url: null,
+    grading: null,
+    grade: null,
     ...over,
   }
 }
@@ -125,9 +127,9 @@ describe('Portfolio page — signed in with holdings', () => {
     renderWithRouter(<Portfolio />)
 
     const charizard = await screen.findByText('Charizard')
-    expect(charizard.closest('a')).toHaveAttribute('href', '/portfolio/base1-4')
-    expect(screen.getByText('Blastoise').closest('a')).toHaveAttribute('href', '/portfolio/base1-2')
-    expect(screen.getByText('Venusaur').closest('a')).toHaveAttribute('href', '/portfolio/base1-15')
+    expect(charizard.closest('a')).toHaveAttribute('href', '/portfolio/base1-4?g=')
+    expect(screen.getByText('Blastoise').closest('a')).toHaveAttribute('href', '/portfolio/base1-2?g=')
+    expect(screen.getByText('Venusaur').closest('a')).toHaveAttribute('href', '/portfolio/base1-15?g=')
 
     // Charizard: qty 2 across its single lot
     expect(screen.getByText('Qty 2')).toBeInTheDocument()

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   getPortfolio, getCard, getCardPrice, removeCard, updateCard, getToken,
-  CONNECTION_ERROR, SessionExpiredError, type Card, type PortfolioCard,
+  CONNECTION_ERROR, SessionExpiredError, type Card, type PortfolioCard, type LotCondition,
 } from '../api'
-import CardImage from '../components/CardImage'
+import SlabbedCardImage from '../components/SlabbedCardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
+import GradingPicker from '../components/GradingPicker'
 import PageMessage from '../components/PageMessage'
 import PriceHistoryChart, { type PurchaseMarker } from '../components/PriceHistoryChart'
 import PriceQtyForm from '../components/PriceQtyForm'
@@ -16,34 +17,45 @@ import { useAddCard, useSessionRedirect } from '../hooks'
 import { usePortfolios } from '../portfolios'
 import { money, signedMoney } from '../format'
 import { groupByCard, groupMetrics, formatLotDate, lotISODate, parseUTCDate } from '../portfolio'
+import { conditionKey, conditionLabel, isGraded, DEFAULT_GRADING, DEFAULT_GRADE } from '../grading'
 import styles from './Holding.module.css'
 
-// The portfolio's default order (most recently added first), so prev/next walk
-// the same sequence the grid shows.
-function orderedCardIds(cards: PortfolioCard[]): string[] {
-  const groups = groupByCard(cards)
-  const metrics = new Map(groups.map(g => [g.card_id, groupMetrics(g)]))
-  return groups
-    .sort((a, b) => metrics.get(b.card_id)!.added - metrics.get(a.card_id)!.added)
-    .map(g => g.card_id)
+// The path to one holding — a card scoped to a condition (roadmap #7 Option B).
+function holdingPath(cardId: string, g: string): string {
+  return `/portfolio/${cardId}?${new URLSearchParams({ g })}`
 }
 
-// Auth gate + per-card remount: keying the inner component by cardId resets its
-// state (loading, edit, add) when you page between holdings — no synchronous
-// setState in an effect, same trick PriceHistoryChart uses.
+// The portfolio's default order (most recently added first), so prev/next walk
+// the same sequence the grid shows — one entry per HOLDING (card + condition).
+interface HoldingRef { cardId: string; g: string }
+
+function orderedHoldings(cards: PortfolioCard[]): HoldingRef[] {
+  const groups = groupByCard(cards)
+  const metrics = new Map(groups.map(g => [g.key, groupMetrics(g)]))
+  return groups
+    .sort((a, b) => metrics.get(b.key)!.added - metrics.get(a.key)!.added)
+    .map(g => ({ cardId: g.card_id, g: conditionKey(g.grading, g.grade) }))
+}
+
+// Auth gate + per-holding remount: keying the inner component by card+condition
+// resets its state (loading, edit, add) when you page between holdings — no
+// synchronous setState in an effect, same trick PriceHistoryChart uses. `g` is
+// the condition key (the ?g= param); missing = the unset/raw-unspecified holding.
 export default function Holding() {
   const { cardId } = useParams<{ cardId: string }>()
+  const [searchParams] = useSearchParams()
+  const g = searchParams.get('g') ?? ''
   if (!getToken()) return <SignedOutHero variant="portfolio" />
   if (!cardId) return <PageMessage action={{ to: '/portfolio', label: 'Back to Portfolio' }}><p>Holding not found.</p></PageMessage>
-  return <HoldingInner key={cardId} cardId={cardId} />
+  return <HoldingInner key={`${cardId}::${g}`} cardId={cardId} g={g} />
 }
 
-function HoldingInner({ cardId }: { cardId: string }) {
+function HoldingInner({ cardId, g }: { cardId: string; g: string }) {
   const navigate = useNavigate()
   const redirectToLogin = useSessionRedirect()
   const [lots, setLots] = useState<PortfolioCard[]>([])
   const [card, setCard] = useState<Card | null>(null)
-  const [order, setOrder] = useState<string[]>([])
+  const [order, setOrder] = useState<HoldingRef[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -54,6 +66,8 @@ function HoldingInner({ cardId }: { cardId: string }) {
   const [adding, setAdding] = useState(false)
   const [addPrice, setAddPrice] = useState('')
   const [addQty, setAddQty] = useState('1')
+  const [addCondition, setAddCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE })
+  const [editCondition, setEditCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE })
   const { add, busy: addBusy, status: addStatus } = useAddCard()
   // Scope this holding to the active portfolio — you reach it from a portfolio's
   // grid, so the position, purchases, and prev/next pager reflect that portfolio.
@@ -64,8 +78,8 @@ function HoldingInner({ cardId }: { cardId: string }) {
     getPortfolio(activeId)
       .then(all => {
         if (cancelled) return
-        setLots(all.filter(c => c.card_id === cardId))
-        setOrder(orderedCardIds(all))
+        setLots(all.filter(c => c.card_id === cardId && conditionKey(c.grading, c.grade) === g))
+        setOrder(orderedHoldings(all))
         return getCard(cardId)
       })
       .then(c => { if (!cancelled && c) setCard(c) })
@@ -78,7 +92,7 @@ function HoldingInner({ cardId }: { cardId: string }) {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardId, activeId])
+  }, [cardId, g, activeId])
 
   // Left / right arrow keys page between holdings (ignored while typing)
   useEffect(() => {
@@ -86,18 +100,21 @@ function HoldingInner({ cardId }: { cardId: string }) {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
       const tag = (document.activeElement?.tagName ?? '').toUpperCase()
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      const idx = order.indexOf(cardId)
+      const idx = order.findIndex(h => h.cardId === cardId && h.g === g)
       if (idx === -1) return
-      if (e.key === 'ArrowLeft' && idx > 0) navigate(`/portfolio/${order[idx - 1]}`)
-      if (e.key === 'ArrowRight' && idx < order.length - 1) navigate(`/portfolio/${order[idx + 1]}`)
+      if (e.key === 'ArrowLeft' && idx > 0) navigate(holdingPath(order[idx - 1].cardId, order[idx - 1].g))
+      if (e.key === 'ArrowRight' && idx < order.length - 1) navigate(holdingPath(order[idx + 1].cardId, order[idx + 1].g))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [order, cardId, navigate])
+  }, [order, cardId, g, navigate])
 
   function refetchLots() {
     getPortfolio(activeId)
-      .then(all => { setLots(all.filter(c => c.card_id === cardId)); setOrder(orderedCardIds(all)) })
+      .then(all => {
+        setLots(all.filter(c => c.card_id === cardId && conditionKey(c.grading, c.grade) === g))
+        setOrder(orderedHoldings(all))
+      })
       .catch(() => {})
   }
 
@@ -124,6 +141,8 @@ function HoldingInner({ cardId }: { cardId: string }) {
     setEditingId(lot.id)
     setEditPrice(String(lot.purchase_price))
     setEditQty(String(lot.quantity))
+    // Seed the picker from the lot; an unset legacy lot opens on the Raw default.
+    setEditCondition({ grading: lot.grading ?? DEFAULT_GRADING, grade: lot.grade ?? DEFAULT_GRADE })
   }
 
   async function handleSaveEdit(lot: PortfolioCard) {
@@ -134,16 +153,15 @@ function HoldingInner({ cardId }: { cardId: string }) {
       return
     }
     try {
-      await updateCard(lot.id, { purchase_price: price, quantity: qty })
-      setLots(prev => prev.map(c => {
-        if (c.id !== lot.id) return c
-        const gain_loss = c.current_price != null ? Math.round((c.current_price - price) * qty * 100) / 100 : null
-        const gain_loss_pct = c.current_price != null && price > 0
-          ? Math.round(((c.current_price - price) / price) * 10000) / 100
-          : null
-        return { ...c, purchase_price: price, quantity: qty, gain_loss, gain_loss_pct }
-      }))
+      await updateCard(lot.id, {
+        purchase_price: price, quantity: qty,
+        grading: editCondition.grading, grade: editCondition.grade,
+      })
       setEditingId(null)
+      // A condition edit can move the lot to a different holding (and flips a
+      // graded lot's value to at-cost), so refetch to re-scope + re-price rather
+      // than patch locally.
+      refetchLots()
     } catch (err) {
       if (err instanceof SessionExpiredError) { redirectToLogin(); return }
       showLotError(lot.id, err instanceof TypeError ? CONNECTION_ERROR : "We couldn't save those changes. Please try again.")
@@ -186,9 +204,9 @@ function HoldingInner({ cardId }: { cardId: string }) {
   const hasTcg = card ? getCardPrice(card) != null : false
   const sourceLabel = hasTcg ? 'TCGplayer market' : card?.estimate ? 'eBay est.' : 'TCGplayer market'
 
-  const idx = order.indexOf(cardId)
-  const prevId = idx > 0 ? order[idx - 1] : null
-  const nextId = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null
+  const idx = order.findIndex(h => h.cardId === cardId && h.g === g)
+  const prev = idx > 0 ? order[idx - 1] : null
+  const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null
 
   const firstLot = lots.reduce((a, b) => (parseUTCDate(a.purchase_date) <= parseUTCDate(b.purchase_date) ? a : b))
   const sortedLots = [...lots].sort((a, b) => parseUTCDate(b.purchase_date).getTime() - parseUTCDate(a.purchase_date).getTime())
@@ -211,23 +229,34 @@ function HoldingInner({ cardId }: { cardId: string }) {
     : ''
 
   function openAdd() {
+    // A new purchase joins THIS holding, so default the picker to its condition
+    // (market is null for a graded holding, so the price field starts empty).
     setAddPrice(market != null ? market.toFixed(2) : '')
     setAddQty('1')
+    setAddCondition({ grading: group.grading ?? DEFAULT_GRADING, grade: group.grade ?? DEFAULT_GRADE })
     setAdding(true)
   }
 
   const editForm = (lot: PortfolioCard) => (
-    <PriceQtyForm
-      labeled
-      smallButtons
-      price={editPrice}
-      quantity={editQty}
-      onPriceChange={setEditPrice}
-      onQuantityChange={setEditQty}
-      onSubmit={() => handleSaveEdit(lot)}
-      submitLabel="Save"
-      onCancel={() => setEditingId(null)}
-    />
+    <div className={styles.editStack}>
+      <GradingPicker
+        variant="full"
+        grading={editCondition.grading}
+        grade={editCondition.grade}
+        onChange={(grading, grade) => setEditCondition({ grading, grade })}
+      />
+      <PriceQtyForm
+        labeled
+        smallButtons
+        price={editPrice}
+        quantity={editQty}
+        onPriceChange={setEditPrice}
+        onQuantityChange={setEditQty}
+        onSubmit={() => handleSaveEdit(lot)}
+        submitLabel="Save"
+        onCancel={() => setEditingId(null)}
+      />
+    </div>
   )
 
   return (
@@ -243,16 +272,16 @@ function HoldingInner({ cardId }: { cardId: string }) {
           <div className={styles.nav}>
             <button
               className={styles.navBtn}
-              disabled={!prevId}
+              disabled={!prev}
               aria-label="Previous holding"
-              onClick={() => prevId && navigate(`/portfolio/${prevId}`)}
+              onClick={() => prev && navigate(holdingPath(prev.cardId, prev.g))}
             >←</button>
             <span className={`${styles.navCount} num`}>holding {idx + 1} of {order.length}</span>
             <button
               className={styles.navBtn}
-              disabled={!nextId}
+              disabled={!next}
               aria-label="Next holding"
-              onClick={() => nextId && navigate(`/portfolio/${nextId}`)}
+              onClick={() => next && navigate(holdingPath(next.cardId, next.g))}
             >→</button>
           </div>
         )}
@@ -262,7 +291,7 @@ function HoldingInner({ cardId }: { cardId: string }) {
       <div className={styles.body}>
         <div className={styles.sidebar}>
           <span className={styles.media}>
-            <CardImage src={card?.images?.large ?? group.image_url} alt={cardName} size="detail" eager />
+            <SlabbedCardImage src={card?.images?.large ?? group.image_url} alt={cardName} grading={group.grading} grade={group.grade} size="detail" eager />
           </span>
           <Link to={`/card/${cardId}`} className={styles.cardPageLink}>
             Card page &amp; market data <span className={styles.linkArrow}>↗</span>
@@ -276,6 +305,9 @@ function HoldingInner({ cardId }: { cardId: string }) {
               <div className={styles.titleHead}>
                 <h1 className={styles.title}>{cardName}</h1>
                 <span className={`${styles.ownedPill} num`}>×{m.qty} owned</span>
+                {conditionLabel(group.grading, group.grade) && (
+                  <span className={styles.conditionChip}>{conditionLabel(group.grading, group.grade)}</span>
+                )}
               </div>
               <p className={`${styles.subLine} num`}>
                 {numberLine}{numberLine ? ' · ' : ''}{lots.length} {lots.length === 1 ? 'purchase' : 'purchases'} since {formatLotDate(firstLot.purchase_date)}
@@ -342,18 +374,29 @@ function HoldingInner({ cardId }: { cardId: string }) {
                 {addStatus && addStatus.id === cardId ? (
                   <StatusMessage ok={addStatus.ok}>{addStatus.msg}</StatusMessage>
                 ) : (
-                  <PriceQtyForm
-                    labeled
-                    price={addPrice}
-                    quantity={addQty}
-                    onPriceChange={setAddPrice}
-                    onQuantityChange={setAddQty}
-                    onSubmit={() => add(cardId, addPrice, addQty, activeId, refetchLots)}
-                    submitLabel="Add purchase"
-                    busyLabel="Adding..."
-                    busy={addBusy}
-                    onCancel={() => setAdding(false)}
-                  />
+                  <div className={styles.editStack}>
+                    <GradingPicker
+                      variant="full"
+                      grading={addCondition.grading}
+                      grade={addCondition.grade}
+                      onChange={(grading, grade) => {
+                        if (isGraded(grading) && !isGraded(addCondition.grading)) setAddPrice('')
+                        setAddCondition({ grading, grade })
+                      }}
+                    />
+                    <PriceQtyForm
+                      labeled
+                      price={addPrice}
+                      quantity={addQty}
+                      onPriceChange={setAddPrice}
+                      onQuantityChange={setAddQty}
+                      onSubmit={() => add(cardId, addPrice, addQty, activeId, refetchLots, addCondition)}
+                      submitLabel="Add purchase"
+                      busyLabel="Adding..."
+                      busy={addBusy}
+                      onCancel={() => setAdding(false)}
+                    />
+                  </div>
                 )}
               </div>
             )}

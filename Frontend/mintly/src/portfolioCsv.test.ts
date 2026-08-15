@@ -15,6 +15,8 @@ function lot(over: Partial<PortfolioCard> = {}): PortfolioCard {
     gain_loss_pct: 42.86,
     price_change: null,
     image_url: null,
+    grading: null,
+    grade: null,
     ...over,
   }
 }
@@ -64,8 +66,8 @@ describe('parsePortfolioCsv', () => {
     expect(skipped).toBe(0)
     expect(total).toBe(2)
     expect(items).toEqual([
-      { card_id: 'base1-4', purchase_price: 350, quantity: 2, purchase_date: '2021-03-04T00:00:00' },
-      { card_id: 'sv3pt5-199', purchase_price: 12.5, quantity: 1, purchase_date: '2022-06-01T00:00:00' },
+      { card_id: 'base1-4', purchase_price: 350, quantity: 2, purchase_date: '2021-03-04T00:00:00', grading: null, grade: null },
+      { card_id: 'sv3pt5-199', purchase_price: 12.5, quantity: 1, purchase_date: '2022-06-01T00:00:00', grading: null, grade: null },
     ])
   })
 
@@ -76,7 +78,7 @@ describe('parsePortfolioCsv', () => {
 
   it('accepts a minimal hand-made file (card_id + price + quantity header)', () => {
     const { items } = parsePortfolioCsv('card_id,purchase_price,quantity\nsv3pt5-199,10,3')
-    expect(items).toEqual([{ card_id: 'sv3pt5-199', purchase_price: 10, quantity: 3, purchase_date: null }])
+    expect(items).toEqual([{ card_id: 'sv3pt5-199', purchase_price: 10, quantity: 3, purchase_date: null, grading: null, grade: null }])
   })
 
   it('falls back to positional order when there is no recognizable header', () => {
@@ -115,5 +117,44 @@ describe('parsePortfolioCsv', () => {
 
   it('returns nothing for an empty string', () => {
     expect(parsePortfolioCsv('')).toEqual({ items: [], skipped: 0, total: 0 })
+  })
+})
+
+describe('grading/grade round-trip (roadmap #7)', () => {
+  it('exports grading + grade columns', () => {
+    const csv = toPortfolioCsv([lot({ grading: 'PSA', grade: '10' })])
+    const [header, row] = csv.split('\r\n')
+    expect(header.split(',')).toContain('grading')
+    expect(header.split(',')).toContain('grade')
+    const cells = row.split(',')
+    expect(cells).toContain('PSA')
+    expect(cells).toContain('10')
+  })
+
+  it('re-imports an exported graded lot', () => {
+    const csv = toPortfolioCsv([lot({ grading: 'PSA', grade: '10', purchase_price: 500 })])
+    const { items } = parsePortfolioCsv(csv)
+    expect(items[0]).toMatchObject({ card_id: 'base1-4', grading: 'PSA', grade: '10' })
+  })
+
+  it('keeps a raw condition', () => {
+    const csv = toPortfolioCsv([lot({ grading: 'Raw', grade: 'Near Mint' })])
+    const { items } = parsePortfolioCsv(csv)
+    expect(items[0]).toMatchObject({ grading: 'Raw', grade: 'Near Mint' })
+  })
+
+  it('drops an unknown grading to unset (would 422 the batch)', () => {
+    const { items } = parsePortfolioCsv('card_id,grading,grade\nbase1-4,BOGUS,10')
+    expect(items[0]).toMatchObject({ grading: null, grade: null })
+  })
+
+  it('drops a graded case with no grade to unset (a slab needs a grade)', () => {
+    const { items } = parsePortfolioCsv('card_id,grading,grade\nbase1-4,PSA,')
+    expect(items[0]).toMatchObject({ grading: null, grade: null })
+  })
+
+  it('old files without grading columns import as unset', () => {
+    const { items } = parsePortfolioCsv('card_id,purchase_price,quantity\nbase1-4,10,1')
+    expect(items[0]).toMatchObject({ card_id: 'base1-4', grading: null, grade: null })
   })
 })

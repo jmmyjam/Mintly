@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   CONNECTION_ERROR, filterCards, getCard, getCardPrice, getEbayEstimate,
   type Card, type CardHistory, type EbayEstimate as Estimate,
-  type PriceChange, type PriceVariant, type SetCompletion,
+  type PriceChange, type PriceVariant, type SetCompletion, type LotCondition,
 } from '../api'
 import CardImage from '../components/CardImage'
 import DayChange from '../components/DayChange'
@@ -11,6 +11,7 @@ import PageMessage from '../components/PageMessage'
 import PriceHistoryChart from '../components/PriceHistoryChart'
 import PriceQtyForm from '../components/PriceQtyForm'
 import PortfolioPicker from '../components/PortfolioPicker'
+import GradingPicker from '../components/GradingPicker'
 import SetCompletionMeter from '../components/SetCompletionMeter'
 import StatusMessage from '../components/StatusMessage'
 import StructuredData from '../components/StructuredData'
@@ -18,6 +19,7 @@ import WatchButton from '../components/WatchButton'
 import { useAddCard } from '../hooks'
 import { getOwnedSetCompletion } from '../setCompletion'
 import { usePortfolios } from '../portfolios'
+import { DEFAULT_GRADING, DEFAULT_GRADE, isGraded } from '../grading'
 import { tcgplayerBuyLink, ebayBuyLink } from '../affiliate'
 import { money } from '../format'
 import { PRICE_PREFERENCE, mergeHeadline, variantLabel } from '../variants'
@@ -67,6 +69,7 @@ export default function CardDetail() {
   const [purchasePrice, setPurchasePrice] = useState('')
   const [quantity, setQuantity] = useState('1')
   const [addTarget, setAddTarget] = useState<number | null>(null)
+  const [condition, setCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE })
   const [ebay, setEbay] = useState<Estimate | null>(null)
   const [history, setHistory] = useState<CardHistory | null>(null)
   // Other cards sharing this card's set + number: the base card plus its
@@ -79,6 +82,13 @@ export default function CardDetail() {
   const [setCompletion, setSetCompletion] = useState<SetCompletion | null>(null)
   const { add, busy: addBusy, status: addStatus } = useAddCard()
   const { activeId } = usePortfolios()
+
+  function pickCondition(grading: string | null, grade: string | null) {
+    // A slab can't take the raw market price we auto-seed — clear it on the
+    // switch to graded so the user records what they actually paid.
+    if (isGraded(grading) && !isGraded(condition.grading)) setPurchasePrice('')
+    setCondition({ grading, grade })
+  }
 
   // Stable identity so the chart's fetch effect doesn't re-run per render
   const handleHistory = useCallback((h: CardHistory) => setHistory(h), [])
@@ -355,6 +365,12 @@ export default function CardDetail() {
                   label="Add to"
                   className={styles.buyPortfolio}
                 />
+                <GradingPicker
+                  variant="full"
+                  grading={condition.grading}
+                  grade={condition.grade}
+                  onChange={pickCondition}
+                />
                 <PriceQtyForm
                   className={styles.buyForm}
                   labeled
@@ -362,7 +378,7 @@ export default function CardDetail() {
                   quantity={quantity}
                   onPriceChange={setPurchasePrice}
                   onQuantityChange={setQuantity}
-                  onSubmit={() => add(card.id, purchasePrice, quantity, addTarget ?? activeId, refreshCompletion)}
+                  onSubmit={() => add(card.id, purchasePrice, quantity, addTarget ?? activeId, refreshCompletion, condition)}
                   submitLabel="+ Add to Portfolio"
                   busyLabel="Adding..."
                   busy={addBusy}

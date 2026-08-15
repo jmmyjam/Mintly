@@ -57,6 +57,8 @@ function lot(over: Partial<PortfolioCard> & { id: number; card_id: string; card_
     gain_loss_pct: 0,
     price_change: null,
     image_url: null,
+    grading: null,
+    grade: null,
     ...over,
   }
 }

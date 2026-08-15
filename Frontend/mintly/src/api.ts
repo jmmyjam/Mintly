@@ -132,6 +132,17 @@ export interface PortfolioCard {
   gain_loss_pct: number | null
   price_change: PriceChange | null
   image_url: string | null
+  // Condition/grade of this lot (roadmap #7). grading null = unset; "Raw" carries
+  // a condition ("Near Mint"…) in grade, the graders a slab grade ("10", "9.5").
+  // A graded lot comes back with current_price=null (valued at cost) until phase 2.
+  grading: string | null
+  grade: string | null
+}
+
+// The condition a lot carries, threaded through the add/edit calls (roadmap #7).
+export interface LotCondition {
+  grading: string | null
+  grade: string | null
 }
 
 // A card the user is tracking (without necessarily owning it). `target_price`
@@ -616,12 +627,16 @@ export async function getSetCompletion(portfolioId?: number | null): Promise<Set
 
 // purchase_price null = backend uses the current market price.
 // portfolioId null/omitted = the user's default portfolio.
+// condition null/omitted = unset grading (grading/grade null).
 // Returns the server message, e.g. "Card added" or "Merged — you now have 3"
-export async function addCard(card_id: string, purchase_price: number | null, quantity: number, portfolioId?: number | null): Promise<string> {
+export async function addCard(card_id: string, purchase_price: number | null, quantity: number, portfolioId?: number | null, condition?: LotCondition | null): Promise<string> {
   const res = await authedFetch('/portfolio/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ card_id, purchase_price, quantity, portfolio_id: portfolioId ?? null }),
+    body: JSON.stringify({
+      card_id, purchase_price, quantity, portfolio_id: portfolioId ?? null,
+      grading: condition?.grading ?? null, grade: condition?.grade ?? null,
+    }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || "We couldn't add that card. Please try again.")
@@ -636,6 +651,10 @@ export interface BatchAddItem {
   purchase_price: number | null
   quantity: number
   purchase_date?: string | null
+  // Condition/grade (roadmap #7); omitted = unset. A graded item with no
+  // purchase_price is reported as a per-item failure (a slab can't auto-price).
+  grading?: string | null
+  grade?: string | null
 }
 
 // Result of a batch add: how many landed, which items failed and why, and a message
@@ -659,7 +678,7 @@ export async function addCardBatch(items: BatchAddItem[], portfolioId?: number |
   return data as BatchAddResult
 }
 
-export async function updateCard(id: number, updates: { purchase_price?: number; quantity?: number }): Promise<void> {
+export async function updateCard(id: number, updates: { purchase_price?: number; quantity?: number; grading?: string | null; grade?: string | null }): Promise<void> {
   const res = await authedFetch(`/portfolio/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

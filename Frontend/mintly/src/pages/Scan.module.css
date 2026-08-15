@@ -155,6 +155,16 @@
   flex-wrap: wrap;
 }
 
+/* The batch-wide condition sits on its own row (not wedged into the action bar,
+   where an expanded two-field picker centered against the buttons). */
+.batchCondition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  max-width: 320px;
+}
+
 .clearAll {
   background: none;
   border: none;
@@ -607,6 +617,11 @@
 /* The portfolio target chooser sits on its own line above the price/qty row
    (only shows with 2+ portfolios). */
 .bestPortfolio {
+  flex-basis: 100%;
+}
+
+/* The condition/grade picker also takes its own full line in the wrapping row. */
+.bestGrading {
   flex-basis: 100%;
 }
 

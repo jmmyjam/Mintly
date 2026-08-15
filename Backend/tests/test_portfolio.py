@@ -221,6 +221,107 @@ class TestUpdateAndDelete:
         assert client.delete(f"/portfolio/{lot_id}", headers=auth_headers).status_code == 404
 
 
+class TestConditionGrade:
+    """Roadmap #7: condition/grade on a lot. A graded lot is a separate holding
+    valued at cost (current_price=None) until phase-2 graded prices exist."""
+
+    def test_add_raw_condition_prices_normally(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=500.0))
+        res = add(client, auth_headers, purchase_price=400.0, grading="Raw", grade="Near Mint")
+        assert res.status_code == 200
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["grading"] == "Raw"
+        assert row["grade"] == "Near Mint"
+        # Raw uses the normal price pipeline
+        assert row["current_price"] == 500.0
+        assert row["gain_loss"] == 100.0
+
+    def test_add_graded_stored_and_valued_at_cost(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))  # raw market is low
+        res = add(client, auth_headers, purchase_price=500.0, grading="PSA", grade="10")
+        assert res.status_code == 200
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["grading"] == "PSA"
+        assert row["grade"] == "10"
+        # A slab isn't valued from the raw price — no fake -90% loss
+        assert row["current_price"] is None
+        assert row["gain_loss"] is None
+
+    def test_graded_requires_explicit_price(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        res = add(client, auth_headers, grading="PSA", grade="10")  # no price
+        assert res.status_code == 400
+        assert "graded" in res.json()["detail"].lower()
+
+    def test_unknown_grading_rejected(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        res = add(client, auth_headers, purchase_price=10.0, grading="ZZZ", grade="10")
+        assert res.status_code == 422
+
+    def test_grader_without_grade_rejected(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        res = add(client, auth_headers, purchase_price=10.0, grading="PSA")
+        assert res.status_code == 422
+
+    def test_same_card_different_grading_are_separate_lots(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        add(client, auth_headers, purchase_price=40.0, grading="Raw", grade="Near Mint")
+        add(client, auth_headers, purchase_price=500.0, grading="PSA", grade="10")
+        rows = client.get("/portfolio", headers=auth_headers).json()
+        assert len(rows) == 2
+        by_grading = {r["grading"]: r for r in rows}
+        assert by_grading["Raw"]["current_price"] == 50.0
+        assert by_grading["PSA"]["current_price"] is None
+
+    def test_edit_sets_grade(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        lot_id = add(client, auth_headers, purchase_price=500.0, grading="PSA", grade="9").json()["id"]
+        res = client.patch(f"/portfolio/{lot_id}", json={"grading": "PSA", "grade": "10"}, headers=auth_headers)
+        assert res.status_code == 200
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["grade"] == "10"
+
+    def test_edit_without_grading_leaves_condition_untouched(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        lot_id = add(client, auth_headers, purchase_price=500.0, grading="PSA", grade="10").json()["id"]
+        client.patch(f"/portfolio/{lot_id}", json={"quantity": 2}, headers=auth_headers)
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["grading"] == "PSA"
+        assert row["grade"] == "10"
+        assert row["quantity"] == 2
+
+    def test_omitted_grading_is_null(self, client, auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        add(client, auth_headers, purchase_price=10.0)
+        [row] = client.get("/portfolio", headers=auth_headers).json()
+        assert row["grading"] is None
+        assert row["grade"] is None
+
+    def test_batch_graded_stored_and_ungraded_autopriced(self, client, auth_headers):
+        seed_catalog_card(make_card("base1-4", "Charizard", price=50.0))
+        seed_catalog_card(make_card("base1-2", "Blastoise", price=300.0))
+        res = client.post("/portfolio/add-batch", json={"items": [
+            {"card_id": "base1-4", "purchase_price": 500.0, "grading": "PSA", "grade": "10"},
+            {"card_id": "base1-2"},  # raw, auto-priced from the catalog
+        ]}, headers=auth_headers)
+        assert res.json()["added"] == 2
+        rows = client.get("/portfolio", headers=auth_headers).json()
+        by_name = {r["card_name"]: r for r in rows}
+        assert by_name["Charizard"]["grading"] == "PSA"
+        assert by_name["Charizard"]["current_price"] is None
+        assert by_name["Blastoise"]["grading"] is None
+        assert by_name["Blastoise"]["purchase_price"] == 300.0
+
+    def test_batch_graded_without_price_fails_that_item(self, client, auth_headers):
+        seed_catalog_card(make_card("base1-4", "Charizard", price=50.0))
+        body = client.post("/portfolio/add-batch", json={"items": [
+            {"card_id": "base1-4", "grading": "PSA", "grade": "10"},  # no price
+        ]}, headers=auth_headers).json()
+        assert body["added"] == 0
+        assert body["failed"][0]["card_id"] == "base1-4"
+        assert "price" in body["failed"][0]["reason"].lower()
+
+
 class TestPriceFallbackSources:
     """The portfolio must track a card's value from every price source — the
     live pokemontcg.io TCGplayer figure, then TCGCSV, then eBay — so newest-set

@@ -235,7 +235,7 @@ describe('Scan page', () => {
       await user.click(screen.getByRole('button', { name: 'Add to portfolio' }))
 
       await waitFor(() =>
-        expect(addCard).toHaveBeenCalledWith('sv1-1', 350, 1, 1),
+        expect(addCard).toHaveBeenCalledWith('sv1-1', 350, 1, 1, { grading: 'Raw', grade: 'Near Mint' }),
       )
       expect(await screen.findByText('Added to portfolio!')).toBeInTheDocument()
 
@@ -289,7 +289,7 @@ describe('Scan page', () => {
 
       await waitFor(() =>
         expect(addCardBatch).toHaveBeenCalledWith(
-          [{ card_id: 'sv1-1', purchase_price: 12.5, quantity: 1 }],
+          [{ card_id: 'sv1-1', purchase_price: 12.5, quantity: 1, grading: 'Raw', grade: 'Near Mint' }],
           1,
         ),
       )

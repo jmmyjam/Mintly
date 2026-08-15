@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceDot, ResponsiveContainer } from 'recharts'
 import { getPortfolio, getPortfolioHistory, getSetCompletion, getToken, getCardImageUrl, CONNECTION_ERROR, SessionExpiredError, type PortfolioCard, type HistoryPoint, type SetCompletion } from '../api'
-import CardImage from '../components/CardImage'
+import SlabbedCardImage from '../components/SlabbedCardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
@@ -14,6 +14,7 @@ import { useSessionRedirect } from '../hooks'
 import { usePortfolios } from '../portfolios'
 import { money, signedMoney } from '../format'
 import { groupByCard, groupMetrics, localISODate, formatChartDate } from '../portfolio'
+import { conditionKey, conditionLabel } from '../grading'
 import styles from './Portfolio.module.css'
 
 // ----- Types & constants ---------------------------------------------------------
@@ -146,7 +147,7 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
   const lotCount = cards.length
 
   const groups = groupByCard(cards)
-  const metrics = new Map(groups.map(g => [g.card_id, groupMetrics(g)]))
+  const metrics = new Map(groups.map(g => [g.key, groupMetrics(g)]))
 
   // Today's total move (per-unit day change × quantity, summed) and the best %
   // mover across the portfolio — the two right-hand hero stat cells.
@@ -154,7 +155,7 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
   let hasToday = false
   let bestMover: number | null = null
   for (const g of groups) {
-    const dc = metrics.get(g.card_id)!.dayChange
+    const dc = metrics.get(g.key)!.dayChange
     if (dc != null) { today += dc; hasToday = true }
     const pct = g.price_change?.percent
     if (pct != null && (bestMover == null || pct > bestMover)) bestMover = pct
@@ -164,15 +165,15 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
   const visibleGroups = groups.filter(g => {
     if (nameQuery && !g.card_name.toLowerCase().includes(nameQuery)) return false
     if (plFilter !== 'all') {
-      const gain = metrics.get(g.card_id)!.gain
+      const gain = metrics.get(g.key)!.gain
       if (gain == null) return false
       if (plFilter === 'gainers' ? gain < 0 : gain >= 0) return false
     }
     return true
   })
   visibleGroups.sort((a, b) => {
-    const ma = metrics.get(a.card_id)!
-    const mb = metrics.get(b.card_id)!
+    const ma = metrics.get(a.key)!
+    const mb = metrics.get(b.key)!
     switch (sortKey) {
       case 'value': return mb.value - ma.value
       case 'gain': return (mb.gain ?? -Infinity) - (ma.gain ?? -Infinity) // priceless cards last
@@ -354,16 +355,26 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
       ) : (
         <div className={styles.grid}>
           {visibleGroups.map(group => {
-            const m = metrics.get(group.card_id)!
+            const m = metrics.get(group.key)!
             const single = group.lots.length === 1
+            const label = conditionLabel(group.grading, group.grade)
             return (
-              <Link key={group.card_id} to={`/portfolio/${group.card_id}`} className={styles.tile}>
+              <Link
+                key={group.key}
+                to={{ pathname: `/portfolio/${group.card_id}`, search: `?${new URLSearchParams({ g: conditionKey(group.grading, group.grade) })}` }}
+                className={styles.tile}
+              >
                 <span className={styles.tileArt}>
-                  <CardImage src={group.image_url ?? getCardImageUrl(group.card_id)} alt={group.card_name} />
+                  <SlabbedCardImage
+                    src={group.image_url ?? getCardImageUrl(group.card_id)}
+                    alt={group.card_name}
+                    grading={group.grading}
+                    grade={group.grade}
+                  />
                 </span>
                 <div>
                   <p className={styles.tileName}>{group.card_name}</p>
-                  <p className={`${styles.tileMeta} num`}>Qty {m.qty}</p>
+                  <p className={`${styles.tileMeta} num`}>Qty {m.qty}{label ? ` · ${label}` : ''}</p>
                 </div>
                 <div>
                   <div className={`${styles.tilePrice} num`}>{money(group.current_price)}</div>

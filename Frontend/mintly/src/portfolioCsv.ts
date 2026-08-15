@@ -1,4 +1,5 @@
 import type { PortfolioCard, BatchAddItem } from './api'
+import { GRADING_TYPES } from './grading'
 
 // Portfolio CSV round-trip. Export writes one row per lot (one portfolio_cards
 // row) so a Mintly-exported file re-imports through the batch adder exactly.
@@ -12,6 +13,8 @@ const COLUMNS = [
   'quantity',
   'purchase_price',
   'purchase_date',
+  'grading',
+  'grade',
   'current_price',
   'market_value',
   'cost_basis',
@@ -47,6 +50,8 @@ export function toPortfolioCsv(cards: PortfolioCard[]): string {
       String(c.quantity),
       num(c.purchase_price),
       c.purchase_date ?? '',
+      safeText(c.grading ?? ''),
+      safeText(c.grade ?? ''),
       num(c.current_price),
       num(marketValue),
       num(c.purchase_price * c.quantity),
@@ -108,8 +113,8 @@ export function parsePortfolioCsv(text: string): ParsedPortfolioCsv {
   const hasHeader = known.some(k => header.includes(k))
   const dataRows = hasHeader ? records.slice(1) : records
   const col = hasHeader
-    ? { id: header.indexOf('card_id'), price: header.indexOf('purchase_price'), qty: header.indexOf('quantity'), date: header.indexOf('purchase_date') }
-    : { id: 0, price: 1, qty: 2, date: 3 }
+    ? { id: header.indexOf('card_id'), price: header.indexOf('purchase_price'), qty: header.indexOf('quantity'), date: header.indexOf('purchase_date'), grading: header.indexOf('grading'), grade: header.indexOf('grade') }
+    : { id: 0, price: 1, qty: 2, date: 3, grading: -1, grade: -1 }
 
   const cell = (row: string[], i: number) => (i >= 0 ? row[i] ?? '' : '').trim()
 
@@ -129,7 +134,16 @@ export function parsePortfolioCsv(text: string): ParsedPortfolioCsv {
     const rawDate = cell(row, col.date)
     const purchase_date = rawDate === '' ? null : rawDate
 
-    items.push({ card_id: cardId, purchase_price, quantity, purchase_date })
+    // Condition/grade (roadmap #7). Only a known grading is kept — an unknown
+    // value would 422 the whole batch server-side; a graded case with no grade
+    // is dropped to unset (a slab must carry its grade). Old files without these
+    // columns import as unset.
+    const rawGrading = cell(row, col.grading)
+    let grading = (GRADING_TYPES as readonly string[]).includes(rawGrading) ? rawGrading : null
+    let grade = grading ? (cell(row, col.grade) || null) : null
+    if (grading && grading !== 'Raw' && !grade) { grading = null; grade = null }
+
+    items.push({ card_id: cardId, purchase_price, quantity, purchase_date, grading, grade })
   }
   return { items, skipped, total: dataRows.length }
 }
