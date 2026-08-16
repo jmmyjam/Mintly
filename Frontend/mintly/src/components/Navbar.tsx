@@ -1,65 +1,111 @@
-import { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { getToken } from '../api'
-import { useAccessibility } from '../accessibility'
-import styles from './Navbar.module.css'
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { getToken } from "../api";
+import { useAccessibility } from "../accessibility";
+import styles from "./Navbar.module.css";
 
 export default function Navbar() {
-  const location = useLocation()
-  const loggedIn = !!getToken()
-  const { settings } = useAccessibility()
+  const location = useLocation();
+  const loggedIn = !!getToken();
+  const { settings } = useAccessibility();
   // Auto-hide: slide away on scroll down, return on scroll up
-  const [hidden, setHidden] = useState(false)
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
     // Reduce-motion users keep the bar pinned — no sliding chrome
-    if (settings.reduceMotion) return
-    let lastY = window.scrollY
+    if (settings.reduceMotion) return;
+    let lastY = window.scrollY;
     function onScroll() {
-      const y = window.scrollY
-      setHidden(y > lastY && y > 80)
-      lastY = y
+      const y = window.scrollY;
+      setHidden(y > lastY && y > 80);
+      lastY = y;
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [settings.reduceMotion])
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [settings.reduceMotion]);
 
-  const isHidden = hidden && !settings.reduceMotion
+  const isHidden = hidden && !settings.reduceMotion;
 
   return (
-    <nav aria-label="Primary" className={isHidden ? `${styles.navbar} ${styles.navbarHidden}` : styles.navbar}>
+    <nav
+      aria-label="Primary"
+      className={
+        isHidden ? `${styles.navbar} ${styles.navbarHidden}` : styles.navbar
+      }
+    >
       <Link to="/" className={styles.navbarBrand}>
         <img src="/favicon.svg" alt="" className={styles.brandLogo} />
         <span className={styles.brandText}>Mintly</span>
       </Link>
       <div className={styles.navPill}>
-        <Link to="/search" className={location.pathname === '/search' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+        <Link
+          to="/search"
+          className={
+            location.pathname === "/search"
+              ? `${styles.navLink} ${styles.active}`
+              : styles.navLink
+          }
+        >
           Search
         </Link>
-        <Link to="/scan" className={location.pathname === '/scan' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+        <Link
+          to="/scan"
+          className={
+            location.pathname === "/scan"
+              ? `${styles.navLink} ${styles.active}`
+              : styles.navLink
+          }
+        >
           Scan
-        </Link>
-        <Link to="/portfolio" className={location.pathname === '/portfolio' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
-          Portfolio
         </Link>
         {/* Watchlist is an account-only feature — shown to signed-in users only,
             so the signed-out (and crawler-facing) nav stays at three links. */}
         {loggedIn && (
-          <Link to="/watchlist" className={location.pathname === '/watchlist' ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+          <Link
+            to="/watchlist"
+            className={
+              location.pathname === "/watchlist"
+                ? `${styles.navLink} ${styles.active}`
+                : styles.navLink
+            }
+          >
             Watchlist
           </Link>
         )}
+        <Link
+          to="/portfolio"
+          className={
+            location.pathname === "/portfolio"
+              ? `${styles.navLink} ${styles.active}`
+              : styles.navLink
+          }
+        >
+          Portfolio
+        </Link>
       </div>
       <div className={styles.navbarRight}>
         {loggedIn ? (
           <Link
             to="/profile"
             aria-label="Profile"
-            className={location.pathname === '/profile' ? `${styles.avatar} ${styles.avatarActive}` : styles.avatar}
+            className={
+              location.pathname === "/profile"
+                ? `${styles.avatar} ${styles.avatarActive}`
+                : styles.avatar
+            }
           >
             {/* Generic profile silhouette — no avatar upload in the app yet */}
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
-                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <circle cx="12" cy="9" r="3.2" />
               <path d="M5.5 19.2a6.5 6.5 0 0 1 13 0" />
             </svg>
@@ -69,12 +115,16 @@ export default function Navbar() {
             <Link to="/login" className={styles.loginLink}>
               Log in
             </Link>
-            <Link to="/login" state={{ register: true }} className={styles.signupBtn}>
+            <Link
+              to="/login"
+              state={{ register: true }}
+              className={styles.signupBtn}
+            >
               Sign up
             </Link>
           </>
         )}
       </div>
     </nav>
-  )
+  );
 }

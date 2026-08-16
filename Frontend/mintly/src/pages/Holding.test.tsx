@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import Holding from './Holding'
@@ -217,6 +217,50 @@ describe('Holding page — loaded position', () => {
     await screen.findByRole('heading', { level: 1, name: 'Charizard' })
     await screen.findByText(/Not enough history yet/i)
     expect(await axe(container)).toHaveNoViolations()
+  })
+})
+
+describe('Holding page — editing a lot condition', () => {
+  it('follows the lot to its new holding when it was the only lot here', async () => {
+    const user = userEvent.setup()
+    // A single raw lot for base1-4 (holding g=''). Editing its condition to PSA 10
+    // empties THIS holding, so the page must navigate to the new PSA|10 holding
+    // (where the refetch finds the moved lot) rather than fall into the
+    // "you don't own this card yet" prompt (the bug this fixes).
+    const rawLot = lot({ id: 5, card_id: 'base1-4', card_name: 'Charizard', quantity: 1, purchase_price: 100, current_price: 150 })
+    const movedLot = lot({ id: 5, card_id: 'base1-4', card_name: 'Charizard', quantity: 1, purchase_price: 100, current_price: null, grading: 'PSA', grade: '10' })
+    mockGetPortfolio.mockResolvedValueOnce([rawLot]).mockResolvedValue([movedLot])
+
+    renderHolding('/portfolio/base1-4')
+    await screen.findByRole('heading', { level: 1, name: 'Charizard' })
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    // Change grading Raw -> PSA (the grade select auto-picks the first option, "10")
+    await user.selectOptions(screen.getByLabelText('Grading'), 'PSA')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(mockUpdateCard).toHaveBeenCalledWith(5, expect.objectContaining({ grading: 'PSA', grade: '10' }))
+    // Navigated to the new holding, and the moved lot renders (its condition chip)
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('g=PSA'))
+    expect(await screen.findByText('PSA 10')).toBeInTheDocument()
+    expect(screen.queryByText(/You don't own this card yet/i)).not.toBeInTheDocument()
+  })
+
+  it('stays on the holding when other lots remain after the condition edit', async () => {
+    const user = userEvent.setup()
+    // Default LOTS: base1-4 has two raw lots. Editing the newest to PSA leaves the
+    // other raw lot in this holding, so the page refetches and stays put.
+    renderHolding('/portfolio/base1-4')
+    await screen.findByRole('heading', { level: 1, name: 'Charizard' })
+
+    await user.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+    await user.selectOptions(screen.getByLabelText('Grading'), 'PSA')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockUpdateCard).toHaveBeenCalled())
+    // No navigation — the URL keeps the bare holding path (no ?g= scope change)
+    expect(screen.getByTestId('location')).toHaveTextContent('/portfolio/base1-4')
+    expect(screen.getByTestId('location')).not.toHaveTextContent('g=')
   })
 })
 

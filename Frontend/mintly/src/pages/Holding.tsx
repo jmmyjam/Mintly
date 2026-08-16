@@ -158,10 +158,17 @@ function HoldingInner({ cardId, g }: { cardId: string; g: string }) {
         grading: editCondition.grading, grade: editCondition.grade,
       })
       setEditingId(null)
-      // A condition edit can move the lot to a different holding (and flips a
-      // graded lot's value to at-cost), so refetch to re-scope + re-price rather
-      // than patch locally.
-      refetchLots()
+      // A condition edit moves the lot to a different holding (and flips a graded
+      // lot's value to at-cost). If it was the only lot here, THIS holding no
+      // longer exists — follow the lot to its new holding page instead of landing
+      // on the empty "you don't own this card" prompt (the remount reloads +
+      // re-scopes). Otherwise stay and refetch to re-scope + re-price what's left.
+      const movedTo = conditionKey(editCondition.grading, editCondition.grade)
+      if (movedTo !== g && !lots.some(l => l.id !== lot.id)) {
+        navigate(holdingPath(cardId, movedTo))
+      } else {
+        refetchLots()
+      }
     } catch (err) {
       if (err instanceof SessionExpiredError) { redirectToLogin(); return }
       showLotError(lot.id, err instanceof TypeError ? CONNECTION_ERROR : "We couldn't save those changes. Please try again.")
