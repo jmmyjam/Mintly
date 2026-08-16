@@ -1,71 +1,147 @@
-/* The fake grading case. Built from the palette (no brand colors): the near-black
-   outer frame reads as black plastic, a hairline inner bezel adds depth, and the
-   label strip sits on the card surface. */
+/* The fake grading case, styled to look like a card photographed inside a real
+   slab. Built from the palette + decorative grey/white highlights (no brand
+   colors): a beveled clear-plastic shell (top-lit gradient, inset bevel, drop
+   shadow), a glossy diagonal reflection over the whole case, a cream paper label,
+   and the card recessed into a plastic well. */
 .slab {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 4px;
-  padding: 5px;
-  background: var(--frame);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  isolation: isolate;
+  /* clear-plastic body, lit from the top-left */
+  background: linear-gradient(158deg, #41424a 0%, #2a2b31 30%, #232429 62%, #33343b 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),   /* top edge catches light */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05), /* thin plastic rim */
+    inset 0 -3px 6px rgba(0, 0, 0, 0.45),      /* bottom bevel */
+    0 14px 30px rgba(0, 0, 0, 0.55),           /* it lifts off the surface */
+    0 3px 8px rgba(0, 0, 0, 0.4);
 }
 
-/* Top label strip: grader + grade as real text (screen-reader name is on the art) */
+/* Glossy reflection over the whole case: a soft corner sheen + a crisp diagonal
+   streak, the way light catches real slab plastic in a photo. */
+.slab::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(122deg, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0.05) 14%, transparent 30%),
+    linear-gradient(122deg, transparent 46%, rgba(255, 255, 255, 0.10) 50%, rgba(255, 255, 255, 0.02) 53%, transparent 57%);
+}
+
+/* Top paper label: grader left, grade right (screen-reader name is on the art) */
 .label {
+  position: relative;
+  z-index: 1;
   display: flex;
-  align-items: baseline;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
   gap: 6px;
-  padding: 3px 8px;
-  border-radius: calc(var(--radius-md) - 3px);
-  background: var(--bg-card);
-  border: 1px solid var(--hairline);
+  padding: 6px 11px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fdfcf7 0%, #f1ece0 60%, #e6e0d2 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 2px rgba(120, 110, 90, 0.25),
+    0 1px 2px rgba(0, 0, 0, 0.35);
   white-space: nowrap;
   overflow: hidden;
 }
 
 .grader {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--ink);
+}
+
+.grade-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.grade-cap {
+  font-size: 6.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9a927f;
+  margin-bottom: 1.5px;
 }
 
 .grade {
-  font-size: 12.5px;
-  font-weight: 800;
-  color: var(--text-h);
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 0.9;
 }
 
-/* The card art fills the case; CardImage keeps its own 5:7 ratio + placeholder */
+/* The card art recessed into a plastic well */
 .art {
+  position: relative;
+  z-index: 1;
   display: block;
+  border-radius: 5px;
+  overflow: hidden;
 }
 
 .art > span {
-  border-radius: calc(var(--radius-md) - 3px);
+  border-radius: 5px;
 }
 
-/* Larger label on the Holding page's detail slab */
+.art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 2px 7px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 3px rgba(255, 255, 255, 0.06);
+}
+
+/* ---- Tile size (portfolio grid) ---- */
+.tile {
+  gap: 6px;
+  padding: 8px 8px 10px;
+  border-radius: 16px;
+}
+
+/* ---- Detail size (Holding sidebar) ---- */
 .detail {
-  padding: 8px;
-  gap: 7px;
-  border-radius: var(--radius-lg);
+  gap: 9px;
+  padding: 11px 11px 14px;
+  border-radius: 20px;
 }
 
 .detail .label {
-  padding: 6px 12px;
-  gap: 8px;
+  padding: 9px 15px;
+  border-radius: 10px;
 }
 
 .detail .grader {
-  font-size: 13px;
+  font-size: 15px;
+}
+
+.detail .grade-cap {
+  font-size: 8.5px;
 }
 
 .detail .grade {
-  font-size: 17px;
+  font-size: 24px;
+}
+
+.detail .art,
+.detail .art > span,
+.detail .art::after {
+  border-radius: 7px;
 }

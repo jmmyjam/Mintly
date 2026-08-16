@@ -3,10 +3,11 @@ import { isGraded } from '../grading'
 import styles from './SlabbedCardImage.module.css'
 
 // Card artwork that reads as a graded slab in the portfolio (roadmap #7). For a
-// graded lot it wraps CardImage in a fake grading case — a plastic shell with a
-// top label strip carrying the grader + grade as REAL text (identity never rides
-// on color alone) — so a slab is obvious at a glance in the grid and on the
-// Holding page. A raw/unset lot renders the bare CardImage, unchanged.
+// graded lot it wraps CardImage in a fake grading case styled to look like a card
+// photographed inside a real slab: a beveled clear-plastic shell with a glossy
+// reflection, a cream paper label carrying the grader + grade as REAL text
+// (identity never rides on color alone), and the card recessed into a plastic
+// well. A raw/unset lot renders the bare CardImage, unchanged.
 interface SlabbedCardImageProps {
   src?: string | null
   alt: string
@@ -23,9 +24,15 @@ export default function SlabbedCardImage({ src, alt, grading, grade, size = 'til
   const label = `${grading}${grade ? ` ${grade}` : ''}`
   return (
     <span className={`${styles.slab} ${size === 'detail' ? styles.detail : styles.tile}`}>
+      {/* Paper label seen through the plastic: grader left, grade right (screen-reader name is on the art) */}
       <span className={styles.label} aria-hidden="true">
         <span className={styles.grader}>{grading}</span>
-        {grade && <span className={styles.grade}>{grade}</span>}
+        {grade && (
+          <span className={styles.gradeWrap}>
+            <span className={styles.gradeCap}>Grade</span>
+            <span className={styles.grade}>{grade}</span>
+          </span>
+        )}
       </span>
       <span className={styles.art}>
         {/* The accessible name carries the slab context so the label can stay aria-hidden */}
