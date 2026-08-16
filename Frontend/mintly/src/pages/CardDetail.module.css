@@ -111,26 +111,31 @@
 .disclaimer a { color: var(--accent); }
 
 /* ---- Buy box ------------------------------------------------------------- */
+/* A quiet neutral card (matching the KPI tiles below it) rather than a loud
+   green fill — the cream Add button is the accent, so the container stays
+   recessive. Flex-column gap spaces the title / picker / form / links evenly. */
 .buy-box {
-  border: 1px solid var(--accent-border);
-  background: var(--accent-bg);
-  border-radius: 14px;
-  padding: clamp(12px, 2vw, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: clamp(14px, 2vw, 18px);
   max-width: 460px;
 }
 
 .buy-title {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--accent);
-  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+  margin: 0;
 }
 
 /* the portfolio target chooser above the add form (only shows with 2+ portfolios) */
 .buy-portfolio {
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 /* the shared PriceQtyForm rendered inside the buy box (this class replaces the
@@ -146,13 +151,12 @@
 
 /* outbound "Buy on TCGplayer" / "Search on eBay" links below the add form */
 .buy-outbound {
-  margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--accent-border);
+  border-top: 1px solid var(--hairline);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
 }
 
 .buy-links {

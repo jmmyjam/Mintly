@@ -70,7 +70,9 @@ export default function GradingPicker({ grading, grade, onChange, variant = 'ful
     </div>
   )
 
-  const rootClass = className ? `${styles.picker} ${className}` : styles.picker
+  const rootClass = [styles.picker, variant === 'compact' && styles.compact, className]
+    .filter(Boolean)
+    .join(' ')
 
   if (variant === 'full') return <div className={rootClass}>{controls}</div>
 

@@ -12,7 +12,15 @@
   white-space: nowrap;
 }
 
-.select {
+/* Square off the global .filter-select pill to match the .mini-input fields this
+   picker sits beside in the add forms (GradingPicker selects, price/qty inputs).
+   The pill is right for the Search filter row (which is fine as-is) but wrong next
+   to the squared inputs here. `.root .select` outspecifies the global .filter-select
+   regardless of stylesheet insertion order. */
+.root .select {
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
   max-width: 100%;
 }
 

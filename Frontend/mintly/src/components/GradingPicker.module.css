@@ -32,22 +32,44 @@
   min-width: 0;
 }
 
-/* Compact collapsed chip: a one-line control matching the price input, showing the
-   current condition with a Change affordance; never wraps. */
-/* Sizes to its content (a compact dropdown-like pill) and stays left-aligned,
-   so it reads as a peer of the price box rather than a full-width banner. */
+/* Compact variant, expanded: lay the two condition selects out as a 2-column grid
+   matching the price/qty form below it (1.4fr 1fr, 6px gap) so the add form reads as
+   one aligned 2×2 set, instead of the two fields wrapping to full width on a narrow
+   Search tile (which read as "too wide" next to the price/qty inputs). */
+.compact .controls {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  column-gap: 6px;
+  row-gap: 0;
+}
+
+.compact .field {
+  flex: none;
+  min-width: 0;
+}
+
+/* Compact collapsed chip: a one-line control showing the current condition with a
+   Change affordance; never wraps. Fills the add form's width (like the portfolio
+   picker above and the price/qty row below), with the chevron pushed to the right
+   edge so it reads as a peer full-width select rather than a content-width pill. */
 .summary {
   display: flex;
   align-items: center;
-  align-self: flex-start;
-  max-width: 100%;
+  align-self: stretch;
+  justify-content: space-between;
+  width: 100%;
   gap: 6px;
-  padding: 7px 12px;
+  /* Box model matches .mini-input (padding/border/radius/font-size + the default
+     `normal` line-height) so the chip is the same height as the price/qty inputs;
+     inheriting the whole `font` shorthand would pull in the root's 24px line-height
+     and make it taller. */
+  padding: 6px 12px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  font: inherit;
+  font-family: inherit;
   font-size: 13px;
+  line-height: normal;
   color: var(--text);
   text-align: left;
   cursor: pointer;
