@@ -48,7 +48,7 @@
 
 **Search** — natural-language search with set/rarity/type filters and daily price-change chips:
 
-![Card search](docs/screenshots/search.png)
+![Card search](docs/screenshots/search.jpg)
 
 **Card detail** — live prices, market/low/mid/high spread, quick add-to-portfolio, and buy links:
 
