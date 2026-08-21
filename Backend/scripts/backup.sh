@@ -6,7 +6,7 @@
 # Run from anywhere (it finds Backend/ from its own location):
 #   Backend/scripts/backup.sh
 #
-# Cron on the VPS (03:10 nightly — after the day's snapshot job has compacted):
+# Cron on the VPS (03:10 nightly — after the day's snapshot job has archived):
 #   10 3 * * * /path/to/Mintly/Backend/scripts/backup.sh >> /var/log/mintly-backup.log 2>&1
 #
 # Config — environment variables win, then plain KEY=value lines in Backend/.env:
@@ -75,9 +75,10 @@ pg_restore --list "$TMP_FILE" >/dev/null   # verify the dump is readable before 
 mv "$TMP_FILE" "$DUMP_FILE"
 log "dump ok ($(du -h "$DUMP_FILE" | cut -f1 | tr -d ' '))"
 
-# --- 2. Price-history cold storage: the DB no longer holds old dailies, so the
-# archive CSVs are part of the backup, not an optional extra. Append-only source,
-# so no --delete: a bad/empty source can never erase already-backed-up months.
+# --- 2. Price-history cold storage: the DB now keeps every daily row (already
+# captured by the pg_dump above), so the archive CSVs are a redundant, extra
+# backup of price history. Append-only source, so no --delete: a bad/empty
+# source can never erase already-backed-up months.
 ARCHIVE_DIR="$BACKEND_DIR/.archive/price-history"
 if [ -d "$ARCHIVE_DIR" ]; then
     rsync -a "$ARCHIVE_DIR/" "$BACKUP_DIR/price-history/"

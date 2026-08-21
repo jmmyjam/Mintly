@@ -1,7 +1,7 @@
 """Manual entry point for the price-history cold storage (the daily snapshot
-job already compacts automatically — this is for inspecting and restoring).
+job already backs up automatically — this is for inspecting and restoring).
 
-    venv/bin/python scripts/archive_history.py                   # compact now
+    venv/bin/python scripts/archive_history.py                   # back up old months now
     venv/bin/python scripts/archive_history.py --list            # show archives
     venv/bin/python scripts/archive_history.py --restore 2026-05 # load a month back
 """
@@ -42,12 +42,11 @@ def main() -> int:
             added = history_archive.restore_month(db, args.restore)
             print(f"restored {args.restore}: {added:,} rows added back")
         else:
-            results = history_archive.compact(db)
+            results = history_archive.archive(db)
             if not results:
-                print("nothing to compact")
+                print("nothing to back up")
             for r in results:
-                print(f"{r['month']}: archived {r['rows_archived']:,} rows -> {r['path']}, "
-                      f"thinned {r['rows_deleted']:,} from the DB")
+                print(f"{r['month']}: backed up {r['rows_archived']:,} rows -> {r['path']}")
     finally:
         db.close()
     return 0

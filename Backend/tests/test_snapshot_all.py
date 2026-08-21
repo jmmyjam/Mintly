@@ -118,7 +118,7 @@ def run_main(monkeypatch):
         fake = FlakyUpstream(pages or three_pages(), fail_first)
         monkeypatch.setattr(snapshot_all, "session", fake)
         monkeypatch.setattr(sys, "argv", ["snapshot_all.py", "--max-ebay", "0",
-                                          "--no-compact", *extra_args])
+                                          "--no-archive", *extra_args])
         return snapshot_all.main()
 
     return run

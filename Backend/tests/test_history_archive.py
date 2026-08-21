@@ -1,6 +1,7 @@
-"""history_archive: old complete months are exported to gzipped CSV before the
-DB copy is thinned to monthly closes — never the other way around — and a month
-can be restored from its archive file at full fidelity."""
+"""history_archive: old complete months are backed up to gzipped CSV as a
+redundant, full-fidelity copy — DB rows are never deleted, so charts keep daily
+resolution forever — and a month can be restored from its archive into a DB
+that has lost those rows."""
 import csv
 import gzip
 from datetime import date, datetime
@@ -39,12 +40,21 @@ def all_rows() -> list[tuple[str, str, float]]:
         db.close()
 
 
+def delete_before(cutoff: datetime) -> None:
+    """Simulate a DB that has lost old rows (e.g. rebuilt from a partial dump)."""
+    db = TestingSessionLocal()
+    db.query(CardPriceSnapshot).filter(
+        CardPriceSnapshot.snapshot_date < cutoff).delete(synchronize_session=False)
+    db.commit()
+    db.close()
+
+
 MAY_ROWS = [
     ("a", "2026-05-01T12:00", 1.0),
     ("a", "2026-05-15T12:00", 2.0),
-    ("a", "2026-05-31T12:00", 3.0),   # a's monthly close
+    ("a", "2026-05-31T12:00", 3.0),
     ("b", "2026-05-02T12:00", 10.0),
-    ("b", "2026-05-20T12:00", 20.0),  # b's monthly close
+    ("b", "2026-05-20T12:00", 20.0),
 ]
 JULY_ROWS = [("a", "2026-07-16T12:00", 4.0)]
 
@@ -59,47 +69,45 @@ def test_archivable_months_only_complete_and_out_of_window():
         db.close()
 
 
-def test_compact_archives_full_month_then_thins_to_closes(archive_dir):
+def test_archive_writes_full_month_and_keeps_every_db_row(archive_dir):
     seed(MAY_ROWS + JULY_ROWS)
     db = TestingSessionLocal()
     try:
-        results = history_archive.compact(db, TODAY)
+        results = history_archive.archive(db, TODAY)
     finally:
         db.close()
 
-    assert [(r["month"], r["rows_archived"], r["rows_deleted"]) for r in results] \
-        == [("2026-05", 5, 3)]
+    assert [(r["month"], r["rows_archived"]) for r in results] == [("2026-05", 5)]
+    assert "rows_deleted" not in results[0]  # nothing is thinned any more
     # the archive holds every May row, at full fidelity
     with gzip.open(archive_dir / "2026-05.csv.gz", "rt") as fh:
         archived = sorted((r["card_id"], r["snapshot_date"], float(r["price"]))
                           for r in csv.DictReader(fh))
     assert archived == sorted((c, datetime.fromisoformat(d).isoformat(), p)
                               for c, d, p in MAY_ROWS)
-    # the DB keeps each card's last May row (the close) and everything recent
-    assert all_rows() == [
-        ("a", "2026-05-31T12:00:00", 3.0),
-        ("a", "2026-07-16T12:00:00", 4.0),
-        ("b", "2026-05-20T12:00:00", 20.0),
-    ]
+    # ...and the DB still holds every daily row — the backup deletes nothing
+    assert all_rows() == sorted(
+        (c, datetime.fromisoformat(d).isoformat(), p)
+        for c, d, p in MAY_ROWS + JULY_ROWS)
 
 
-def test_compact_second_run_changes_nothing(archive_dir):
+def test_second_run_changes_nothing(archive_dir):
     seed(MAY_ROWS + JULY_ROWS)
     db = TestingSessionLocal()
     try:
-        history_archive.compact(db, TODAY)
+        history_archive.archive(db, TODAY)
         before = all_rows()
         content = (archive_dir / "2026-05.csv.gz").read_bytes()
-        results = history_archive.compact(db, TODAY)
+        results = history_archive.archive(db, TODAY)
     finally:
         db.close()
 
-    assert results == []  # fully-compacted months are silent
+    assert results == []  # already-backed-up months are silent
     assert all_rows() == before
     assert (archive_dir / "2026-05.csv.gz").read_bytes() == content  # never rewritten
 
 
-def test_failed_archive_write_never_thins(archive_dir, monkeypatch):
+def test_failed_archive_write_leaves_db_intact(archive_dir, monkeypatch):
     seed(MAY_ROWS + JULY_ROWS)
 
     def boom(db, month):
@@ -109,22 +117,24 @@ def test_failed_archive_write_never_thins(archive_dir, monkeypatch):
     db = TestingSessionLocal()
     try:
         with pytest.raises(OSError):
-            history_archive.compact(db, TODAY)
+            history_archive.archive(db, TODAY)
     finally:
         db.close()
 
-    assert len(all_rows()) == len(MAY_ROWS) + len(JULY_ROWS)  # nothing deleted
+    assert len(all_rows()) == len(MAY_ROWS) + len(JULY_ROWS)  # nothing lost
     assert list(archive_dir.iterdir()) == []  # and no half-written file
 
 
-def test_restore_month_brings_thinned_rows_back(archive_dir):
+def test_restore_brings_lost_rows_back(archive_dir):
     seed(MAY_ROWS + JULY_ROWS)
     original = all_rows()
     db = TestingSessionLocal()
     try:
-        history_archive.compact(db, TODAY)
+        history_archive.archive(db, TODAY)
+        # a DB that has since lost every May row (e.g. restored from a thin dump)
+        delete_before(datetime(2026, 6, 1))
         added = history_archive.restore_month(db, "2026-05")
-        assert added == 3  # only the thinned rows; closes were still in the DB
+        assert added == 5
         assert all_rows() == original
         assert history_archive.restore_month(db, "2026-05") == 0  # already complete
         with pytest.raises(FileNotFoundError):
@@ -133,9 +143,7 @@ def test_restore_month_brings_thinned_rows_back(archive_dir):
         db.close()
 
 
-def test_compact_keeps_a_close_per_variant(archive_dir):
-    # variant rows (multi-variant cards) each keep their own monthly close, so
-    # variant charts get monthly resolution beyond the daily window too
+def test_archive_roundtrips_variants(archive_dir):
     db = TestingSessionLocal()
     db.add_all([
         CardPriceSnapshot(card_id="a", variant="", price=1.0,
@@ -150,16 +158,12 @@ def test_compact_keeps_a_close_per_variant(archive_dir):
     db.commit()
     seed(JULY_ROWS)
     try:
-        history_archive.compact(db, TODAY)
-        kept = sorted((r.card_id, r.variant, r.price)
-                      for r in db.query(CardPriceSnapshot)
-                      .filter(CardPriceSnapshot.snapshot_date < datetime(2026, 6, 1)))
-        assert kept == [("a", "", 2.0), ("a", "reverseHolofoil", 0.7)]
-        # ...and the archive round-trips the variant column
-        assert history_archive.restore_month(db, "2026-05") == 2
+        history_archive.archive(db, TODAY)
+        delete_before(datetime(2026, 6, 1))  # lose the May rows
+        assert history_archive.restore_month(db, "2026-05") == 4
         restored = db.query(CardPriceSnapshot).filter(
             CardPriceSnapshot.variant == "reverseHolofoil").count()
-        assert restored == 2
+        assert restored == 2  # the variant column survives the round-trip
     finally:
         db.close()
 

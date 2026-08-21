@@ -1,23 +1,24 @@
-"""Cold storage for old daily price snapshots.
+"""On-disk backup of old price snapshots.
 
-card_price_snapshot grows ~20k rows a day forever if left alone (~1.1GB/year).
-Instead of deleting old history, complete months older than the daily window
-are exported to gzipped CSV files (one per UTC month) and the DB copy is then
-thinned to each card's LAST snapshot of the month — the "monthly close" that
-charts keep plotting, stock-market style: daily resolution for the recent
-window, monthly beyond it. Nothing is lost: the archive holds every row at
-full fidelity and `restore_month` loads a month back into the table.
+Every complete month older than ARCHIVE_AFTER_DAYS is exported to a gzipped CSV
+(one per UTC month) as a redundant, full-fidelity backup of price history. The
+DB keeps every daily row forever — nothing is deleted here — so long-range
+charts stay at daily resolution; the CSVs are purely a backup (rsynced off the
+box by backup.sh alongside the nightly pg_dump, which already holds the same
+rows). `restore_month` loads a month's rows back from its archive, skipping any
+already present, so a fresh DB can be rebuilt from the CSVs if a dump is ever
+lost.
 
 Safety rules:
-- A month is only touched once it is complete AND ended more than
-  DAILY_WINDOW_DAYS ago, so the DB always holds at least that much daily data.
-- The archive file is written atomically (tmp + rename) BEFORE any deletion;
-  rows are only thinned when the month's file exists on disk.
+- A month is only archived once it is complete AND ended more than
+  ARCHIVE_AFTER_DAYS ago.
+- The archive file is written atomically (tmp + rename), so it only ever exists
+  whole.
 - Idempotent: an existing file is never rewritten (rename means it was written
-  whole), and re-thinning an already-thinned month deletes nothing.
+  whole), so re-archiving a month already on disk is a cheap no-op.
 
-The daily snapshot job compacts automatically; `scripts/archive_history.py` is
-the manual entry point (compact / list / restore).
+The daily snapshot job archives automatically; `scripts/archive_history.py` is
+the manual entry point (archive / list / restore).
 """
 import csv
 import gzip
@@ -30,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CardPriceSnapshot, utcnow
 
-DAILY_WINDOW_DAYS = 30  # dailies younger than this never leave the DB
+ARCHIVE_AFTER_DAYS = 30  # a month is backed up once it has been complete this long
 
 _ARCHIVE_DIR = Path(os.getenv(
     "PRICE_ARCHIVE_DIR",
@@ -52,11 +53,11 @@ def _month_bounds(month: str) -> tuple[datetime, datetime]:
 
 
 def archivable_months(db: Session, today: date | None = None) -> list[str]:
-    """Months that are complete and ended more than DAILY_WINDOW_DAYS ago,
-    oldest first. Already-compacted months still appear (their close rows keep
-    the month non-empty) — compact() handles them cheaply."""
+    """Months that are complete and ended more than ARCHIVE_AFTER_DAYS ago,
+    oldest first. Already-archived months still appear (their rows never leave
+    the DB) — archive() skips them cheaply via the on-disk file check."""
     today = today or utcnow().date()
-    cutoff = today - timedelta(days=DAILY_WINDOW_DAYS)
+    cutoff = today - timedelta(days=ARCHIVE_AFTER_DAYS)
     oldest = db.query(func.min(CardPriceSnapshot.snapshot_date)).scalar()
     if oldest is None:
         return []
@@ -102,65 +103,31 @@ def _archive_month(db: Session, month: str) -> int:
     return written
 
 
-def _thin_month(db: Session, month: str) -> int:
-    """Delete the month's rows except each card+variant's last one (the monthly
-    close — kept per variant so variant charts get closes too). Only call once
-    the month's archive file exists. Returns rows deleted."""
-    start, end = _month_bounds(month)
-    last = (
-        db.query(
-            CardPriceSnapshot.card_id,
-            CardPriceSnapshot.variant,
-            func.max(CardPriceSnapshot.snapshot_date).label("last_date"),
-        )
-        .filter(
-            CardPriceSnapshot.snapshot_date >= start,
-            CardPriceSnapshot.snapshot_date < end,
-        )
-        .group_by(CardPriceSnapshot.card_id, CardPriceSnapshot.variant)
-        .subquery()
-    )
-    keep_ids = db.query(CardPriceSnapshot.id).join(
-        last,
-        (CardPriceSnapshot.card_id == last.c.card_id)
-        & (CardPriceSnapshot.variant == last.c.variant)
-        & (CardPriceSnapshot.snapshot_date == last.c.last_date),
-    )
-    deleted = (
-        _month_rows(db, month)
-        .filter(~CardPriceSnapshot.id.in_(keep_ids))
-        .delete(synchronize_session=False)
-    )
-    db.commit()
-    return deleted
-
-
-def compact(db: Session, today: date | None = None) -> list[dict]:
-    """Archive + thin every eligible month. Returns one summary dict per month
-    that actually changed something; months already fully compacted are silent."""
+def archive(db: Session, today: date | None = None) -> list[dict]:
+    """Back up every eligible month to its .csv.gz. DB rows are never deleted —
+    the archive is a redundant, full-fidelity copy of price history. Returns one
+    summary dict per month newly written; months already on disk are silent."""
     results = []
     for month in archivable_months(db, today):
         path = month_path(month)
         if path.exists():
-            archived = 0  # complete by construction (atomic rename) — never rewrite
-        else:
-            if not db.query(_month_rows(db, month).exists()).scalar():
-                continue  # gap month, nothing to do
-            archived = _archive_month(db, month)
-        deleted = _thin_month(db, month)
-        if archived or deleted:
-            results.append({
-                "month": month,
-                "rows_archived": archived,
-                "rows_deleted": deleted,
-                "path": str(path),
-            })
+            continue  # already backed up (atomic rename means it is whole)
+        if not db.query(_month_rows(db, month).exists()).scalar():
+            continue  # gap month, nothing to back up
+        written = _archive_month(db, month)
+        results.append({
+            "month": month,
+            "rows_archived": written,
+            "path": str(path),
+        })
     return results
 
 
 def restore_month(db: Session, month: str) -> int:
     """Load a month's archived rows back into the table, skipping any that are
-    already there. Returns how many rows were added."""
+    already there. Returns how many rows were added. Nothing is thinned any
+    more, so this only adds rows for a DB that has lost them (e.g. a rebuild
+    from the CSV backups)."""
     path = month_path(month)
     if not path.exists():
         raise FileNotFoundError(f"no archive for {month} at {path}")

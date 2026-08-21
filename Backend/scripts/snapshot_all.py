@@ -712,9 +712,9 @@ def main() -> int:
     parser.add_argument("--no-tcgcsv", action="store_true",
                         help="skip the TCGCSV price fill for cards TCGPlayer "
                              "can't price (they fall through to the eBay pass)")
-    parser.add_argument("--no-compact", action="store_true",
-                        help="skip archiving months older than the daily window "
-                             "to cold storage")
+    parser.add_argument("--no-archive", action="store_true",
+                        help="skip backing up complete old months to cold-storage "
+                             "CSVs (DB rows are kept either way)")
     parser.add_argument("--no-alerts", action="store_true",
                         help="skip evaluating watchlist price alerts / sending "
                              "their emails (for smoke tests)")
@@ -877,17 +877,16 @@ def main() -> int:
                 db.rollback()
                 log.warning("watchlist alert evaluation failed: %s", exc)
 
-        compacted: list[dict] = []
-        if not args.no_compact:
+        archived_months: list[dict] = []
+        if not args.no_archive:
             try:
-                compacted = history_archive.compact(db)
-            except Exception as exc:  # cold storage must never cost us the day's snapshots
-                log.warning("history compaction failed: %s — rows stay in the DB "
-                            "until the next run", exc)
-            for c in compacted:
-                log.info("  archived %s: %s rows -> %s  (thinned %s from the DB)",
-                         c["month"], f"{c['rows_archived']:,}", c["path"],
-                         f"{c['rows_deleted']:,}")
+                archived_months = history_archive.archive(db)
+            except Exception as exc:  # the backup must never cost us the day's snapshots
+                log.warning("history archive failed: %s — the DB still holds "
+                            "every row; retries next run", exc)
+            for c in archived_months:
+                log.info("  backed up %s: %s rows -> %s",
+                         c["month"], f"{c['rows_archived']:,}", c["path"])
     finally:
         db.close()
 
@@ -928,8 +927,9 @@ def main() -> int:
         log.info("  watchlist alerts  %d sent to %d user(s)  (%d re-armed, "
                  "%d send failures)", alerts.alerts_sent, alerts.users_notified,
                  alerts.rearmed, alerts.failures)
-    if compacted:
-        log.info("  compacted         %d month(s) to cold storage", len(compacted))
+    if archived_months:
+        log.info("  archived          %d month(s) backed up to cold storage",
+                 len(archived_months))
     if crawl.dropped:
         log.info("  dropped recovery  %s of %s dropped-page cards priced from TCGCSV",
                  f"{len(dfill.prices):,}", f"{dfill.candidates:,}")
