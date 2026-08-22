@@ -96,6 +96,33 @@ def test_page_recovered_by_a_later_retry_sweep(crawl):
     assert "c2-0" in result.prices
 
 
+def test_page1_recovered_by_its_retry_sweep(crawl):
+    # page 1 carries totalCount, so its failure used to abort the whole day.
+    # It fails every inline attempt, then recovers on its first retry sweep —
+    # the crawl proceeds normally instead of returning empty.
+    result = crawl({1: snapshot_all._MAX_RETRIES})
+    assert result.complete
+    assert len(result.prices) == 6  # all 3 pages still collected
+    assert "c1-0" in result.prices
+
+
+def test_page1_recovered_by_a_later_sweep(crawl):
+    # a longer outage: page 1 fails the inline attempts AND its first retry
+    # sweep, then recovers on the second — still salvaged, not aborted
+    result = crawl({1: snapshot_all._MAX_RETRIES * 2})
+    assert result.complete
+    assert len(result.prices) == 6
+    assert "c1-0" in result.prices
+
+
+def test_page1_failing_every_sweep_records_nothing(crawl):
+    # upstream down the entire retry window — page 1 never comes back, so the
+    # crawl is genuinely empty (the job then leaves history untouched)
+    result = crawl({1: 999})
+    assert result.total_pages == 0
+    assert result.prices == {}
+
+
 # ---- Catalog upsert + sync marker -------------------------------------------
 # The crawl mirrors every card into card_catalog; only a complete, un-truncated
 # run may stamp the sync marker that lets list endpoints trust the catalog.

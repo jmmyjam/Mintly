@@ -84,6 +84,13 @@ _DEDUPE_CHUNK = 1000       # keep the per-day dedupe IN() clause reasonable
 _MAX_RETRIES = 3           # upstream flakes with transient 404s/timeouts
 _RETRY_PASSES = 3          # end-of-run sweeps over still-failing pages
 _RETRY_PASS_PAUSE = 30     # cool-down before the first sweep; doubles each pass
+# Page 1 carries totalCount, so the whole crawl can't start without it — a
+# transient upstream 500 / DNS blip there otherwise aborts the ENTIRE day's
+# snapshot (observed ~5 of 44 days). Re-try page 1 on a long, widening schedule
+# (not seconds-apart like the inline backoff) so an outage has real time to
+# clear before we give up: waits of 5/10/20/40 min ≈ a 75-minute recovery window.
+_PAGE1_RETRY_PASSES = 4
+_PAGE1_RETRY_PAUSE = 300   # cool-down before the first page-1 re-try; doubles each pass
 
 # The full frontend field set (mirrors _CARD_FIELDS in app/routers/cards.py):
 # the crawl now feeds the card_catalog table too, so browsing is served from
@@ -216,11 +223,28 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
     page shouldn't cost the other ~80): failed pages are remembered and re-tried
     in up to _RETRY_PASSES end-of-run sweeps with doubling cool-downs, when the
     flake has usually passed; a page is dropped (crawl incomplete) only after
-    failing every sweep too."""
+    failing every sweep too. Page 1 is special — it carries totalCount, so the
+    crawl can't start without it — and gets its own long, widening retry schedule
+    before we give up, so a blip there doesn't cost the whole day."""
     crawl = Crawl()
     first = _get_page(1)
     if first is None:
-        return crawl  # couldn't even get page 1 — nothing to record
+        # Page 1 failed every inline retry (seconds apart). Rather than abort the
+        # entire day, re-try it on a long, widening schedule so a transient
+        # upstream/network outage has real time to clear.
+        cooldown = _PAGE1_RETRY_PAUSE
+        for sweep in range(1, _PAGE1_RETRY_PASSES + 1):
+            log.warning("page 1 failed every inline retry; sweep %d/%d — waiting "
+                        "%ds for upstream to recover", sweep, _PAGE1_RETRY_PASSES,
+                        cooldown)
+            time.sleep(cooldown)
+            cooldown *= 2
+            first = _get_page(1)
+            if first is not None:
+                log.info("page 1 recovered on retry sweep %d", sweep)
+                break
+    if first is None:
+        return crawl  # upstream down the whole window — genuinely nothing to record
 
     _collect(first, crawl)
     total = first.get("totalCount", 0)
