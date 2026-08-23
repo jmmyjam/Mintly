@@ -56,7 +56,19 @@ function cardJsonLd(card: Card) {
   }
 }
 
+// Per-card remount: keying the inner component by cardId re-initializes its
+// state (the add form's price/qty/condition, loading, etc.) when you navigate
+// straight from one card to another — e.g. via the "Other versions" links. The
+// /card/:cardId route element isn't otherwise remounted per card, so without
+// this the add form would keep the previous card's auto-filled price and a
+// blind "Add to Portfolio" would record the new card at the old card's price.
+// No synchronous setState in an effect — the same trick Holding.tsx uses.
 export default function CardDetail() {
+  const { cardId } = useParams<{ cardId: string }>()
+  return <CardDetailInner key={cardId ?? ''} />
+}
+
+function CardDetailInner() {
   const { cardId } = useParams<{ cardId: string }>()
   const location = useLocation()
   // Search stashes the query it was showing in link state, so "Back to Search"

@@ -3,15 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import OAuthCallback from './OAuthCallback'
 import { setToken } from '../api'
-import { clearPortfolios } from '../portfolios'
-import { invalidateOwned } from '../owned'
+import { clearAccountCaches } from '../session'
 import { axe, LocationProbe } from '../test/utils'
 
 // The page reads the JWT off window.location.hash (never the router), then
 // stores it and drops any cached account data before landing on the portfolio.
 vi.mock('../api', () => ({ setToken: vi.fn() }))
-vi.mock('../portfolios', () => ({ clearPortfolios: vi.fn() }))
-vi.mock('../owned', () => ({ invalidateOwned: vi.fn() }))
+vi.mock('../session', () => ({ clearAccountCaches: vi.fn() }))
 
 // Mirrors the notice carried in router state so the missing-token bounce can be
 // asserted (LocationProbe only reflects pathname + search).
@@ -45,11 +43,10 @@ describe('OAuthCallback page', () => {
     renderCallback()
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/portfolio'))
     expect(setToken).toHaveBeenCalledWith('jwt.abc.123')
-    // clearPortfolios/invalidateOwned are idempotent; the effect can re-run once
-    // react-router hands it a fresh `navigate` after the redirect, so assert
-    // "at least once" rather than an exact count.
-    expect(clearPortfolios).toHaveBeenCalled()
-    expect(invalidateOwned).toHaveBeenCalled()
+    // clearAccountCaches is idempotent; the effect can re-run once react-router
+    // hands it a fresh `navigate` after the redirect, so assert "at least once"
+    // rather than an exact count.
+    expect(clearAccountCaches).toHaveBeenCalled()
   })
 
   it('URL-decodes the token before storing it', async () => {
@@ -67,7 +64,7 @@ describe('OAuthCallback page', () => {
       "We couldn't complete sign-in. Please try again.",
     )
     expect(setToken).not.toHaveBeenCalled()
-    expect(clearPortfolios).not.toHaveBeenCalled()
+    expect(clearAccountCaches).not.toHaveBeenCalled()
   })
 
   it('shows a signing-in message while it works', () => {

@@ -548,6 +548,36 @@ def test_recover_dropped_prices_uncrawled_catalog_cards_via_tcgcsv(fake_tcgcsv):
         db.close()
 
 
+def test_recover_dropped_skips_variety_rows(fake_tcgcsv):
+    # Synthetic stamp/mark varieties are in the catalog but never in a crawl, so
+    # they'd look "uncrawled" — recovery must NOT touch them. Re-pricing a variety
+    # through the base pick_candidate path resolves the plain BASE product and
+    # would overwrite the variety's real (higher) price with the base card's.
+    # variety_fill owns their pricing every run.
+    db = TestingSessionLocal()
+    try:
+        variety = mega_card("me9-1~v10", "188")
+        variety["varietyOf"] = "me9-1"
+        variety["tcgplayer"] = {
+            "prices": {"holofoil": {"market": 900.0, "mid": 950.0}},
+            "priceSource": "tcgcsv",
+            "url": "https://www.tcgplayer.com/product/10",
+        }
+        # the catalog holds the base card AND its [Staff] variety from prior runs
+        card_catalog.upsert_cards(db, [mega_card("me9-1", "188"), variety])
+        # this run crawled the base only; a different page dropped
+        crawl = snapshot_all.Crawl(cards=[mega_card("me9-1", "188")], dropped=[7])
+        result = snapshot_all.recover_dropped(db, crawl)
+
+        # the variety is left out of recovery entirely — not re-priced to the
+        # base product's $250 (which is what the base pick_candidate would pick)
+        assert result.candidates == 0
+        assert "me9-1~v10" not in result.prices
+        assert result.prices == {}
+    finally:
+        db.close()
+
+
 def test_dropped_page_cards_recovered_from_catalog_via_tcgcsv(run_main, fake_tcgcsv):
     # a card the catalog knows from a prior sync, whose page drops this run, is
     # priced from TCGCSV instead of vanishing from history for the day

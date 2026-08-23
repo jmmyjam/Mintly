@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { errorMessage, login, register, getCardImageUrl } from '../api'
+import { clearAccountCaches } from '../session'
 import type { PriceChange } from '../api'
 import { money } from '../format'
 import CardImage from '../components/CardImage'
@@ -100,6 +101,9 @@ export default function Login() {
         await register(email, username, password, agreedToTerms)
       }
       await login(username, password)
+      // Fresh identity: drop any cached data from a previously signed-in account
+      // (owned badges, set completion, portfolios) so this account loads clean.
+      clearAccountCaches()
       navigate('/portfolio')
     } catch (err: unknown) {
       setError(errorMessage(err, 'Something went wrong. Please try again.'))

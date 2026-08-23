@@ -672,7 +672,15 @@ def recover_dropped(db, crawl: Crawl) -> DroppedFill:
     fill = DroppedFill()
     crawled = {c["id"] for c in crawl.cards}
     catalog_ids = [cid for (cid,) in db.query(CatalogCard.card_id).all()]
-    missing_ids = [cid for cid in catalog_ids if cid not in crawled]
+    # Synthetic stamp/mark varieties ("<base>~v<pid>") are never in a crawl (they
+    # aren't upstream cards), so they'd ALWAYS look "uncrawled" here — but they
+    # must NOT be re-priced through this path: it feeds them to the base-picking
+    # tcgcsv_fill/pick_candidate, which resolves the plain BASE product and would
+    # silently overwrite a [Staff]/error variety's real price with the base
+    # card's (both the day's snapshot and the catalog row). variety_fill already
+    # prices every variety correctly on each run, so exclude them entirely.
+    missing_ids = [cid for cid in catalog_ids
+                   if cid not in crawled and not tcgcsv.is_variety_id(cid)]
     fill.candidates = len(missing_ids)
     if not missing_ids:
         return fill

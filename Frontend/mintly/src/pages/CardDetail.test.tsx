@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { Route, Routes } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
+import { Route, Routes, useNavigate } from 'react-router-dom'
 import CardDetail from './CardDetail'
 import { getCard, getCardHistory, getEbayEstimate, filterCards } from '../api'
 import type { Card, CardHistory, EbayEstimate } from '../api'
@@ -127,6 +128,48 @@ describe('CardDetail', () => {
     expect(data['@type']).toBe('Product')
     expect(data.name).toBe('Charizard')
     expect(data.offers).toBeUndefined()
+  })
+
+  it('re-seeds the add-form price when navigating straight to another card', async () => {
+    // Regression: the /card/:cardId route element isn't remounted per card, so
+    // the add form's state used to persist — navigating card A -> card B via an
+    // in-page link (e.g. "Other versions") left B's form pre-filled with A's
+    // auto-filled market price, and a blind Add recorded B at A's price.
+    const user = userEvent.setup()
+    const blastoise = pricedCard({
+      id: 'base1-2', name: 'Blastoise', number: '2',
+      tcgplayer: {
+        url: 'https://www.tcgplayer.com/product/9', updatedAt: '2026-08-08',
+        prices: { holofoil: { market: 200, low: 150, mid: 180, high: 250 } },
+      },
+    })
+    mockGetCard.mockImplementation(async (id: string) =>
+      id === 'base1-2' ? blastoise : pricedCard())
+
+    function NavToBlastoise() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate('/card/base1-2')}>go-other</button>
+    }
+    renderWithRouter(
+      <>
+        <Routes>
+          <Route path="/card/:cardId" element={<CardDetail />} />
+        </Routes>
+        <NavToBlastoise />
+      </>,
+      { route: '/card/base1-4' },
+    )
+
+    // Card A: form seeded to its $100 market price.
+    await screen.findByRole('heading', { level: 1, name: /Charizard/ })
+    expect(screen.getByLabelText('Price paid ($)')).toHaveValue(100)
+
+    // Navigate straight to card B without leaving the route.
+    await user.click(screen.getByRole('button', { name: 'go-other' }))
+    await screen.findByRole('heading', { level: 1, name: /Blastoise/ })
+
+    // The form reflects B's $200 market, not A's leftover $100.
+    expect(screen.getByLabelText('Price paid ($)')).toHaveValue(200)
   })
 
   it('sets the document title on load and restores it on unmount', async () => {
