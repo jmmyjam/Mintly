@@ -143,6 +143,11 @@ export default function Search() {
   // The first search after mount honors the URL's ?page= (so Back from a card
   // lands on the same page); every later query/filter change restarts at page 1.
   const firstRunRef = useRef(true);
+  // Monotonic id of the latest fired search, so an out-of-order (slow earlier)
+  // response can't overwrite a newer one's results. runSearch captures its id
+  // and only commits state if it's still the most recent — the same "am I still
+  // current?" guard CardDetail/Holding get from their effect's cancelled flag.
+  const searchSeqRef = useRef(0);
 
   const hasFilters = !!(setIds.length || rarities.length || types.length || number.trim());
   // How many of the collapsed (non-set) filters are active — drives the badge
@@ -182,6 +187,7 @@ export default function Search() {
   }, [query, setIds, rarities, types, number, page, setSearchParams]);
 
   async function runSearch(p: number) {
+    const seq = ++searchSeqRef.current;
     setLoading(true);
     setError("");
     setAdding(null);
@@ -204,11 +210,16 @@ export default function Search() {
         // Nothing typed and no filters — show the newest set by default
         results = await filterCards({ set_id: sets[0].id }, p);
       }
+      // A newer search fired while this one was in flight — its response is the
+      // one the user is waiting on, so drop this (possibly stale) result rather
+      // than overwrite the grid with results that no longer match the input.
+      if (seq !== searchSeqRef.current) return;
       setCards(results.data);
       setPage(p);
       setTotalCount(results.totalCount);
       setPageSize(results.pageSize || 50);
     } catch {
+      if (seq !== searchSeqRef.current) return; // superseded — leave the newer request's state alone
       setCards([]);
       setError(
         isDefaultView
@@ -216,7 +227,9 @@ export default function Search() {
           : "We couldn't complete that search. Check your internet connection and try again in a moment.",
       );
     } finally {
-      setLoading(false);
+      // Only the latest request owns the loading flag; a superseded one clearing
+      // it would flip the spinner off while the current request is still running.
+      if (seq === searchSeqRef.current) setLoading(false);
     }
   }
 

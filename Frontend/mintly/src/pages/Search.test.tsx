@@ -71,6 +71,41 @@ describe('Search', () => {
     expect(screen.getByRole('heading', { name: /Results for/ })).toBeInTheDocument()
   })
 
+  it('drops a stale in-flight response so it cannot overwrite newer results', async () => {
+    const user = userEvent.setup()
+
+    // Two searches held open with deferreds so we control resolve order: the
+    // first ("slow") resolves AFTER the second, mimicking an out-of-order
+    // response (a slow earlier request landing after a faster later one).
+    let resolveSlow!: (v: CardPage) => void
+    let resolveFast!: (v: CardPage) => void
+    const slow = new Promise<CardPage>(r => { resolveSlow = r })
+    const fast = new Promise<CardPage>(r => { resolveFast = r })
+    let calls = 0
+    mockSearch.mockImplementation(() => {
+      calls += 1
+      return calls === 1 ? slow : fast
+    })
+
+    renderWithRouter(<Search />, { route: '/search?q=slow' })
+    // The first search fires for the seeded query and stays pending.
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledTimes(1), { timeout: 2000 })
+
+    // Refine the query -> a second search fires while the first is still in flight.
+    await user.type(screen.getByRole('textbox', { name: 'Search cards by name' }), 'er')
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledTimes(2), { timeout: 2000 })
+
+    // The later request's response comes back FIRST and renders.
+    resolveFast(page([card({ id: 'fast-1', name: 'FastMon' })]))
+    expect(await screen.findByText('FastMon')).toBeInTheDocument()
+
+    // The earlier, slower response now lands last — it must be dropped, not
+    // shown, so the grid keeps the results that match the current query.
+    resolveSlow(page([card({ id: 'slow-1', name: 'SlowMon' })]))
+    await waitFor(() => expect(screen.getByText('FastMon')).toBeInTheDocument())
+    expect(screen.queryByText('SlowMon')).not.toBeInTheDocument()
+  })
+
   it('shows the newest set as the default view and filters by it', async () => {
     mockFilter.mockResolvedValue(page([card()], { totalCount: 102 }))
     renderWithRouter(<Search />, { route: '/search' })
