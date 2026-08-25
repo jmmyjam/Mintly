@@ -167,7 +167,9 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
     if (plFilter !== 'all') {
       const gain = metrics.get(g.key)!.gain
       if (gain == null) return false
-      if (plFilter === 'gainers' ? gain < 0 : gain >= 0) return false
+      // A flat holding (gain exactly 0) is neither a gainer nor a loser — it
+      // stays out of both filtered views (still visible under "All").
+      if (plFilter === 'gainers' ? gain <= 0 : gain >= 0) return false
     }
     return true
   })

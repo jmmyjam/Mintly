@@ -9,8 +9,9 @@ import Search from './pages/Search'
 import Portfolio from './pages/Portfolio'
 import Holding from './pages/Holding'
 import Watchlist from './pages/Watchlist'
-// Lazy-loaded: the scanner pulls in the Tesseract OCR runtime, so it's split
-// into its own chunk that only downloads when someone opens /scan.
+// Lazy-loaded: the scanner's camera capture UI (viewfinder, batch queue,
+// candidate picker) is split into its own chunk so it only downloads when
+// someone opens /scan. Matching is server-side CLIP embeddings — no OCR.
 const Scan = lazy(() => import('./pages/Scan'))
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'

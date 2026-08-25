@@ -13,6 +13,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -143,28 +144,43 @@ def add_watch(body: AddWatchRequest, current_user=Depends(get_current_user),
                 WatchlistItem.card_id == body.card_id)
         .first()
     )
-    if existing is not None:
-        changed = (existing.target_price != body.target_price
-                   or existing.direction != body.direction)
-        existing.target_price = body.target_price
-        existing.direction = body.direction
-        existing.card_name = card_name
-        if changed:
-            existing.last_alerted_at = None  # re-arm on any alert-config change
-        db.commit()
-        return {"message": "Watchlist updated", "id": existing.id}
+    if existing is None:
+        item = WatchlistItem(
+            user_id=current_user.id,
+            card_id=body.card_id,
+            card_name=card_name,
+            target_price=body.target_price,
+            direction=body.direction,
+        )
+        db.add(item)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two concurrent POSTs for the same (user, card) can both pass the
+            # "existing is None" check above; the loser hits the unique
+            # (user, card) constraint here instead of inserting a duplicate.
+            # Fall through to the update path below for the same idempotent-
+            # upsert result this endpoint promises regardless of ordering.
+            db.rollback()
+            existing = (
+                db.query(WatchlistItem)
+                .filter(WatchlistItem.user_id == current_user.id,
+                        WatchlistItem.card_id == body.card_id)
+                .first()
+            )
+        else:
+            db.refresh(item)
+            return {"message": "Added to watchlist", "id": item.id}
 
-    item = WatchlistItem(
-        user_id=current_user.id,
-        card_id=body.card_id,
-        card_name=card_name,
-        target_price=body.target_price,
-        direction=body.direction,
-    )
-    db.add(item)
+    changed = (existing.target_price != body.target_price
+               or existing.direction != body.direction)
+    existing.target_price = body.target_price
+    existing.direction = body.direction
+    existing.card_name = card_name
+    if changed:
+        existing.last_alerted_at = None  # re-arm on any alert-config change
     db.commit()
-    db.refresh(item)
-    return {"message": "Added to watchlist", "id": item.id}
+    return {"message": "Watchlist updated", "id": existing.id}
 
 
 @router.patch("/watchlist/{item_id}")

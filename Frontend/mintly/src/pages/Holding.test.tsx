@@ -7,6 +7,7 @@ import {
   getPortfolio, getCard, removeCard, updateCard, getCardHistory, getToken,
   type PortfolioCard, type Card, type CardHistory,
 } from '../api'
+import { usePortfolios } from '../portfolios'
 import { axe, renderWithRouter } from '../test/utils'
 
 // Mock the network fns; getCardPrice (source label), money/signedMoney,
@@ -26,17 +27,12 @@ vi.mock('../api', async (importActual) => {
   }
 })
 
-// Active-portfolio store: a single loaded portfolio (id 1). Holding scopes
-// getPortfolio(activeId) to it.
+// Active-portfolio store, controllable per test (default: a single loaded
+// portfolio, id 1) — Holding scopes getPortfolio(activeId) to it and, before
+// rendering HoldingInner at all, gates on the store having hydrated (loaded +
+// a resolved activeId), so a test can also simulate the not-yet-hydrated case.
 vi.mock('../portfolios', () => ({
-  usePortfolios: () => ({
-    portfolios: [{ id: 1, name: 'My Portfolio', is_default: true, created_at: '', card_count: 2 }],
-    active: { id: 1, name: 'My Portfolio', is_default: true, created_at: '', card_count: 2 },
-    activeId: 1,
-    setActive: vi.fn(),
-    refresh: vi.fn(),
-    loaded: true,
-  }),
+  usePortfolios: vi.fn(),
   clearPortfolios: vi.fn(),
 }))
 
@@ -46,6 +42,16 @@ const mockRemoveCard = vi.mocked(removeCard)
 const mockUpdateCard = vi.mocked(updateCard)
 const mockGetHistory = vi.mocked(getCardHistory)
 const mockToken = vi.mocked(getToken)
+const mockUsePortfolios = vi.mocked(usePortfolios)
+
+const HYDRATED_STORE = {
+  portfolios: [{ id: 1, name: 'My Portfolio', is_default: true, created_at: '', card_count: 2 }],
+  active: { id: 1, name: 'My Portfolio', is_default: true, created_at: '', card_count: 2 },
+  activeId: 1,
+  setActive: vi.fn(),
+  refresh: vi.fn(),
+  loaded: true,
+}
 
 function lot(over: Partial<PortfolioCard> & { id: number; card_id: string; card_name: string }): PortfolioCard {
   return {
@@ -114,6 +120,7 @@ beforeEach(() => {
   mockGetHistory.mockResolvedValue(EMPTY_HISTORY)
   mockRemoveCard.mockResolvedValue('Removed' as unknown as void)
   mockUpdateCard.mockResolvedValue('Updated' as unknown as void)
+  mockUsePortfolios.mockReturnValue(HYDRATED_STORE)
 })
 
 describe('Holding page — signed out', () => {
@@ -123,6 +130,33 @@ describe('Holding page — signed out', () => {
 
     expect(screen.getByRole('heading', { name: /Track your collection.s value over time/i })).toBeInTheDocument()
     expect(mockGetPortfolio).not.toHaveBeenCalled()
+  })
+})
+
+describe('Holding page — portfolio store not yet hydrated', () => {
+  // Regression: HoldingInner used to mount immediately and call
+  // getPortfolio(activeId) with a possibly-still-null activeId before the
+  // store finished loading — that call scopes to NO portfolio_id, i.e.
+  // account-wide lots, so a hard load of this route could briefly show a
+  // wrong position. The outer Holding component must wait for the store to
+  // hydrate (loaded + a resolved activeId) before rendering HoldingInner at
+  // all, the same gate Portfolio.tsx uses.
+  it('waits for the store to hydrate before fetching or rendering a position', async () => {
+    mockUsePortfolios.mockReturnValue({ ...HYDRATED_STORE, activeId: null, loaded: false })
+    renderHolding()
+
+    expect(screen.getByText('Loading portfolio...')).toBeInTheDocument()
+    expect(mockGetPortfolio).not.toHaveBeenCalled()
+  })
+
+  it('once hydrated, scopes the fetch to the active portfolio id, never account-wide', async () => {
+    mockUsePortfolios.mockReturnValue(HYDRATED_STORE)
+    renderHolding()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Charizard' })).toBeInTheDocument()
+    // getPortfolio(1) — the resolved active portfolio — not getPortfolio(null)/
+    // getPortfolio(undefined), which would mean account-wide lots.
+    expect(mockGetPortfolio).toHaveBeenCalledWith(1)
   })
 })
 

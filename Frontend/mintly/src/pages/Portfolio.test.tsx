@@ -167,6 +167,28 @@ describe('Portfolio page — signed in with holdings', () => {
     expect(screen.queryByText('Venusaur')).not.toBeInTheDocument()
   })
 
+  it('a flat holding (gain exactly $0) shows under All but neither Gainers nor Losers', async () => {
+    const user = userEvent.setup()
+    const flat = lot({
+      id: 4, card_id: 'base1-58', card_name: 'Magikarp', quantity: 1,
+      purchase_price: 5, current_price: 5, gain_loss: 0, gain_loss_pct: 0,
+    })
+    mockGetPortfolio.mockResolvedValue([...LOTS, flat])
+    renderWithRouter(<Portfolio />)
+    await screen.findByText('Charizard')
+
+    // All: the flat holding is still listed
+    expect(screen.getByText('Magikarp')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Gainers' }))
+    expect(screen.queryByText('Magikarp')).not.toBeInTheDocument()
+    expect(screen.getByText('Charizard')).toBeInTheDocument() // an actual gainer stays
+
+    await user.click(screen.getByRole('button', { name: 'Losers' }))
+    expect(screen.queryByText('Magikarp')).not.toBeInTheDocument()
+    expect(screen.getByText('Blastoise')).toBeInTheDocument() // an actual loser stays
+  })
+
   it('offers the sort control with its options', async () => {
     renderWithRouter(<Portfolio />)
     await screen.findByText('Charizard')

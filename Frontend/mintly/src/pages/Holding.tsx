@@ -41,16 +41,23 @@ function orderedHoldings(cards: PortfolioCard[]): HoldingRef[] {
 // resets its state (loading, edit, add) when you page between holdings — no
 // synchronous setState in an effect, same trick PriceHistoryChart uses. `g` is
 // the condition key (the ?g= param); missing = the unset/raw-unspecified holding.
+// Also gates on the portfolio store's hydration (same pattern as Portfolio.tsx):
+// HoldingInner used to mount immediately and call getPortfolio(activeId) with a
+// possibly-still-null activeId before the store finished loading, which briefly
+// fetches ACCOUNT-WIDE lots (getPortfolio(null)) instead of the active
+// portfolio's — a wrong position/pager flash on a hard load of this route.
 export default function Holding() {
   const { cardId } = useParams<{ cardId: string }>()
   const [searchParams] = useSearchParams()
   const g = searchParams.get('g') ?? ''
+  const { activeId, loaded } = usePortfolios()
   if (!getToken()) return <SignedOutHero variant="portfolio" />
   if (!cardId) return <PageMessage action={{ to: '/portfolio', label: 'Back to Portfolio' }}><p>Holding not found.</p></PageMessage>
-  return <HoldingInner key={`${cardId}::${g}`} cardId={cardId} g={g} />
+  if (!loaded || activeId == null) return <PageMessage><p>Loading portfolio...</p></PageMessage>
+  return <HoldingInner key={`${cardId}::${g}`} cardId={cardId} g={g} activeId={activeId} />
 }
 
-function HoldingInner({ cardId, g }: { cardId: string; g: string }) {
+function HoldingInner({ cardId, g, activeId }: { cardId: string; g: string; activeId: number }) {
   const navigate = useNavigate()
   const redirectToLogin = useSessionRedirect()
   const [lots, setLots] = useState<PortfolioCard[]>([])
@@ -69,9 +76,9 @@ function HoldingInner({ cardId, g }: { cardId: string; g: string }) {
   const [addCondition, setAddCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE })
   const [editCondition, setEditCondition] = useState<LotCondition>({ grading: DEFAULT_GRADING, grade: DEFAULT_GRADE })
   const { add, busy: addBusy, status: addStatus } = useAddCard()
-  // Scope this holding to the active portfolio — you reach it from a portfolio's
-  // grid, so the position, purchases, and prev/next pager reflect that portfolio.
-  const { activeId } = usePortfolios()
+  // activeId comes from the outer component (already resolved + hydrated there)
+  // so this position, its purchases, and the prev/next pager reflect the active
+  // portfolio you reached this holding from.
 
   useEffect(() => {
     let cancelled = false

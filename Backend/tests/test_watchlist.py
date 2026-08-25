@@ -6,6 +6,7 @@ the portfolio tests use (pointed at the watchlist router's own `_session`
 below). The alert logic is exercised directly against a seeded DB.
 """
 import pytest
+from sqlalchemy.orm import Session
 
 from app.models import User, WatchlistItem
 from app.routers import watchlist as watchlist_module
@@ -97,6 +98,52 @@ class TestWatchlistCrud:
         assert len(rows) == 1  # no duplicate
         assert rows[0]["target_price"] == 50
         assert rows[0]["direction"] == "above"
+
+    def test_concurrent_add_falls_back_to_update_instead_of_500ing(
+        self, client, auth_headers, watchlist_session, monkeypatch,
+    ):
+        """Two concurrent POST /watchlist for the same (user, card) can both
+        pass the `existing is None` check before either commits — the loser
+        used to hit the unique (user, card) constraint on its own INSERT and
+        surface a 500 instead of the endpoint's documented upsert behavior.
+
+        Simulated deterministically (no real threads) by hooking the first
+        Session.commit call this request makes: right as this request tries to
+        commit its own INSERT, another session inserts-and-commits the same
+        (user, card) row first — exactly what a genuinely concurrent second
+        request would have done — so this request's own commit collides."""
+        watchlist_session.add(make_card("base1-4", "Charizard", 100.0))
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.username == "ash").first()
+        db.close()
+
+        real_commit = Session.commit
+        fired = {"done": False}
+
+        def commit_with_interloper(self, *args, **kwargs):
+            if not fired["done"]:
+                fired["done"] = True
+                other = TestingSessionLocal()
+                other.add(WatchlistItem(user_id=user.id, card_id="base1-4",
+                                        card_name="Charizard", target_price=90,
+                                        direction="below"))
+                other.commit()
+                other.close()
+            return real_commit(self, *args, **kwargs)
+
+        monkeypatch.setattr(Session, "commit", commit_with_interloper)
+
+        res = client.post("/watchlist",
+                          json={"card_id": "base1-4", "target_price": 120,
+                                "direction": "below"},
+                          headers=auth_headers)
+
+        assert res.status_code == 200
+        assert res.json()["message"] == "Watchlist updated"  # fell back, not a 500
+
+        rows = client.get("/watchlist", headers=auth_headers).json()
+        assert len(rows) == 1  # no duplicate row from the race
+        assert rows[0]["target_price"] == 120  # this request's value landed
 
     def test_update(self, client, auth_headers, watchlist_session):
         watchlist_session.add(make_card("base1-4", "Charizard", 100.0))
