@@ -344,7 +344,7 @@ _NUMBER_TAIL_RE = re.compile(r"\s+-\s+\S+")
 # Synthetic-card id scheme for varieties: "<base_id>~v<productId>". "~v" is
 # URL-safe and never occurs in a real pokemontcg.io id, and the TCGplayer
 # productId keeps the id stable across daily runs.
-_VARIETY_SEP = "~v"
+VARIETY_SEP = "~v"
 
 
 def _qualifier_tokens(name: str) -> set[str]:
@@ -389,17 +389,17 @@ def variety_name(product_name: str) -> str:
 
 
 def variety_id(base_id: str, product_id) -> str:
-    return f"{base_id}{_VARIETY_SEP}{product_id}"
+    return f"{base_id}{VARIETY_SEP}{product_id}"
 
 
 def is_variety_id(card_id: str | None) -> bool:
-    return _VARIETY_SEP in (card_id or "")
+    return VARIETY_SEP in (card_id or "")
 
 
 def base_of(card_id: str | None) -> str:
     """The base pokemontcg.io id a synthetic variety id was minted from — the id
     itself when it isn't a variety id."""
-    return (card_id or "").split(_VARIETY_SEP, 1)[0]
+    return (card_id or "").split(VARIETY_SEP, 1)[0]
 
 
 # The products file lists each product's small rendition ("..._200w.jpg");

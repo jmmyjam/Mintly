@@ -25,6 +25,10 @@ os.environ.setdefault("EBAY_EPN_CAMPAIGN_ID", "")
 # a dev .env may name a real admin account — pin "no admins" so the suite's
 # 404/is_admin assertions hold (tests grant admin by monkeypatching the set)
 os.environ.setdefault("ADMIN_EMAILS", "")
+# snapshot_all calls load_dotenv() at import, which would otherwise pull a dev
+# .env's live Resend settings into the suite; pinned empty so a crawl test can
+# never mail the real operator mailbox.
+os.environ.setdefault("ALERT_EMAIL", "")
 # a dev .env may carry real OAuth client credentials — pin them empty so the
 # suite sees "no providers configured" by default (tests enabling a provider
 # monkeypatch.setenv these). Set before app import so auth.py's load_dotenv

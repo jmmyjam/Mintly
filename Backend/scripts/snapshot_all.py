@@ -47,6 +47,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 import certifi
 import requests
@@ -57,9 +58,10 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
-from app.models import CatalogCard  # noqa: E402
+from app.models import CatalogCard, utcnow  # noqa: E402
 from app.services import (  # noqa: E402
-    card_catalog, ebay_prices, history_archive, tcgcsv, watchlist_alerts,
+    card_catalog, ebay_prices, history_archive, mailer, tcgcsv,
+    watchlist_alerts,
 )
 from app.services.price_history import (  # noqa: E402
     extract_price, record_snapshots, record_variant_snapshots, recorded_today,
@@ -91,6 +93,15 @@ _RETRY_PASS_PAUSE = 30     # cool-down before the first sweep; doubles each pass
 # clear before we give up: waits of 5/10/20/40 min ≈ a 75-minute recovery window.
 _PAGE1_RETRY_PASSES = 4
 _PAGE1_RETRY_PAUSE = 300   # cool-down before the first page-1 re-try; doubles each pass
+# A crawl can fail while the site stays perfectly healthy, so uptime
+# monitoring never sees it. Two days without a COMPLETE crawl means the
+# job itself is broken, not that upstream had a bad night.
+_STALE_DAYS = 2
+# Where operator alerts go. Deliberately NOT the ADMIN_EMAILS list: that
+# grants admin-UI access, which is a different question from who should be
+# told the crawl broke. Env-overridable so a fork or a second deployment
+# doesn't mail this project's mailbox.
+ALERT_EMAIL = os.getenv("ALERT_EMAIL", "mintlytcg@gmail.com")
 
 # The full frontend field set (mirrors _CARD_FIELDS in app/routers/cards.py):
 # the crawl now feeds the card_catalog table too, so browsing is served from
@@ -217,6 +228,81 @@ def _collect(payload: dict, crawl: Crawl) -> None:
             })
 
 
+def _catalog_page_count() -> int:
+    """How many upstream pages the catalog implies — the fallback for a page 1
+    that never came back, since page 1 is the only page carrying totalCount.
+    Synthetic variety rows are excluded (they are minted here, never served
+    upstream), and one spare page is added so cards added upstream since the
+    last crawl are still reached: overshooting costs one empty request,
+    undershooting silently drops real cards. 0 means the catalog can't answer."""
+    db = SessionLocal()
+    try:
+        cards = (
+            db.query(CatalogCard)
+            .filter(~CatalogCard.card_id.contains(tcgcsv.VARIETY_SEP))
+            .count()
+        )
+    except Exception as exc:  # a DB hiccup must not mask the upstream failure
+        log.warning("catalog page-count fallback unavailable: %s", exc)
+        return 0
+    finally:
+        db.close()
+    return -(-cards // _PAGE_SIZE) + 1 if cards else 0
+
+
+def _alert_ops(subject: str, body: str) -> None:
+    """Best-effort operator email. Nothing else reports a broken crawl: the API
+    and site stay healthy while price history quietly stops, so uptime probes
+    read green throughout (observed Sep 6-9 2026, found four days late)."""
+    if not ALERT_EMAIL:
+        log.warning("ALERT_EMAIL is empty — failure alert not sent")
+        return
+    try:
+        mailer.send_email(ALERT_EMAIL, subject, body)
+        log.info("failure alert sent to %s", ALERT_EMAIL)
+    except Exception as exc:  # alerting must never fail the run
+        log.warning("failure alert to %s failed: %s", ALERT_EMAIL, exc)
+
+
+def check_staleness(alerting: bool = True) -> int:
+    """Alert when price history has gone stale, returning its age in days.
+
+    The abort alert only fires when a run reaches the crawl; this catches the
+    failures that produce no usable run at all — a string of aborts, a stopped
+    api container, a cron that was removed. It cannot see the server being off,
+    because nothing on the box runs then (observed Aug 27 - Sep 3 2026, 8 days):
+    only external uptime monitoring covers that case."""
+    db = SessionLocal()
+    try:
+        last = card_catalog.last_full_sync(db)
+    except Exception as exc:  # never block the crawl on a bookkeeping read
+        log.warning("staleness check skipped: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+    if last is None:
+        return 0  # never completed a crawl (fresh DB) — nothing to compare against
+    age = utcnow() - last
+    if age < timedelta(days=_STALE_DAYS):
+        return 0
+    days = age.days
+    log.warning("price history is %d day(s) stale — last COMPLETE crawl %s",
+                days, last.strftime("%Y-%m-%d %H:%M"))
+    if not alerting:
+        return days
+    _alert_ops(
+        f"Mintly: price history is {days} days stale",
+        f"The last COMPLETE daily crawl finished {last:%Y-%m-%d %H:%M} UTC, "
+        f"{days} days ago.\n\n"
+        "A day without a complete crawl has no price history, and it cannot be "
+        "backfilled later: prices are point-in-time.\n\n"
+        "Check ~/logs/mintly-snapshot.log, that the 20:00 UTC cron is still "
+        "installed, and that the api container is up.",
+    )
+    return days
+
+
 def fetch_all_prices(max_pages: int = 0) -> Crawl:
     """Every card's current price, keyed by card id. A transient failure on one
     page never aborts the crawl (the upstream flakes often enough that one bad
@@ -224,8 +310,9 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
     in up to _RETRY_PASSES end-of-run sweeps with doubling cool-downs, when the
     flake has usually passed; a page is dropped (crawl incomplete) only after
     failing every sweep too. Page 1 is special — it carries totalCount, so the
-    crawl can't start without it — and gets its own long, widening retry schedule
-    before we give up, so a blip there doesn't cost the whole day."""
+    crawl can't start without it — and gets its own long, widening retry
+    schedule; if it still never lands, the page count falls back to the catalog
+    so page 1 degrades into an ordinary failed page instead of ending the run."""
     crawl = Crawl()
     first = _get_page(1)
     if first is None:
@@ -243,19 +330,33 @@ def fetch_all_prices(max_pages: int = 0) -> Crawl:
             if first is not None:
                 log.info("page 1 recovered on retry sweep %d", sweep)
                 break
-    if first is None:
-        return crawl  # upstream down the whole window — genuinely nothing to record
 
-    _collect(first, crawl)
-    total = first.get("totalCount", 0)
-    crawl.total_pages = max(1, -(-total // _PAGE_SIZE))  # ceil division
+    failed: list[int] = []
+    total = first.get("totalCount", 0) if first is not None else 0
+    if first is not None:
+        crawl.total_pages = max(1, -(-total // _PAGE_SIZE))  # ceil division
+    else:
+        # Page 1 is only load-bearing because it carries totalCount, and the
+        # catalog already knows how many cards upstream holds. Borrow the page
+        # count from it and demote page 1 to an ordinary failed page: retried in
+        # the end-of-run sweeps, and if it never comes back, recover_dropped
+        # prices its cards from TCGCSV like any other dropped page.
+        crawl.total_pages = _catalog_page_count()
+        if not crawl.total_pages:
+            return crawl  # no catalog to fall back on — genuinely nothing to record
+        failed.append(1)
+
     if max_pages:
         crawl.total_pages = min(crawl.total_pages, max_pages)
     width = len(str(crawl.total_pages))
-    log.info("page %*d/%d  ok      %7s priced   (%s cards total)",
-             width, 1, crawl.total_pages, f"{len(crawl.prices):,}", f"{total:,}")
-
-    failed: list[int] = []
+    if first is not None:
+        _collect(first, crawl)
+        log.info("page %*d/%d  ok      %7s priced   (%s cards total)",
+                 width, 1, crawl.total_pages, f"{len(crawl.prices):,}", f"{total:,}")
+    else:
+        log.warning("page %*d/%d  FAILED every retry — falling back to the "
+                    "catalog's %d page(s); page 1 queued for the end-of-run sweeps",
+                    width, 1, crawl.total_pages, crawl.total_pages)
     for page in range(2, crawl.total_pages + 1):
         time.sleep(_PAGE_PAUSE)
         payload = _get_page(page)
@@ -753,9 +854,22 @@ def main() -> int:
     args = parser.parse_args()
 
     started = time.time()
+    # --max-pages is the smoke-test flag (it already refuses to stamp the sync
+    # marker); a truncated run must not page anyone either.
+    alerting = not args.max_pages
     crawl = fetch_all_prices(args.max_pages)
     if not crawl.prices:
         log.error("fetched no prices — leaving history untouched")
+        if alerting:
+            _alert_ops(
+                "Mintly: daily price crawl failed",
+                "The daily crawl fetched nothing from pokemontcg.io and left "
+                "price history untouched, so today has no price snapshots.\n\n"
+                "Today's prices are gone for good: they are point-in-time and "
+                "cannot be backfilled. The next run is tomorrow at 20:00 UTC.\n\n"
+                "Check ~/logs/mintly-snapshot.log for the failing pages.",
+            )
+        check_staleness(alerting)  # escalates when this isn't the first failed day
         return 1
 
     db = SessionLocal()
@@ -968,6 +1082,10 @@ def main() -> int:
         log.warning("  dropped pages     %s — the rest get caught next run",
                     ", ".join(map(str, crawl.dropped)))
     log.info(bar)
+    # After the run, not before: a complete crawl has just stamped the marker,
+    # so this only speaks up when today failed to fix a history that is already
+    # behind — an incomplete run, or a run that never stamped at all.
+    check_staleness(alerting)
     return 0
 
 

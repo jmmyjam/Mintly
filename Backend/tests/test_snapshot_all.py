@@ -4,6 +4,7 @@ run incomplete (and never aborts the crawl). Cards with no TCGPlayer price get a
 capped eBay-estimate pass (newest sets first) instead of being skipped."""
 import os
 import sys
+from datetime import timedelta
 
 import pytest
 
@@ -12,7 +13,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
 import snapshot_all
-from app.models import CardPriceSnapshot
+from app.models import CardPriceSnapshot, CatalogMeta, utcnow
 from app.services import card_catalog
 from conftest import TestingSessionLocal, make_card
 
@@ -115,12 +116,45 @@ def test_page1_recovered_by_a_later_sweep(crawl):
     assert "c1-0" in result.prices
 
 
-def test_page1_failing_every_sweep_records_nothing(crawl):
-    # upstream down the entire retry window — page 1 never comes back, so the
-    # crawl is genuinely empty (the job then leaves history untouched)
+def test_page1_failing_every_sweep_records_nothing_without_a_catalog(crawl):
+    # upstream down the entire retry window AND nothing in the catalog to
+    # borrow a page count from (a fresh DB) — genuinely empty, history untouched
     result = crawl({1: 999})
     assert result.total_pages == 0
     assert result.prices == {}
+
+
+def test_page1_failing_every_sweep_falls_back_to_the_catalog_page_count(
+        crawl, monkeypatch):
+    # Page 1 is only load-bearing because it carries totalCount. With a synced
+    # catalog to take the page count from, a page 1 that never comes back is
+    # demoted to an ordinary dropped page: the other pages are still crawled,
+    # so upstream losing one page costs one page, not the whole day.
+    monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(db, [make_card(f"seed-{i}", price=1.0) for i in range(6)])
+    db.close()
+
+    result = crawl({1: 999})
+
+    assert result.dropped == [1]          # queued and swept like any other page
+    assert not result.complete            # so the sync marker stays untouched
+    assert len(result.prices) == 4        # pages 2 and 3 collected regardless
+    assert "c2-0" in result.prices and "c3-0" in result.prices
+
+
+def test_catalog_page_count_ignores_synthetic_variety_rows(monkeypatch):
+    # Variety cards are minted by this job, never served by upstream — counting
+    # them would overstate how many pages upstream actually has.
+    monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(snapshot_all, "_PAGE_SIZE", 2)
+    db = TestingSessionLocal()
+    card_catalog.upsert_cards(db, [make_card(f"real-{i}", price=1.0) for i in range(4)]
+                              + [make_card("real-0~v999", price=1.0)])
+    db.close()
+
+    # 4 real cards / 2 per page = 2 pages, + 1 spare for cards added upstream
+    assert snapshot_all._catalog_page_count() == 3
 
 
 # ---- Catalog upsert + sync marker -------------------------------------------
@@ -161,6 +195,32 @@ def test_complete_run_fills_catalog_and_stamps_sync(run_main):
         assert card_catalog.get_card(db, "c2-1").data["tcgplayer"]  # full dict stored
     finally:
         db.close()
+
+
+def test_a_max_pages_smoke_run_never_pages_anyone(run_main, sent):
+    # --max-pages already refuses to stamp the sync marker; a truncated smoke
+    # run is not the daily job and must not send operator mail either, however
+    # stale the history it is running against happens to be.
+    _stamp_sync(days_ago=50)
+    assert run_main(["--max-pages", "1"]) == 0
+    assert sent == []
+
+
+def test_a_run_that_recovers_a_stale_history_stays_quiet(run_main, sent):
+    # The staleness check runs AFTER the crawl, so a successful run that just
+    # closed a four-day gap reports nothing — it fixed what it would complain
+    # about. Only a gap today's run failed to close is worth an email.
+    _stamp_sync(days_ago=4)
+    assert run_main() == 0
+    assert sent == []
+
+
+def test_a_run_that_fetches_nothing_alerts_the_admins(run_main, sent):
+    # Upstream down for the whole retry window with no catalog to fall back on.
+    # The run aborts, and since the site and API stay healthy throughout, this
+    # email is the only thing that reports it.
+    assert run_main(fail_first={1: 999, 2: 999, 3: 999}) == 1
+    assert [s for _, s, _ in sent] == ["Mintly: daily price crawl failed"]
 
 
 def test_max_pages_smoke_run_never_stamps_sync(run_main):
@@ -892,3 +952,72 @@ def test_no_tcgcsv_run_keeps_stored_prices(run_main):
         assert stored["tcgplayer"]["prices"]["holofoil"]["market"] == 96.66
     finally:
         db.close()
+
+
+# ---- Failure alerting -------------------------------------------------------
+# A broken crawl leaves the API and the site perfectly healthy, so uptime probes
+# read green while price history quietly stops. These emails are the only signal
+# there is: the Sep 6-9 2026 outage ran four days before anyone noticed.
+
+@pytest.fixture
+def sent(monkeypatch):
+    """Captures admin alerts instead of mailing them."""
+    outbox = []
+    monkeypatch.setattr(snapshot_all, "ALERT_EMAIL", "ops@example.com")
+    monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(
+        snapshot_all.mailer, "send_email",
+        lambda to, subject, body, html=None: outbox.append((to, subject, body)))
+    return outbox
+
+
+def _stamp_sync(days_ago: float) -> None:
+    db = TestingSessionLocal()
+    row = db.get(CatalogMeta, "last_full_sync") or CatalogMeta(key="last_full_sync")
+    row.value = (utcnow() - timedelta(days=days_ago)).isoformat()
+    db.add(row)
+    db.commit()
+    db.close()
+
+
+def test_staleness_alert_fires_when_the_last_complete_crawl_is_old(sent):
+    _stamp_sync(days_ago=4)
+    assert snapshot_all.check_staleness() == 4
+    to, subject, body = sent[0]
+    assert to == "ops@example.com"
+    assert "4 days stale" in subject
+    assert "cannot be backfilled" in body
+
+
+def test_staleness_stays_quiet_while_the_marker_is_fresh(sent):
+    _stamp_sync(days_ago=1)
+    assert snapshot_all.check_staleness() == 0
+    assert sent == []
+
+
+def test_staleness_stays_quiet_on_a_db_that_never_completed_a_crawl(sent):
+    # a fresh install has no marker to be stale — don't alert on day one
+    assert snapshot_all.check_staleness() == 0
+    assert sent == []
+
+
+def test_alert_goes_to_the_project_mailbox(sent, monkeypatch):
+    # one operator mailbox, not the ADMIN_EMAILS list — admin-UI access and
+    # "who gets told the crawl broke" are separate questions
+    monkeypatch.setattr(snapshot_all, "ALERT_EMAIL", "ops@mintlytcg.example")
+    snapshot_all._alert_ops("subject", "body")
+    assert [to for to, _, _ in sent] == ["ops@mintlytcg.example"]
+
+
+def test_alert_is_a_no_op_when_no_address_is_configured(sent, monkeypatch):
+    monkeypatch.setattr(snapshot_all, "ALERT_EMAIL", "")
+    snapshot_all._alert_ops("subject", "body")
+    assert sent == []
+
+
+def test_a_failing_mailer_never_breaks_the_run(sent, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr(snapshot_all.mailer, "send_email", boom)
+    snapshot_all._alert_ops("subject", "body")  # must not raise

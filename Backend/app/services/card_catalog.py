@@ -9,7 +9,7 @@ from the catalog once a complete crawl has stamped the `last_full_sync` marker
 return incomplete search pages. Single-card lookups are always safe: one row
 is one whole card.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -200,6 +200,19 @@ def set_count(db: Session, set_id: str) -> int:
 
 def is_synced(db: Session) -> bool:
     return db.get(CatalogMeta, _SYNC_KEY) is not None
+
+
+def last_full_sync(db: Session) -> datetime | None:
+    """When the last COMPLETE crawl stamped the marker, or None if one never
+    has. `is_synced` answers "can list endpoints trust the catalog"; this
+    answers "how old is that trust", which is what staleness alerting needs."""
+    row = db.get(CatalogMeta, _SYNC_KEY)
+    if row is None or not row.value:
+        return None
+    try:
+        return datetime.fromisoformat(row.value)
+    except ValueError:  # a hand-edited or truncated marker shouldn't crash a run
+        return None
 
 
 def mark_full_sync(db: Session) -> None:
