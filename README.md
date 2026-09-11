@@ -5,7 +5,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169e1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/backend_tests-410_passing-2ea44f)
+![Tests](https://img.shields.io/badge/backend_tests-426_passing-2ea44f)
 
 **Live at [mintlytcg.com](https://mintlytcg.com).** A Pokemon TCG portfolio tracker: search cards, scan them with your camera, monitor live market prices, watch cards for price alerts, and track your collection's value over time.
 
@@ -34,9 +34,10 @@
 - **Full account lifecycle** — JWT auth, profile editing (email/username/password), soft email verification, password reset by email (single-use, hashed, 30-minute tokens), sign-out-everywhere, and self-service account deletion
 - **Accessibility preferences** — reduce motion, high contrast, underlined links, and text size; applied instantly and stored per device
 - **Hardened public API** — per-IP sliding-window rate limits sized for humans, an uptime `/health` probe, and anti-enumeration password-reset responses
+- **Admin dashboard** — a config-gated ops view (accounts listed in `ADMIN_EMAILS`) showing user and signup counts, a 30-day signup chart, and portfolio totals
 - **SEO-ready** — JSON-LD structured data, robots.txt, and a catalog-driven sitemap covering every card page
 - **Self-funding, ad-free** — optional "Buy on TCGplayer" / "Search on eBay" affiliate links on each card and a "Buy me a coffee" link, all config-gated (no ads, no subscriptions, no tracking)
-- **Tiered history storage** — recent dailies in Postgres, older months compacted to monthly closes with the full dailies archived to gzipped CSV (offloaded, never deleted)
+- **Full-resolution price history** — every daily snapshot is kept in Postgres forever, so a 5-year chart shows 5 years of daily points rather than monthly averages; complete old months are additionally exported to gzipped CSV as a redundant backup
 
 ## Screenshots
 
@@ -85,11 +86,22 @@
    SMTP_USER=resend
    SMTP_PASSWORD=your-resend-api-key
    MAIL_FROM="Mintly <noreply@example.com>"
+   ALERT_EMAIL=you@example.com   # where the daily job reports its own failures
 
    # Optional — social sign-in (each provider is offered only when both its id and secret are set).
    GOOGLE_OAUTH_CLIENT_ID=...
    GOOGLE_OAUTH_CLIENT_SECRET=...
-   OAUTH_CALLBACK_BASE=http://localhost:8000
+   MICROSOFT_OAUTH_CLIENT_ID=...
+   MICROSOFT_OAUTH_CLIENT_SECRET=...
+   OAUTH_CALLBACK_BASE=http://localhost:8000   # the PUBLIC base where /auth/oauth/* is reachable
+
+   # Optional — admin dashboard access (comma-separated) and eBay affiliate tagging.
+   ADMIN_EMAILS=you@example.com
+   EBAY_EPN_CAMPAIGN_ID=...
+
+   # Optional — deployment knobs.
+   CORS_ORIGINS=http://localhost:5173   # comma-separated allowed origins; this is the default
+   RATE_LIMIT_TRUST_FORWARDED=1         # ONLY behind a reverse proxy: keys rate limits on X-Forwarded-For
    ```
 
 3. Create the database and apply migrations:
@@ -155,12 +167,12 @@ Verify after any deploy: `curl https://mintlytcg.com/api/health` → `{"status":
 
 Mintly builds its own price history — there is no upstream history API. One row per card per UTC day lands in `card_price_snapshot`, written by `Backend/scripts/snapshot_all.py`, which runs in four phases:
 
-1. **TCGPlayer crawl** — pages the full card list (~20.5k cards) and snapshots every priced card. Flaky pages are retried inline, then again in an end-of-run second pass; a page has to fail both to be skipped.
+1. **TCGPlayer crawl** — pages the full card list (~20.5k cards) and snapshots every priced card. The upstream API is genuinely unreliable (it failed 52-64% of requests through July and August 2026, and the share is trending up), so every page gets three inline attempts plus up to three end-of-run retry sweeps with widening cool-downs, and only a page that fails all of them is dropped. Page 1 is the awkward one — it carries the total card count, so losing it used to end the entire day's run; it now falls back to a page count derived from the local catalog and is retried like any other page.
 2. **TCGCSV fill** — cards with no TCGPlayer price (~1.6k: brand-new sets plus old oddballs) get real TCGplayer prices from the TCGCSV mirror, matched by set + card number and stored in the catalog like any other price — so newest-set cards browse as normally-priced cards, variant table and all.
 3. **eBay fill** — whatever TCGCSV couldn't match gets the median of its recent eBay _sold_ listings instead, newest sets first, paced 3s between scrapes. Cards with too few recent sales record nothing; only 5 consecutive failed fetches (bot block) stop the pass early.
-4. **Compaction to cold storage** — see the next section.
+4. **Watchlist alerts, then cold-storage backup** — every watched card is evaluated against the day's fresh snapshots and anyone whose target was crossed gets an email, then complete old months are exported to gzipped CSV (see the next section).
 
-The crawl also does two catalog-maintenance passes: **image repair** HEAD-checks each card's artwork URL and re-points dead ones (`images.pokemontcg.io` answers a missing image with a card-back PNG under a 404) at the TCGplayer product scan, and **variety forking** splits any stamped/marked TCGplayer sibling of a card (`[Staff]`, `[W Stamped]`, black-dot errors) into its own synthetic catalog entry. The card scanner's image embeddings are _not_ touched here — new cards are fingerprinted separately by `scripts/embed_catalog.py`.
+The crawl also does three catalog-maintenance passes: **price sanity-checking** re-checks every price upstream *did* supply against the same TCGCSV mirror and takes TCGplayer's own number when the two diverge 3x or more on a name-and-number-matched product (upstream occasionally maps a card to the wrong TCGplayer product — a `[Staff]` promo's price on the regular card, say — or holds an obviously junk figure), **image repair** HEAD-checks each card's artwork URL and re-points dead ones (`images.pokemontcg.io` answers a missing image with a card-back PNG under a 404) at the TCGplayer product scan, and **variety forking** splits any stamped/marked TCGplayer sibling of a card (`[Staff]`, `[W Stamped]`, black-dot errors) into its own synthetic catalog entry. The card scanner's image embeddings are _not_ touched here — new cards are fingerprinted separately by `scripts/embed_catalog.py`.
 
 ```bash
 cd Backend
@@ -170,7 +182,8 @@ venv/bin/python scripts/snapshot_all.py --max-pages 2 --max-ebay 0 --no-tcgcsv  
 #        --no-tcgcsv       skip the TCGCSV price fill
 #        --max-ebay N      cap eBay estimates (default 500; 0 = skip)
 #        --ebay-pause S    seconds between eBay scrapes (default 3)
-#        --no-compact      skip the cold-storage step
+#        --no-archive      skip the cold-storage backup
+#        --no-alerts       skip the watchlist alert emails
 ```
 
 In production it's scheduled by cron on the server at **20:00 UTC** — right at TCGCSV's daily 20:00 UTC refresh, and the crawl's first ~30 minutes of paging run before the TCGCSV fill reads anything, so the fill sees same-day prices. It runs inside the api container and logs to `~/logs/mintly-snapshot.log`:
@@ -186,22 +199,22 @@ crontab -l                                                  # the schedule (snap
 
 A healthy run ends with a summary block (pages ok, cards priced, tcgcsv/ebay fill counts, snapshots written). The occasional dropped page is routine upstream flakiness — its cards are recovered from TCGCSV the same run, and anything missed is caught the next day. A dev machine can run the same script directly against its local DB: `cd Backend && venv/bin/python scripts/snapshot_all.py`.
 
-### Tiered history storage (stock-chart style)
+**The job reports its own failures by email**, because nothing else can: a broken crawl leaves the API and the site perfectly healthy, so an uptime probe reads green while price history quietly stops. A run that fetches nothing mails `ALERT_EMAIL`, and a separate staleness check mails it when the last *complete* crawl is more than two days old — which catches the failures that produce no run at all, like a stopped container or a cron that went missing. Alerting is best-effort and never fails a run, and `--max-pages` smoke runs stay silent. A day without a complete crawl has no price history and **cannot be backfilled** (prices are point-in-time), so the email is the difference between losing one day and losing a week. One case it can't cover: the server being switched off, since nothing on the box runs then — that one belongs to external uptime monitoring.
 
-Left alone, daily snapshots would grow the database ~1.1GB/year forever. Instead, history is tiered like stock-market data — and old data is **offloaded, never deleted**:
+### History storage & cold-storage backups
 
-- **Last ~30 days** — full daily rows in Postgres (charts' 1M range stays daily-resolution).
-- **Older months** — the DB keeps one row per card per month (its month-end "close"), so 6M/1Y/All chart ranges show monthly points. Keeps the DB to ~36MB/year.
-- **The full old dailies** — exported to `Backend/.archive/price-history/YYYY-MM.csv.gz` (~3–6MB/month, gitignored) _before_ the DB copy is thinned; the archive file must exist on disk before a single row is removed. Back this folder up — the DB alone no longer holds full history.
+Mintly keeps **every daily snapshot in Postgres, permanently** — roughly 1.1GB/year, which the server's disk absorbs comfortably and which keeps charts at daily resolution at every range. An earlier design tiered this like stock-market data, thinning months older than ~30 days down to a single month-end close; it was reverted in August 2026 because it collapsed a 6-month chart to about six points. Chart range is a presentation choice, not a storage one.
 
-The snapshot job compacts automatically each day (a month becomes eligible once it's complete and 30+ days old). Manual controls:
+Complete months older than 30 days are also exported to `Backend/.archive/price-history/YYYY-MM.csv.gz` (~3–6MB/month, gitignored). This is a **redundant backup, not a tier**: no database row is ever deleted for it, and a month already written is never rewritten, so a bad export can't corrupt what's already saved.
 
 ```bash
 cd Backend
-venv/bin/python scripts/archive_history.py                    # compact eligible months now
-venv/bin/python scripts/archive_history.py --list             # what's archived, with sizes
-venv/bin/python scripts/archive_history.py --restore 2026-05  # load a month's dailies back into the DB
+venv/bin/python scripts/archive_history.py                    # back up eligible months now
+venv/bin/python scripts/archive_history.py --list             # what's backed up, with sizes
+venv/bin/python scripts/archive_history.py --restore 2026-05  # load a month's rows back into the DB
 ```
+
+The daily job runs the same backup at the end of every run (`--no-archive` skips it). `--restore` is there for a database that has actually lost rows — recovering from a dump taken before a month was archived, or refilling months thinned by the old tiering.
 
 ## Testing
 
@@ -210,7 +223,15 @@ Backend tests run offline (in-memory SQLite + fake upstream APIs — no network,
 ```bash
 cd Backend
 venv/bin/pip install -r requirements-dev.txt
-venv/bin/pytest tests/ -q     # 410 tests, ~30s
+venv/bin/pytest tests/ -q     # 426 tests, ~60s
+```
+
+Frontend tests run on Vitest + Testing Library, with a jest-axe accessibility assertion on every route page:
+
+```bash
+cd Frontend/mintly
+npm run test:run          # 287 tests across 40 files, ~6s
+npm run test:typecheck    # type-check the test files separately
 ```
 
 ## API Endpoints
@@ -228,6 +249,7 @@ venv/bin/pytest tests/ -q     # 410 tests, ~30s
 | POST   | `/scan`                          | Camera scanner: upload a card photo, get the nearest catalog cards by image match (auth required) |
 | POST   | `/scan/feedback`                 | Anonymous scanner-accuracy telemetry (no user id; auth-gated)                                      |
 | GET    | `/sets`                          | List all sets                                                                                     |
+| GET    | `/sets/{set_id}`                 | Get a single set                                                                                  |
 | GET    | `/sets/{set_id}/cards`           | Cards in a set                                                                                    |
 | GET    | `/portfolios`                    | List your named portfolios (auth required)                                                         |
 | POST   | `/portfolios`                    | Create a named portfolio (auth required)                                                           |
@@ -247,7 +269,7 @@ venv/bin/pytest tests/ -q     # 410 tests, ~30s
 | GET    | `/health`                        | Uptime probe: 200 when app + DB answer, 503 otherwise                                             |
 | GET    | `/sitemap.xml`                   | XML sitemap for crawlers (static pages + every catalog card)                                      |
 
-Social sign-in (`GET /auth/oauth/{provider}/start` → provider → `GET /auth/oauth/{provider}/callback`), email verification (`POST /auth/verify-email/send`, `POST /auth/verify-email`), password reset (`POST /auth/forgot-password`, `POST /auth/reset-password`), profile management (`GET`/`PATCH /auth/me`, `POST /auth/me/password`, `POST /auth/me/sign-out-others`), and account deletion (`DELETE /auth/me`) round out the auth surface — see HANDOFF.md for the full endpoint reference.
+Social sign-in (`GET /auth/oauth/{provider}/start` → provider → `GET /auth/oauth/{provider}/callback`), email verification (`POST /auth/verify-email/send`, `POST /auth/verify-email`), password reset (`POST /auth/forgot-password`, `POST /auth/reset-password`), profile management (`GET`/`PATCH /auth/me`, `POST /auth/me/password`, `POST /auth/me/sign-out-others`), and account deletion (`DELETE /auth/me`) round out the auth surface, and `GET /admin/stats` serves the admin dashboard to accounts listed in `ADMIN_EMAILS` — see HANDOFF.md for the full endpoint reference.
 
 ## Disclaimer
 
