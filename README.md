@@ -151,17 +151,26 @@ ssh pika                       # then, on the server:
 cd ~/apps/mintly
 git pull
 cd Frontend/mintly && npm ci && npm run build && cd ../..   # if frontend files changed
-docker compose up -d --build                                # if backend files changed
+docker compose up -d --build api                            # if backend files changed
 docker compose restart caddy                                # if the Caddyfile changed
 ```
 
 - **Frontend-only change** → just the npm build; Caddy serves the `dist/` bind mount, so the new build is live immediately, no restart.
-- **Backend change** → `docker compose up -d --build` rebuilds the api image and restarts the container.
+- **Backend change** → `docker compose up -d --build api` rebuilds the api image from `Backend/Dockerfile` and swaps the container onto it; db, caddy, and cloudflared keep running. A code-only change rebuilds in seconds because PyTorch and `requirements.txt` install in earlier, cached layers; editing `requirements.txt` re-runs the pip install, which is slower.
+- **New backend env var only** → add the line to the server's `~/apps/mintly/.env` and run `docker compose up -d api` (no `--build`). The service loads the whole file via `env_file`, and compose recreates the container when the env changes.
 - **Caddyfile change** → needs the explicit `restart caddy`: the file is bind-mounted, so compose won't recreate the container on its own.
 - **DB schema change** → also run `docker compose exec api alembic upgrade head` once the new image is up.
 - **Card scanner** → the api image bundles CPU PyTorch + the baked CLIP model, so the first `--build` is slow and pulls a large image. After the `card_catalog.embedding` column exists, run `docker compose exec -T api python scripts/embed_catalog.py` once to fingerprint every card image, then `docker compose restart api` so it loads the fresh embeddings — `/scan` returns nothing until this completes. A weekly cron re-runs the backfill so newly-crawled cards get embedded.
 
-Verify after any deploy: `curl https://mintlytcg.com/api/health` → `{"status":"ok"}`.
+Verify after any deploy:
+
+```bash
+docker compose ps                         # api should be "Up", not restarting
+docker compose logs -f api                # watch startup for import/migration errors
+curl https://mintlytcg.com/api/health     # → {"status":"ok"}
+```
+
+The scanner model loads in a background thread after every restart, so `/health` answers right away and only the first scan might take a few extra seconds.
 
 ## Price history & the daily snapshot job
 
