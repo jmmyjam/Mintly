@@ -222,8 +222,9 @@ class TestUpdateAndDelete:
 
 
 class TestConditionGrade:
-    """Roadmap #7: condition/grade on a lot. A graded lot is a separate holding
-    valued at cost (current_price=None) until phase-2 graded prices exist."""
+    """Roadmap #7: condition/grade on a lot. A graded lot is a separate holding,
+    valued at cost (current_price=None) whenever the slab series has no recent
+    price for it — see test_graded_prices.py for the priced path."""
 
     def test_add_raw_condition_prices_normally(self, client, auth_headers, upstream):
         upstream.add(make_card("base1-4", price=500.0))

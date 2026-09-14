@@ -236,3 +236,30 @@ class CardPriceSnapshot(Base):
     # (card_id, date) covers the history + previous-price + portfolio lookups;
     # the few variant rows per card/day are filtered from the indexed matches
     __table_args__ = (Index("ix_card_price_snapshot_card_date", "card_id", "snapshot_date"),)
+
+
+class GradedPriceSnapshot(Base):
+    # Daily market price for a SLAB — one row per (card, grader, grade) per UTC
+    # day. Deliberately its own table rather than a `grade` column on
+    # card_price_snapshot: `variant` there means TCGplayer finish
+    # (holofoil/reverse/…), and every existing reader of that table queries by
+    # card_id alone, so graded rows living beside them would silently leak into
+    # card history, portfolio value-over-time, and day-change baselines.
+    #
+    # Filled only for combos users actually hold (see snapshot_all's
+    # graded_fill) — the graded catalog-wide space is enormous and mostly never
+    # trades. The source is eBay sold comps, so `sale_count` rides along: a
+    # median over 3 sales and one over 25 are not the same claim, and the UI has
+    # to be able to say so.
+    __tablename__ = "graded_price_snapshot"
+    id = Column(Integer, primary_key=True)
+    card_id = Column(String, index=True)
+    grader = Column(String, nullable=False)   # "PSA" | "BGS" | "CGC" | "TAG"
+    grade = Column(String, nullable=False)    # "10", "9.5", "10 (Black Label)"
+    price = Column(Float)
+    sale_count = Column(Integer)
+    snapshot_date = Column(DateTime, default=utcnow)
+    __table_args__ = (
+        Index("ix_graded_snapshot_holding_date",
+              "card_id", "grader", "grade", "snapshot_date"),
+    )

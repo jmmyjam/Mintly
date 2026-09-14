@@ -24,8 +24,9 @@ export const GRADE_OPTIONS: Record<string, string[]> = {
 export const DEFAULT_GRADING = 'Raw'
 export const DEFAULT_GRADE = 'Near Mint'
 
-// A graded slab — valued at cost until phase-2 graded prices (mirrors the
-// backend's _is_graded: anything with a grading that isn't Raw/unset).
+// A graded slab: priced from its own eBay-comp series when the daily job has a
+// recent figure, valued at cost otherwise (mirrors the backend's _is_graded:
+// anything with a grading that isn't Raw/unset).
 export function isGraded(grading: string | null | undefined): boolean {
   return grading != null && grading !== 'Raw'
 }

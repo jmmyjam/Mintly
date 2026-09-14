@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: August 14, 2026</p>
+      <p className="legal-updated">Last updated: September 14, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -78,9 +78,13 @@ export default function Privacy() {
         Card searches and price lookups are served through the Pokémon TCG API.
         For cards it cannot price, Mintly fetches TCGplayer price data from
         TCGCSV, a public daily mirror, and may also query recent sold listings
-        on eBay to estimate a value. Your account details are never sent to any
-        of these services, only the card name, number, or set needed to find
-        results and prices. If you choose to sign in with a third-party provider
+        on eBay to estimate a value. Graded cards have no raw market price, so
+        for those Mintly searches eBay for recent sales of that exact grade
+        (for example &quot;PSA 10&quot;), which means the card and grade combinations
+        people hold are the ones looked up. These searches are not tied to any
+        account: your account details are never sent to any of these services,
+        only the card name, number, set, or grade needed to find results and
+        prices. If you choose to sign in with a third-party provider
         such as Google or Microsoft, you authenticate on that provider&apos;s own
         site and it returns your email address, name, and an account identifier
         to Mintly so we can sign you in; this happens only when you use that

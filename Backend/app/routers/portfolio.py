@@ -16,6 +16,7 @@ from app.routers import cards as cards_router
 from app.services import card_catalog, tcgcsv
 from app.services.price_history import (
     extract_price, record_snapshots, change_baselines, price_change, latest_prices,
+    latest_graded_prices,
 )
 from app.services.rate_limit import rate_limit
 
@@ -535,21 +536,38 @@ def get_portfolio(
 
     prices, images = fetch_prices([c.card_id for c in cards], db)
     record_snapshots(db, prices)
+    # Slab prices are read, never fetched, here: they come from eBay sold comps,
+    # which the daily job scrapes for every held combo. Scraping in a request
+    # would put a multi-second third-party fetch on the portfolio page.
+    graded = latest_graded_prices(
+        db, [(c.card_id, c.grading, c.grade) for c in cards if _is_graded(c.grading)])
     # Each card's daily-change baseline (the most recent prior-day snapshot,
     # stepping past a close that already equals the current price)
     prev = change_baselines(db, prices)
 
     result = []
     for c in cards:
-        # A graded lot has no honest current value from the raw TCGplayer price,
-        # so we report current_price=None (like a priceless card): the frontend
-        # then values it at cost and shows "—" for P&L, keeping the portfolio
-        # total honest (raw at market, slabs at cost) until phase-2 graded prices.
-        current_price = None if _is_graded(c.grading) else prices.get(c.card_id)
+        # A graded lot is never valued from the raw TCGplayer price — that's the
+        # ungraded figure. It gets the slab's own market (eBay comps for that
+        # exact grade) when the daily fill has found one recently enough, and
+        # otherwise stays at current_price=None, which is the phase-1 behavior:
+        # the frontend values it at cost and shows an em dash for P&L.
+        slab = graded.get((c.card_id, c.grading, c.grade)) if _is_graded(c.grading) else None
+        price_source = price_sample = None
+        if _is_graded(c.grading):
+            current_price = slab[0] if slab else None
+            if slab:
+                price_source, price_sample = "ebay_graded", slab[2]
+        else:
+            current_price = prices.get(c.card_id)
         gain_loss = round((current_price - c.purchase_price) * c.quantity, 2) if current_price is not None else None
         gain_loss_pct = round(((current_price - c.purchase_price) / c.purchase_price) * 100, 2) if current_price and c.purchase_price else None
         change = None
-        if current_price is not None and c.card_id in prev:
+        # `prev` is the RAW series' baseline, keyed by card_id alone, so it must
+        # never anchor a slab's day-change — that would measure this grade's
+        # price against the ungraded card's yesterday. A graded day-change needs
+        # the previous point from the graded series; not built yet.
+        if current_price is not None and not _is_graded(c.grading) and c.card_id in prev:
             prev_price, since = prev[c.card_id]
             change = price_change(current_price, prev_price, since)
         result.append({
@@ -566,6 +584,12 @@ def get_portfolio(
             "image_url": images.get(c.card_id),
             "grading": c.grading,
             "grade": c.grade,
+            # Only set for a slab priced from eBay comps: "ebay_graded" plus the
+            # number of sales behind the median, so the UI can label an estimate
+            # as one (and say how thin it is) instead of passing it off as a
+            # TCGplayer market price.
+            "price_source": price_source,
+            "price_sample": price_sample,
         })
     return result
 

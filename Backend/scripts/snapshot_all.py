@@ -58,13 +58,14 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal  # noqa: E402
-from app.models import CatalogCard, utcnow  # noqa: E402
+from app.models import CatalogCard, PortfolioCard, utcnow  # noqa: E402
 from app.services import (  # noqa: E402
     card_catalog, ebay_prices, history_archive, mailer, tcgcsv,
     watchlist_alerts,
 )
 from app.services.price_history import (  # noqa: E402
-    extract_price, record_snapshots, record_variant_snapshots, recorded_today,
+    extract_price, graded_recorded_today, record_graded_snapshot,
+    record_snapshots, record_variant_snapshots, recorded_today,
 )
 
 load_dotenv()
@@ -110,6 +111,12 @@ _SELECT = "id,name,number,rarity,artist,hp,types,images,set,tcgplayer"
 _EBAY_PAUSE = 3.0          # be gentle on eBay between scrapes (--ebay-pause overrides)
 _EBAY_GIVEUP = 5           # consecutive FAILED fetches — blocked or offline, stop
 _EBAY_MAX = 500           # default --max-ebay: caps the eBay pass per run (--max-ebay overrides)
+# Graded prices come from the same scraper, so they share its budget discipline.
+# The ceiling is much lower because the work is bounded by what users actually
+# hold — every distinct (card, grader, grade) in every portfolio — not by the
+# catalog. If this cap ever binds, the honest fix is raising it knowingly, not
+# scraping harder by default.
+_GRADED_MAX = 150          # default --max-graded
 
 session = requests.Session()
 session.verify = certifi.where()
@@ -175,6 +182,19 @@ class EbayFill:
     attempted: int = 0
     eligible: int = 0     # unpriced cards still lacking a snapshot today
     no_sales: int = 0     # fetched fine, but too few recent comps to price
+    failures: int = 0     # fetches that failed outright (block/network)
+    gave_up: bool = False
+
+
+@dataclass
+class GradedFill:
+    """What the graded pass did: slab prices recorded for held (card, grader,
+    grade) combos, plus the numbers for the summary."""
+    prices: dict[tuple[str, str, str], float] = field(default_factory=dict)
+    attempted: int = 0
+    eligible: int = 0     # held combos still lacking a slab snapshot today
+    no_sales: int = 0     # fetched fine, but too few comps for that exact slab
+    unpriceable: int = 0  # combos we can't search at all ("Other", no catalog row)
     failures: int = 0     # fetches that failed outright (block/network)
     gave_up: bool = False
 
@@ -749,6 +769,126 @@ def ebay_fill(db, unpriced: list[dict], budget: int,
     return fill
 
 
+def held_graded_combos(db) -> list[tuple[str, str, str]]:
+    """Every distinct (card_id, grader, grade) anyone actually holds as a slab.
+
+    This is the whole work list for graded pricing. Pricing the graded catalog
+    is not an option — every card times every grader times every grade, nearly
+    all of which never trade — so the series only covers combos that exist in
+    someone's portfolio, and a new one starts getting points the day after it's
+    added.
+    """
+    rows = (
+        db.query(PortfolioCard.card_id, PortfolioCard.grading, PortfolioCard.grade)
+        .filter(PortfolioCard.grading.isnot(None),
+                PortfolioCard.grading != "Raw",
+                PortfolioCard.grade.isnot(None))
+        .distinct()
+        .all()
+    )
+    return [(r[0], r[1], r[2]) for r in rows]
+
+
+def _graded_card_meta(db, card_ids: set[str]) -> dict[str, dict]:
+    """Name/number/year per card, from the catalog — what the slab search needs.
+
+    The year comes from the set's release date and is what separates a reprint
+    from the original at the same collector number (a 2021 Celebrations #4 vs a
+    1999 Base Set #4), which is the difference between a ~$550 comp and a
+    six-figure one.
+    """
+    meta: dict[str, dict] = {}
+    ids = list(card_ids)
+    for i in range(0, len(ids), _DEDUPE_CHUNK):
+        for row in db.query(CatalogCard).filter(
+                CatalogCard.card_id.in_(ids[i:i + _DEDUPE_CHUNK])):
+            data = row.data or {}
+            release = row.release_date or ""
+            meta[row.card_id] = {
+                "name": row.name or data.get("name") or "",
+                "number": row.number or data.get("number"),
+                "set_name": (data.get("set") or {}).get("name"),
+                "year": int(release[:4]) if release[:4].isdigit() else None,
+            }
+    return meta
+
+
+def _estimate_graded_one(card: dict, grader: str, grade: str) -> dict | None:
+    """eBay sold-listings summary for one SLAB, or None when the fetch failed.
+
+    Same failure contract as _estimate_one: None means the fetch broke (bot
+    block / network), an empty summary means it worked and there weren't enough
+    comps. Goes through the low-level helpers rather than ebay_prices.estimate
+    so the job isn't served by that function's 12h in-process cache.
+    """
+    query = ebay_prices.build_query(card["name"], card["number"], card["set_name"],
+                                    grader, grade)
+    html = ebay_prices._fetch_sold_html(query)
+    if html is None:
+        return None
+    sales = ebay_prices.parse_sold(html, want=(grader, grade),
+                                   identity=(card["number"], card["year"]))
+    return ebay_prices.summarize(sales, query)
+
+
+def graded_fill(db, budget: int, pause: float = _EBAY_PAUSE) -> GradedFill:
+    """Price the slabs users hold, from eBay sold comps for that exact grade.
+
+    TCGplayer quotes raw singles only, so this is the sole price source a graded
+    lot has; without it those lots stay valued at cost (phase 1). Same pacing,
+    budget, and give-up rules as ebay_fill — consecutive failed FETCHES are the
+    bot-block signature and stop the pass, while "no comps" is a normal outcome
+    for a slab that simply hasn't traded lately and costs the run nothing.
+    """
+    fill = GradedFill()
+    if budget <= 0:
+        return fill
+    combos = held_graded_combos(db)
+    if not combos:
+        return fill
+
+    todo = [c for c in combos if c not in graded_recorded_today(db, combos)]
+    fill.eligible = len(todo)
+    meta = _graded_card_meta(db, {c[0] for c in todo})
+
+    consecutive_failures = 0
+    for card_id, grader, grade in todo[:budget]:
+        card = meta.get(card_id)
+        # No catalog row (a card we've never crawled), or a grading with no
+        # searchable title form — neither is a failure, just not priceable.
+        if not card or not card["name"] or grader not in ebay_prices._GRADERS:
+            fill.unpriceable += 1
+            continue
+        fill.attempted += 1
+        time.sleep(pause)
+        try:
+            est = _estimate_graded_one(card, grader, grade)
+        except Exception as exc:  # one bad combo must not end the run
+            log.warning("  graded %-18s %s %s estimator error: %s",
+                        card_id, grader, grade, exc)
+            est = None
+        if est is None:
+            fill.failures += 1
+            consecutive_failures += 1
+            if consecutive_failures >= _EBAY_GIVEUP:
+                fill.gave_up = True
+                log.warning("  graded: %d failed fetches in a row — blocked or "
+                            "offline, stopping the graded pass early",
+                            consecutive_failures)
+                break
+            continue
+        consecutive_failures = 0
+        if est.get("median"):
+            fill.prices[(card_id, grader, grade)] = est["median"]
+            record_graded_snapshot(db, card_id, grader, grade,
+                                   est["median"], est.get("count", 0))
+            log.info("  graded %-18s %-4s %-16s $%.2f  (%d sales)",
+                     card_id, grader, grade, est["median"], est.get("count", 0))
+        else:
+            fill.no_sales += 1
+    return fill
+
+
 def recover_dropped(db, crawl: Crawl) -> DroppedFill:
     """Last-resort price source for cards on DROPPED pages — pages pokemontcg.io
     couldn't serve even after the retry pass. `_collect` never saw their cards,
@@ -842,6 +982,9 @@ def main() -> int:
     parser.add_argument("--ebay-pause", type=float, default=_EBAY_PAUSE,
                         help="seconds to wait between eBay scrapes "
                              f"(default {_EBAY_PAUSE:g})")
+    parser.add_argument("--max-graded", type=int, default=_GRADED_MAX,
+                        help="cap on eBay slab-price scrapes for the (card, grader, "
+                             f"grade) combos users hold (0 = skip; default {_GRADED_MAX})")
     parser.add_argument("--no-tcgcsv", action="store_true",
                         help="skip the TCGCSV price fill for cards TCGPlayer "
                              "can't price (they fall through to the eBay pass)")
@@ -979,6 +1122,17 @@ def main() -> int:
             fill = ebay_fill(db, remaining, args.max_ebay, args.ebay_pause)
             recorded += _record_chunked(db, fill.prices)
 
+        # Graded pass: the only price source slabs have. Independent of the
+        # crawl — its work list comes from what users hold, not from what
+        # upstream could or couldn't price — so it runs even on a partial run.
+        gfill = GradedFill()
+        if args.max_graded > 0:
+            combos = held_graded_combos(db)
+            if combos:
+                log.info("---- graded fill: %d held (card, grader, grade) combo(s) ----",
+                         len(combos))
+                gfill = graded_fill(db, args.max_graded, args.ebay_pause)
+
         # Dropped-page recovery: pages pokemontcg.io couldn't serve even after
         # the retry pass left their cards out of the crawl entirely, so nothing
         # above priced them. Pull those cards from the catalog and price them
@@ -1067,6 +1221,12 @@ def main() -> int:
                  len(fill.prices), fill.attempted, f"{fill.eligible:,}",
                  fill.no_sales, fill.failures,
                  "  — stopped early" if fill.gave_up else "")
+    if args.max_graded > 0 and (gfill.eligible or gfill.attempted):
+        log.info("  graded fill       %d slab(s) priced of %d tried  (%d held, "
+                 "%d without recent comps, %d unpriceable, %d failed fetches)%s",
+                 len(gfill.prices), gfill.attempted, gfill.eligible,
+                 gfill.no_sales, gfill.unpriceable, gfill.failures,
+                 "  — stopped early" if gfill.gave_up else "")
     log.info("  snapshots today   +%s new", f"{recorded:,}")
     log.info("  variant rows      +%s new  (multi-variant cards)", f"{variant_rows:,}")
     if not args.no_alerts:

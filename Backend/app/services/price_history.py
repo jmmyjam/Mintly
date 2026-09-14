@@ -11,7 +11,17 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import CardPriceSnapshot, utcnow
+from app.models import CardPriceSnapshot, GradedPriceSnapshot, utcnow
+
+# A held slab, the key of the graded series: (card_id, grader, grade).
+Holding = tuple[str, str, str]
+
+# How stale a slab price may be and still be shown as "current". eBay's sold
+# search reaches back ~90 days, and the daily fill re-prices every held combo,
+# so a gap this long means the comps dried up — at which point the honest answer
+# is the phase-1 fallback (no current price, valued at cost), not a month-old
+# median presented as today's market.
+GRADED_MAX_AGE_DAYS = 30
 
 
 def extract_price(card_data: dict) -> float | None:
@@ -300,3 +310,97 @@ def card_variant_history(db: Session, card_id: str, days: int) -> dict[str, list
         series.setdefault(r.variant, []).append(
             {"date": r.snapshot_date.date().isoformat(), "price": r.price})
     return series
+
+
+# ----- Graded (slab) series --------------------------------------------------
+# Same daily-snapshot shape as above, keyed on (card_id, grader, grade) instead
+# of card_id + finish. Kept apart from the raw series on purpose — see the
+# GradedPriceSnapshot model comment.
+
+def graded_recorded_today(db: Session, holdings: list[Holding]) -> set[Holding]:
+    """Holdings that already have a slab snapshot for today (UTC)."""
+    if not holdings:
+        return set()
+    wanted = set(holdings)
+    rows = db.query(GradedPriceSnapshot).filter(
+        GradedPriceSnapshot.card_id.in_({h[0] for h in holdings}),
+        GradedPriceSnapshot.snapshot_date >= _today_start(),
+    )
+    return {(r.card_id, r.grader, r.grade) for r in rows} & wanted
+
+
+def record_graded_snapshot(db: Session, card_id: str, grader: str, grade: str,
+                           price: float, sale_count: int = 0) -> bool:
+    """Record today's slab price, at most one row per holding per UTC day.
+
+    Mirrors record_snapshots: an existing row for today is refreshed rather than
+    duplicated, so a re-run keeps the day's point in step. Returns True when a
+    row was newly inserted.
+    """
+    row = (
+        db.query(GradedPriceSnapshot)
+        .filter(
+            GradedPriceSnapshot.card_id == card_id,
+            GradedPriceSnapshot.grader == grader,
+            GradedPriceSnapshot.grade == grade,
+            GradedPriceSnapshot.snapshot_date >= _today_start(),
+        )
+        .first()
+    )
+    if row is None:
+        db.add(GradedPriceSnapshot(card_id=card_id, grader=grader, grade=grade,
+                                   price=price, sale_count=sale_count))
+        db.commit()
+        return True
+    if row.price != price or row.sale_count != sale_count:
+        row.price, row.sale_count = price, sale_count
+        db.commit()
+    return False
+
+
+def latest_graded_prices(
+    db: Session, holdings: list[Holding],
+    max_age_days: int | None = GRADED_MAX_AGE_DAYS,
+) -> dict[Holding, tuple[float, date, int]]:
+    """Each holding's most recent slab price: {holding: (price, date, sales)}.
+
+    A holding with no snapshot inside the window is simply absent — callers fall
+    back to valuing it at cost. Filtered by card_id in SQL and by grader/grade in
+    Python: composite-key IN clauses vary by dialect, and the row count here is
+    bounded by (held combos × the age window), which is small by construction.
+    """
+    if not holdings:
+        return {}
+    wanted = set(holdings)
+    query = db.query(GradedPriceSnapshot).filter(
+        GradedPriceSnapshot.card_id.in_({h[0] for h in holdings}))
+    if max_age_days is not None:
+        query = query.filter(
+            GradedPriceSnapshot.snapshot_date >= _today_start() - timedelta(days=max_age_days))
+
+    out: dict[Holding, tuple[float, date, int]] = {}
+    # Oldest first so the newest row for a holding is the one that survives
+    for r in query.order_by(GradedPriceSnapshot.snapshot_date):
+        key = (r.card_id, r.grader, r.grade)
+        if key in wanted and r.price is not None:
+            out[key] = (r.price, r.snapshot_date.date(), r.sale_count or 0)
+    return out
+
+
+def graded_history(db: Session, card_id: str, grader: str, grade: str,
+                   days: int) -> list[dict]:
+    """Daily points for one slab, oldest first — the graded twin of card_history."""
+    cutoff = _today_start() - timedelta(days=days)
+    rows = (
+        db.query(GradedPriceSnapshot)
+        .filter(
+            GradedPriceSnapshot.card_id == card_id,
+            GradedPriceSnapshot.grader == grader,
+            GradedPriceSnapshot.grade == grade,
+            GradedPriceSnapshot.snapshot_date >= cutoff,
+        )
+        .order_by(GradedPriceSnapshot.snapshot_date)
+        .all()
+    )
+    return [{"date": r.snapshot_date.date().isoformat(), "price": r.price,
+             "sales": r.sale_count or 0} for r in rows]
