@@ -55,7 +55,7 @@ router = APIRouter(dependencies=[Depends(rate_limit("api", times=120, seconds=60
 # `grade` (if any) is a condition ("Near Mint"…"Damaged"); the graders carry a
 # slab grade ("10", "9.5", "Authentic"). Kept in sync with the frontend's
 # GradingPicker vocabulary.
-GRADING_TYPES = {"Raw", "PSA", "BGS", "CGC", "SGC", "Other"}
+GRADING_TYPES = {"Raw", "PSA", "BGS", "CGC", "TAG", "Other"}
 
 
 def _is_graded(grading: str | None) -> bool:

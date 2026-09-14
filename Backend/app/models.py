@@ -120,7 +120,7 @@ class PortfolioCard(Base):
     purchase_price = Column(Float)    # price paid per card
     purchase_date = Column(DateTime, default=utcnow)
     # Condition/grade of THIS lot (roadmap #7). `grading` is the case type
-    # ("Raw" | "PSA" | "BGS" | "CGC" | "SGC" | "Other"); `grade` is the raw
+    # ("Raw" | "PSA" | "BGS" | "CGC" | "TAG" | "Other"); `grade` is the raw
     # condition for Raw ("Near Mint"…"Damaged") or the slab grade otherwise
     # ("10", "9.5", "Authentic"). Both nullable — pre-feature lots and adds that
     # skip the picker are NULL (unknown). Two lots of the same card with different

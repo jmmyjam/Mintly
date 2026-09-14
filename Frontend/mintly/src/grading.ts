@@ -2,7 +2,7 @@
 // like `format`/`variants`. Keep GRADING_TYPES / RAW_CONDITIONS in sync with the
 // backend's GRADING_TYPES + _clean_condition in app/routers/portfolio.py.
 
-export const GRADING_TYPES = ['Raw', 'PSA', 'BGS', 'CGC', 'SGC', 'Other'] as const
+export const GRADING_TYPES = ['Raw', 'PSA', 'BGS', 'CGC', 'TAG', 'Other'] as const
 export type Grading = (typeof GRADING_TYPES)[number]
 
 // TCGplayer's raw condition ladder — the `grade` value when grading is "Raw".
@@ -16,7 +16,7 @@ export const GRADE_OPTIONS: Record<string, string[]> = {
   PSA: ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1', 'Authentic'],
   BGS: ['10 (Black Label)', '10', '9.5', '9', '8.5', '8', '7.5', '7', '6.5', '6'],
   CGC: ['10 (Pristine)', '10', '9.5', '9', '8.5', '8', '7.5', '7', '6.5', '6'],
-  SGC: ['10 (Pristine)', '10', '9.5', '9', '8.5', '8', '7', '6', '5'],
+  TAG: ['10', '9.5', '9', '8.5', '8', '7.5', '7', '6.5', '6'],
 }
 
 // The add picker's starting point: a raw near-mint card — consistent with the raw
