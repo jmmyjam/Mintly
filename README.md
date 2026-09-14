@@ -5,7 +5,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169e1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/backend_tests-426_passing-2ea44f)
+![Tests](https://img.shields.io/badge/backend_tests-430_passing-2ea44f)
 
 **Live at [mintlytcg.com](https://mintlytcg.com).** A Pokemon TCG portfolio tracker: search cards, scan them with your camera, monitor live market prices, watch cards for price alerts, and track your collection's value over time.
 
@@ -119,7 +119,7 @@
 
    API runs at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
-   > `requirements.txt` includes the camera scanner's ML stack (CPU PyTorch + `sentence-transformers`); it's a heavy install and the CLIP model downloads and caches on first use. `/scan` returns matches only after the card artwork has been fingerprinted — run `venv/bin/python scripts/embed_catalog.py` once to backfill `card_catalog.embedding`, then restart the API (it caches the embedding matrix, with a 6h TTL).
+   > `requirements.txt` includes the camera scanner's ML stack (CPU PyTorch + `sentence-transformers`); it's a heavy install and the CLIP model downloads and caches on first use. `/scan` returns matches only after the card artwork has been fingerprinted — run `venv/bin/python scripts/embed_catalog.py` once to backfill `card_catalog.embedding`, then restart the API (it caches the embedding matrix and only rebuilds it hourly). The API warms the scanner in the background at startup; set `SCAN_WARMUP=0` to skip that while iterating with `--reload`.
 
 ### Frontend
 
@@ -223,7 +223,7 @@ Backend tests run offline (in-memory SQLite + fake upstream APIs — no network,
 ```bash
 cd Backend
 venv/bin/pip install -r requirements-dev.txt
-venv/bin/pytest tests/ -q     # 426 tests, ~60s
+venv/bin/pytest tests/ -q     # 430 tests, ~60s
 ```
 
 Frontend tests run on Vitest + Testing Library, with a jest-axe accessibility assertion on every route page:

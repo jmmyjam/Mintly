@@ -13,6 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # which persists to runtime via this ENV.
 ENV HF_HOME=/opt/models
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')"
+# Set only after the bake above (which needs the network): with the model on
+# disk, loading it online still spends ~3.5s on Hub freshness checks, and would
+# stall on a flaky connection. Offline, it loads from HF_HOME in ~0.2s.
+ENV HF_HUB_OFFLINE=1
 
 COPY . .
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

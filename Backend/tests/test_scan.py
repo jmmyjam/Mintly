@@ -208,3 +208,86 @@ def test_scan_feedback_rejects_unknown_outcome(client, auth_headers):
 def test_scan_feedback_rejects_empty_event_list(client, auth_headers):
     res = client.post("/scan/feedback", json={"events": []}, headers=auth_headers)
     assert res.status_code == 422
+
+
+# ---- Keep-warm (scanner readiness) ----------------------------------------
+
+def _set_embedding(card: dict, vec: np.ndarray) -> None:
+    # Seeds a row WITHOUT resetting the matrix cache, like a backfill landing
+    # while the api is already serving.
+    db = TestingSessionLocal()
+    try:
+        card_catalog.upsert_cards(db, [card])
+        db.get(CatalogCard, card["id"]).embedding = np.asarray(vec, np.float32).tobytes()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_keep_warm_tick_loads_matrix_and_model(monkeypatch):
+    _seed([(catalog_card("base1-4", "Charizard"), _unit_vec(1))])
+    embedded = []
+    monkeypatch.setattr(card_embed, "embed_pil", lambda img: embedded.append(img))
+
+    db = TestingSessionLocal()
+    try:
+        card_embed.keep_warm_tick(db)
+    finally:
+        db.close()
+
+    ids, _ = card_embed.catalog_matrix(None)  # cached: must not need the DB
+    assert ids == ["base1-4"]
+    assert len(embedded) == 1
+
+
+def test_keep_warm_tick_skips_model_without_embeddings(monkeypatch):
+    embedded = []
+    monkeypatch.setattr(card_embed, "embed_pil", lambda img: embedded.append(img))
+
+    db = TestingSessionLocal()
+    try:
+        card_embed.keep_warm_tick(db)
+    finally:
+        db.close()
+
+    assert embedded == []
+
+
+def test_keep_warm_tick_refreshes_matrix_only_when_due(monkeypatch):
+    monkeypatch.setattr(card_embed, "embed_pil", lambda img: None)
+    _set_embedding(catalog_card("base1-4", "Charizard"), _unit_vec(1))
+    db = TestingSessionLocal()
+    try:
+        card_embed.keep_warm_tick(db)
+        _set_embedding(catalog_card("base1-58", "Pikachu"), _unit_vec(2))
+
+        # Not due yet: the tick keeps serving the cached matrix.
+        card_embed.keep_warm_tick(db)
+        assert card_embed.catalog_matrix(db)[0] == ["base1-4"]
+
+        # Past the refresh cadence: the tick rebuilds, so a scan picks up the
+        # backfilled card without paying the rebuild itself.
+        card_embed._cache["ts"] -= card_embed._MATRIX_REFRESH + 1
+        card_embed.keep_warm_tick(db)
+        assert sorted(card_embed.catalog_matrix(db)[0]) == ["base1-4", "base1-58"]
+    finally:
+        db.close()
+
+
+def test_startup_starts_keep_warm(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    started = []
+    monkeypatch.setattr(card_embed, "start_keep_warm", lambda factory: started.append(factory))
+
+    monkeypatch.setenv("SCAN_WARMUP", "1")
+    with TestClient(app):
+        pass
+    assert len(started) == 1
+
+    monkeypatch.setenv("SCAN_WARMUP", "0")
+    with TestClient(app):
+        pass
+    assert len(started) == 1

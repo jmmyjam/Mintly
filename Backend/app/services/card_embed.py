@@ -10,13 +10,20 @@ Model: `clip-ViT-B-32` (sentence-transformers / PyTorch, CPU). Validated with a
 degraded-photo proxy: the true card ranked #1 for every test image.
 
 At ~20k cards the search is an in-memory brute-force dot product (sub-ms), so no
-pgvector is needed. The model and the catalog matrix are lazily loaded and
-cached process-wide (the api runs a single worker); CPU inference is offloaded
-to FastAPI's threadpool by the sync `def` scan route.
+pgvector is needed. The model and the catalog matrix are cached process-wide (the
+api runs a single worker); CPU inference is offloaded to FastAPI's threadpool by
+the sync `def` scan route.
+
+Readiness: loading the model cold costs ~4s of torch import + model load, so the
+api starts a keep-warm thread at startup (`start_keep_warm`) that loads it and
+the matrix before anyone scans, then keeps both warm. The lazy loads below stay
+as the fallback when that thread isn't running (tests, `SCAN_WARMUP=0`).
 """
 import io
+import logging
 import threading
 import time
+from typing import Callable
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -24,9 +31,15 @@ from sqlalchemy.orm import Session
 
 from app.models import CatalogCard
 
+logger = logging.getLogger(__name__)
+
 MODEL_NAME = "clip-ViT-B-32"
 EMBED_DIM = 512
 _CACHE_TTL = 6 * 3600  # seconds; the matrix only changes when the backfill runs
+# The keep-warm thread rebuilds the matrix well inside _CACHE_TTL, so a scan never
+# finds it expired and pays the rebuild itself; the TTL only bites without it.
+_MATRIX_REFRESH = 3600
+_KEEP_WARM_INTERVAL = 5 * 60
 
 _model = None
 _model_lock = threading.Lock()
@@ -100,13 +113,22 @@ def _load_matrix(db: Session) -> tuple[list[str], np.ndarray]:
 
 
 def catalog_matrix(db: Session) -> tuple[list[str], np.ndarray]:
-    """Lazily build + cache the (ids, matrix) of all stored embeddings."""
-    now = time.monotonic()
+    """The cached (ids, matrix) of all stored embeddings, built on demand if cold
+    or expired."""
     with _cache_lock:
-        if _cache["matrix"] is None or now - _cache["ts"] > _CACHE_TTL:
-            ids, matrix = _load_matrix(db)
-            _cache.update(ts=now, ids=ids, matrix=matrix)
-        return _cache["ids"], _cache["matrix"]
+        if _cache["matrix"] is not None and time.monotonic() - _cache["ts"] <= _CACHE_TTL:
+            return _cache["ids"], _cache["matrix"]
+    return refresh_matrix(db)
+
+
+def refresh_matrix(db: Session) -> tuple[list[str], np.ndarray]:
+    """Rebuild the matrix from the DB and swap it in. The load (~0.5s at 20k
+    cards) runs outside the lock, so a background refresh never stalls a scan
+    that can keep using the current matrix meanwhile."""
+    ids, matrix = _load_matrix(db)
+    with _cache_lock:
+        _cache.update(ts=time.monotonic(), ids=ids, matrix=matrix)
+    return ids, matrix
 
 
 def reset_cache() -> None:
@@ -128,3 +150,55 @@ def nearest(db: Session, query_vecs: list[np.ndarray], k: int = 12) -> list[tupl
     top = np.argpartition(-scores, k - 1)[:k]
     top = top[np.argsort(-scores[top])]
     return [(ids[i], float(scores[i])) for i in top]
+
+
+# ---- Keep-warm -------------------------------------------------------------
+
+_keep_warm_started = False
+_keep_warm_lock = threading.Lock()
+
+
+def keep_warm_tick(db: Session) -> None:
+    """One keep-warm pass: refresh the matrix when due, then run a throwaway
+    embedding so the model is loaded before the first real scan."""
+    with _cache_lock:
+        due = _cache["matrix"] is None or time.monotonic() - _cache["ts"] >= _MATRIX_REFRESH
+        matrix = _cache["matrix"]
+    if due:
+        _, matrix = refresh_matrix(db)
+    # With nothing to match against (fresh DB, a dev machine without the
+    # backfill) a scan is pointless, so don't spend ~500MB of RAM on torch for it.
+    # A later refresh that finds embeddings warms the model then.
+    if matrix.shape[0] == 0:
+        return
+    # Repeating this every tick is deliberate: a forward pass touches torch's
+    # file-backed code pages (and every weight), so the kernel won't reclaim them
+    # during long idle stretches while the daily crawl and nightly pg_dump churn
+    # the page cache. It costs ~0.1s of CPU per tick.
+    embed_pil(Image.new("RGB", (224, 224)))
+
+
+def start_keep_warm(session_factory: Callable[[], Session]) -> None:
+    """Start the daemon keep-warm thread (idempotent). Called from app startup;
+    the first tick runs immediately so the model loads right after a deploy."""
+    global _keep_warm_started
+    with _keep_warm_lock:
+        if _keep_warm_started:
+            return
+        _keep_warm_started = True
+
+    def run():
+        while True:
+            try:
+                db = session_factory()
+                try:
+                    keep_warm_tick(db)
+                finally:
+                    db.close()
+            except Exception:
+                # Never let a DB hiccup or a missing model kill the thread; the
+                # scan route's lazy loads still work, and the next tick retries.
+                logger.warning("scanner keep-warm tick failed", exc_info=True)
+            time.sleep(_KEEP_WARM_INTERVAL)
+
+    threading.Thread(target=run, name="scan-keep-warm", daemon=True).start()
