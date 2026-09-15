@@ -3,7 +3,11 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes, useNavigate } from 'react-router-dom'
 import CardDetail from './CardDetail'
-import { getCard, getCardHistory, getEbayEstimate, filterCards } from '../api'
+import {
+  getCard, getCardHistory, getEbayEstimate, filterCards, addCard,
+  getPortfolios, getSetCompletion,
+} from '../api'
+import { clearPortfolios } from '../portfolios'
 import type { Card, CardHistory, EbayEstimate } from '../api'
 import { invalidateSetCompletion } from '../setCompletion'
 import { axe, renderWithRouter } from '../test/utils'
@@ -66,8 +70,17 @@ function renderDetail(route = '/card/base1-4') {
   )
 }
 
+// The add form only reaches the network while signed in, and a signed-in
+// CardDetail also hydrates the portfolio store and the set-completion cache.
+function signIn() {
+  localStorage.setItem('token', 'test-token')
+  vi.mocked(getPortfolios).mockResolvedValue([])
+  vi.mocked(getSetCompletion).mockResolvedValue([])
+}
+
 beforeEach(() => {
   localStorage.clear()
+  clearPortfolios()
   invalidateSetCompletion()
   document.title = DEFAULT_TITLE
   mockGetCard.mockResolvedValue(pricedCard())
@@ -170,6 +183,41 @@ describe('CardDetail', () => {
 
     // The form reflects B's $200 market, not A's leftover $100.
     expect(screen.getByLabelText('Price paid ($)')).toHaveValue(200)
+  })
+
+  it('asks for a price when the lot is graded, instead of failing the add', async () => {
+    // Picking a grader clears the auto-filled raw market price (a slab isn't
+    // worth the ungraded figure). Submitting with it empty used to spend a round
+    // trip and come back "failed to add"; now the field says it's required, says
+    // why, and the submit is refused client-side with the backend's own wording.
+    const user = userEvent.setup()
+    signIn()
+    renderDetail()
+    await screen.findByRole('heading', { level: 1, name: /Charizard/ })
+
+    await user.selectOptions(screen.getByLabelText('Grading'), 'PSA')
+    expect(screen.getByLabelText(/Price paid \(\$\)/)).toHaveValue(null)
+    expect(screen.getByText(/cannot fill this in from the market price/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '+ Add to Portfolio' }))
+    expect(await screen.findByText('Enter the price you paid for this graded card.')).toBeInTheDocument()
+    expect(vi.mocked(addCard)).not.toHaveBeenCalled()
+  })
+
+  it('adds a graded lot once a price is entered', async () => {
+    const user = userEvent.setup()
+    signIn()
+    vi.mocked(addCard).mockResolvedValue('Added Charizard to your portfolio')
+    renderDetail()
+    await screen.findByRole('heading', { level: 1, name: /Charizard/ })
+
+    await user.selectOptions(screen.getByLabelText('Grading'), 'PSA')
+    await user.type(screen.getByLabelText(/Price paid \(\$\)/), '900')
+    await user.click(screen.getByRole('button', { name: '+ Add to Portfolio' }))
+
+    // null portfolio id = the account's default (no portfolios stubbed here)
+    await waitFor(() => expect(vi.mocked(addCard)).toHaveBeenCalledWith(
+      'base1-4', 900, 1, null, { grading: 'PSA', grade: '10' }))
   })
 
   it('sets the document title on load and restores it on unmount', async () => {

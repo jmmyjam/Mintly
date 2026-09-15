@@ -24,6 +24,80 @@ describe('PriceQtyForm', () => {
     expect(screen.getByLabelText('Quantity')).toHaveValue(1)
   })
 
+  it('marks the price required and explains why when adding a graded lot', () => {
+    render(
+      <PriceQtyForm
+        price=""
+        quantity="1"
+        onPriceChange={noop}
+        onQuantityChange={noop}
+        onSubmit={noop}
+        submitLabel="Add"
+        labeled
+        priceRequired
+      />,
+    )
+    const price = screen.getByLabelText(/Price paid \(\$\)/)
+    expect(price).toHaveAttribute('aria-required', 'true')
+    // The reason is on the page, not just an asterisk
+    const hint = screen.getByText(/cannot fill this in from the market price/)
+    expect(hint).toBeInTheDocument()
+    expect(price).toHaveAttribute('aria-describedby', hint.id)
+    // A mis-keyed CSS-module class is silently undefined and renders unstyled,
+    // with nothing in the build or the type-check to catch it
+    expect(hint.className).toBeTruthy()
+    expect(screen.getByText('*').className).toBeTruthy()
+  })
+
+  it('carries "required" in the accessible name when the field has no visible label', () => {
+    // Compact mode has only a placeholder, and the asterisk used in labeled mode
+    // is decorative — so the requirement has to live in the accessible name
+    render(
+      <PriceQtyForm
+        price=""
+        quantity="1"
+        onPriceChange={noop}
+        onQuantityChange={noop}
+        onSubmit={noop}
+        submitLabel="Add"
+        priceRequired
+      />,
+    )
+    expect(screen.getByLabelText('Price paid ($), required')).toBeInTheDocument()
+  })
+
+  it('leaves the price field unmarked for a raw lot', () => {
+    render(
+      <PriceQtyForm
+        price=""
+        quantity="1"
+        onPriceChange={noop}
+        onQuantityChange={noop}
+        onSubmit={noop}
+        submitLabel="Add"
+        labeled
+      />,
+    )
+    expect(screen.getByLabelText('Price paid ($)')).not.toHaveAttribute('aria-required')
+    expect(screen.queryByText(/market price/)).not.toBeInTheDocument()
+  })
+
+  it('has no accessibility violations in the graded required state', async () => {
+    const { container } = render(
+      <PriceQtyForm
+        price=""
+        quantity="1"
+        onPriceChange={noop}
+        onQuantityChange={noop}
+        onSubmit={noop}
+        submitLabel="Add"
+        labeled
+        priceRequired
+      />,
+    )
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
   it('reports edits through onPriceChange / onQuantityChange', async () => {
     const onPriceChange = vi.fn()
     const onQuantityChange = vi.fn()

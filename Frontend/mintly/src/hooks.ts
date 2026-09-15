@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addCard, errorMessage, getToken, SessionExpiredError, type LotCondition } from './api'
+import { GRADED_PRICE_REQUIRED, isGraded } from './grading'
 import { invalidateOwned } from './owned'
 import { invalidateSetCompletion } from './setCompletion'
 
@@ -32,9 +33,17 @@ export function useAddCard() {
       return
     }
     if (busy) return
+    const price = parseFloat(priceInput)
+    // A graded lot can't be auto-priced from the raw market figure, so the
+    // backend rejects a graded add with no price. Say so here instead of
+    // spending a round trip to be told — same wording either way.
+    if (isGraded(condition?.grading) && Number.isNaN(price)) {
+      setStatus({ id: cardId, msg: GRADED_PRICE_REQUIRED, ok: false })
+      setTimeout(() => setStatus(null), 4000)
+      return
+    }
     setBusy(true)
     try {
-      const price = parseFloat(priceInput)
       const msg = await addCard(cardId, Number.isNaN(price) ? null : price, parseInt(qtyInput) || 1, portfolioId, condition)
       // The portfolio changed — drop the owned-qty + set-completion caches so
       // Search re-badges and the completion meters refresh

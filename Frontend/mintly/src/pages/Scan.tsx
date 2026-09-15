@@ -19,7 +19,7 @@ import DayChange from "../components/DayChange";
 import PriceQtyForm from "../components/PriceQtyForm";
 import PortfolioPicker from "../components/PortfolioPicker";
 import GradingPicker from "../components/GradingPicker";
-import { DEFAULT_GRADING, DEFAULT_GRADE, isGraded } from "../grading";
+import { DEFAULT_GRADING, DEFAULT_GRADE, GRADED_PRICE_HINT, isGraded } from "../grading";
 import type { LotCondition } from "../api";
 import SignedOutHero from "../components/SignedOutHero";
 import StatusMessage from "../components/StatusMessage";
@@ -403,6 +403,21 @@ export default function Scan() {
 
   async function commitBatch() {
     if (!queue.length || committing) return;
+    // One condition applies to the whole queue, so a graded batch needs a price
+    // on every row. The backend would fail those rows one by one and leave them
+    // in the queue with no explanation of what to fix; name the count instead.
+    if (isGraded(batchCondition.grading)) {
+      const missing = queue.filter((it) => Number.isNaN(parseFloat(it.price)));
+      if (missing.length) {
+        setBatchStatus({
+          msg: `${missing.length} card${missing.length === 1 ? "" : "s"} still ${
+            missing.length === 1 ? "needs" : "need"
+          } a price. ${GRADED_PRICE_HINT}`,
+          ok: false,
+        });
+        return;
+      }
+    }
     setCommitting(true);
     setBatchStatus(null);
     try {
@@ -526,6 +541,7 @@ export default function Scan() {
               onPriceChange={setPurchasePrice}
               onQuantityChange={setQuantity}
               onSubmit={() => handleAdd(card)}
+              priceRequired={isGraded(otherCondition.grading)}
               submitLabel="Add"
               busyLabel="Adding…"
               busy={addBusy}
@@ -608,8 +624,13 @@ export default function Scan() {
           <input
             type="number"
             className={`${styles.priceInput} num`}
-            placeholder="Price"
-            aria-label={`Price paid for ${card.name}`}
+            placeholder={isGraded(batchCondition.grading) ? "Price *" : "Price"}
+            aria-label={
+              isGraded(batchCondition.grading)
+                ? `Price paid for ${card.name}, required`
+                : `Price paid for ${card.name}`
+            }
+            aria-required={isGraded(batchCondition.grading) || undefined}
             min="0"
             step="0.01"
             value={item.price}
@@ -805,6 +826,11 @@ export default function Scan() {
                 grade={batchCondition.grade}
                 onChange={(grading, grade) => setBatchCondition({ grading, grade })}
               />
+              {isGraded(batchCondition.grading) && (
+                <p className={styles.batchGradedNote}>
+                  Every card needs a price. {GRADED_PRICE_HINT}
+                </p>
+              )}
             </div>
 
             {batchStatus && (
@@ -946,8 +972,19 @@ export default function Scan() {
                         <input
                           type="number"
                           className={`${styles.bestPriceInput} num`}
-                          placeholder="Price paid"
-                          aria-label="Price paid"
+                          placeholder={
+                            isGraded(singleCondition.grading)
+                              ? "Price paid (required)"
+                              : "Price paid"
+                          }
+                          aria-label={
+                            isGraded(singleCondition.grading)
+                              ? "Price paid, required"
+                              : "Price paid"
+                          }
+                          aria-required={
+                            isGraded(singleCondition.grading) || undefined
+                          }
                           min="0"
                           step="0.01"
                           value={bestPrice}

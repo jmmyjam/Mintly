@@ -391,6 +391,7 @@ function CardDetailInner() {
                   onPriceChange={setPurchasePrice}
                   onQuantityChange={setQuantity}
                   onSubmit={() => add(card.id, purchasePrice, quantity, addTarget ?? activeId, refreshCompletion, condition)}
+                  priceRequired={isGraded(condition.grading)}
                   submitLabel="+ Add to Portfolio"
                   busyLabel="Adding..."
                   busy={addBusy}

@@ -1,0 +1,20 @@
+/* The graded-add price field: a required marker and the reason underneath. */
+
+/* --accent, not a red: this is a "we need this from you" marker on a field the
+   user hasn't filled yet, not an error state. Paired with the word "required"
+   in the input's accessible name, so it never carries the meaning by color
+   alone (1.4.1). */
+.required {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --text, not --text-dim: this is real content explaining a blocked action, so
+   it has to clear 4.5:1 (see the accessibility baseline in CLAUDE.md). */
+.hint {
+  margin: -2px 0 2px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--text);
+  max-width: 44ch;
+}

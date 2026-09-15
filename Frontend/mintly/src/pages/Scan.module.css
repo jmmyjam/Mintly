@@ -165,6 +165,15 @@
   max-width: 320px;
 }
 
+/* --text, not --text-dim: this explains why the queue won't submit, so it's
+   real content and has to clear 4.5:1 */
+.batchGradedNote {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
 .clearAll {
   background: none;
   border: none;

@@ -24,6 +24,17 @@ export const GRADE_OPTIONS: Record<string, string[]> = {
 export const DEFAULT_GRADING = 'Raw'
 export const DEFAULT_GRADE = 'Near Mint'
 
+// Word-for-word the backend's 400 detail when a graded add arrives with no
+// price (`_is_graded` branch in app/routers/portfolio.py). Checking client-side
+// first means the user is told before submitting, but if a request does reach
+// the server the two messages read the same.
+export const GRADED_PRICE_REQUIRED = 'Enter the price you paid for this graded card.'
+
+// Why that price can't be filled in for them: the market figure Mintly has is
+// the ungraded card's.
+export const GRADED_PRICE_HINT =
+  'A graded card is worth more than the ungraded one, so we cannot fill this in from the market price.'
+
 // A graded slab: priced from its own eBay-comp series when the daily job has a
 // recent figure, valued at cost otherwise (mirrors the backend's _is_graded:
 // anything with a grading that isn't Raw/unset).

@@ -579,6 +579,7 @@ export default function Search() {
                       onPriceChange={setPurchasePrice}
                       onQuantityChange={setQuantity}
                       onSubmit={() => handleAdd(card)}
+                      priceRequired={isGraded(condition.grading)}
                       submitLabel="Add"
                       busyLabel="Adding…"
                       busy={addBusy}

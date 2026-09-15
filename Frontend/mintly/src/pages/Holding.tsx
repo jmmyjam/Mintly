@@ -405,6 +405,7 @@ function HoldingInner({ cardId, g, activeId }: { cardId: string; g: string; acti
                       onPriceChange={setAddPrice}
                       onQuantityChange={setAddQty}
                       onSubmit={() => add(cardId, addPrice, addQty, activeId, refetchLots, addCondition)}
+                      priceRequired={isGraded(addCondition.grading)}
                       submitLabel="Add purchase"
                       busyLabel="Adding..."
                       busy={addBusy}

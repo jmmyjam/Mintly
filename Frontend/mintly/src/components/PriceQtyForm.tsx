@@ -1,3 +1,7 @@
+import { useId } from 'react'
+import { GRADED_PRICE_HINT } from '../grading'
+import styles from './PriceQtyForm.module.css'
+
 // Shared price + quantity form: the Search add form (compact placeholders),
 // the CardDetail add form (labeled fields), and the Portfolio lot editor.
 interface PriceQtyFormProps {
@@ -13,6 +17,11 @@ interface PriceQtyFormProps {
   labeled?: boolean
   smallButtons?: boolean
   className?: string
+  // Adding a graded lot: the price is the only thing that can value it, so the
+  // field says so up front instead of the add failing on submit. Marks the
+  // input required, names it as required for screen readers, and (in labeled
+  // mode, where there's room) explains why.
+  priceRequired?: boolean
 }
 
 export default function PriceQtyForm({
@@ -28,22 +37,28 @@ export default function PriceQtyForm({
   labeled = false,
   smallButtons = false,
   className = 'add-form',
+  priceRequired = false,
 }: PriceQtyFormProps) {
   const sm = smallButtons ? ' btn-sm' : ''
+  const hintId = useId()
 
   // In labeled mode the wrapping <label> names each input; in compact mode the
   // fields carry only a visual placeholder, so give them an aria-label too (a
-  // placeholder is not an accessible name).
+  // placeholder is not an accessible name). When the price is required, that
+  // accessible name has to carry it too — the asterisk beside the visible label
+  // is decorative, and a compact field has no visible label at all.
   const priceInput = (
     <input
       type="number"
-      placeholder={labeled ? undefined : 'Price paid($)'}
-      aria-label={labeled ? undefined : 'Price paid ($)'}
+      placeholder={labeled ? undefined : priceRequired ? 'Price paid ($, required)' : 'Price paid($)'}
+      aria-label={labeled ? undefined : priceRequired ? 'Price paid ($), required' : 'Price paid ($)'}
       value={price}
       onChange={e => onPriceChange(e.target.value)}
       className="mini-input"
       min="0"
       step="0.01"
+      aria-required={priceRequired || undefined}
+      aria-describedby={priceRequired && labeled ? hintId : undefined}
     />
   )
   const qtyInput = (
@@ -74,9 +89,15 @@ export default function PriceQtyForm({
       {labeled ? (
         <>
           <label className="edit-field">
-            <span className="stat-label">Price paid ($)</span>
+            <span className="stat-label">
+              Price paid ($)
+              {priceRequired && <span className={styles.required}> *</span>}
+            </span>
             {priceInput}
           </label>
+          {priceRequired && (
+            <p id={hintId} className={styles.hint}>{GRADED_PRICE_HINT}</p>
+          )}
           <label className="edit-field">
             <span className="stat-label">Quantity</span>
             {qtyInput}
