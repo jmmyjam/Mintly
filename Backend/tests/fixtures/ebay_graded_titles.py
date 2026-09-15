@@ -12,7 +12,14 @@ WANTED is the card we were pricing: Celebrations Classic Collection Charizard
 year is the only thing separating a ~$550 comp from a six-figure one.
 """
 
+# NOTE the two number forms. `card_catalog.number` stores the BARE number ("4");
+# "4/102" is the display form, built by pairing it with the set's printedTotal
+# (_display_number in snapshot_all). The filters must work with EITHER, because
+# a set with no printedTotal only ever has the bare one. Testing only the
+# display form is what let a bug through that threw away 10 of the 14 genuine
+# comps below, so the suite runs the corpus against both.
 WANTED = {"number": "4/102", "year": 2021, "grading": "PSA", "grade": "10"}
+BARE_NUMBER = "4"
 
 # Titles that really are our card at our grade
 KEEP = [

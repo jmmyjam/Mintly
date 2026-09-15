@@ -201,17 +201,36 @@ _YEAR_RE = re.compile(r"\b(19[89]\d|20[0-4]\d)\b")
 
 
 def _number_res(number: str) -> list[re.Pattern]:
-    """Title forms of a collector number: "4/102" writes as "4/102" or "#4".
+    """Title forms of a collector number.
 
-    A bare "4" is far too loose to use, and "#4" must not swallow "#4/82" (a
-    different card in a different set), hence the slash guard.
+    Sellers write it two ways: with the set total ("4/102", sometimes "#4/102")
+    or on its own ("#4"). The first is by far the more common, and getting it
+    wrong is expensive — an earlier version accepted only the "#4" form and
+    threw away 10 of 14 genuine comps in the live corpus.
+
+    A **bare** "4" is never accepted: it collides with the grade itself (a card
+    numbered 10 would match the "10" in every "PSA 10" title), so the number has
+    to be anchored by a "#" or a "/total".
+
+    Callers should pass the full "4/102" form when the set total is known (see
+    _graded_card_meta) — then the denominator is matched exactly and a "#4/82"
+    from another set can't get in. With a bare number the denominator is left
+    open and the year check is what separates same-numbered reprints.
     """
     number = number.strip()
     base = number.split("/")[0]
     if not base.isdigit():
         return []
-    pats = [re.compile(rf"#?\s*{re.escape(number)}(?!\d)")] if "/" in number else []
-    # "#4" alone counts, but only when no other denominator follows it
+    pats = []
+    if "/" in number:
+        # Exact: "4/102" / "#4/102", not "104/102" and not "4/1020"
+        pats.append(re.compile(rf"(?<!\d)#?\s*{re.escape(number)}(?!\d)"))
+    else:
+        # Set total unknown: accept any denominator ("4/102", "4/108"…)
+        pats.append(re.compile(rf"(?<!\d)#?\s*{re.escape(base)}/\d{{1,4}}"))
+    # "#4" standing alone — never with a denominator after it, or "#4/82" (a
+    # different set's card 4) would pass. Our own "#4/102" is already covered by
+    # the slash pattern above.
     pats.append(re.compile(rf"#\s*{re.escape(base)}(?![\d/])"))
     return pats
 

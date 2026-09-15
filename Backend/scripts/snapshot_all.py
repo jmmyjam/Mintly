@@ -803,14 +803,29 @@ def _graded_card_meta(db, card_ids: set[str]) -> dict[str, dict]:
         for row in db.query(CatalogCard).filter(
                 CatalogCard.card_id.in_(ids[i:i + _DEDUPE_CHUNK])):
             data = row.data or {}
+            card_set = data.get("set") or {}
             release = row.release_date or ""
             meta[row.card_id] = {
                 "name": row.name or data.get("name") or "",
-                "number": row.number or data.get("number"),
-                "set_name": (data.get("set") or {}).get("name"),
+                # The catalog stores the BARE number ("4"), but sellers write the
+                # "4/102" form — so pair it with the set total the way the eBay
+                # buy-links do (ebaySearchUrl in src/affiliate.ts). Both the
+                # search keywords and the comp filter want this form.
+                "number": _display_number(row.number or data.get("number"),
+                                          card_set.get("printedTotal")),
+                "set_name": card_set.get("name"),
                 "year": int(release[:4]) if release[:4].isdigit() else None,
             }
     return meta
+
+
+def _display_number(number: str | None, printed_total: int | None) -> str | None:
+    """"4" + 102 -> "4/102"; leaves lettered numbers ("TG12", "SWSH066") alone."""
+    if not number:
+        return number
+    if printed_total and str(number).isdigit():
+        return f"{number}/{printed_total}"
+    return number
 
 
 def _estimate_graded_one(card: dict, grader: str, grade: str) -> dict | None:

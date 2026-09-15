@@ -168,14 +168,37 @@ def graded_fill(monkeypatch):
     return run
 
 
-def seed_catalog(card_id="base1-4", name="Charizard", number="4/102",
-                 set_name="Base", release="1999/01/09"):
+def seed_catalog(card_id="base1-4", name="Charizard", number="4",
+                 set_name="Base", release="1999/01/09", printed_total=102):
+    """Seed a catalog row the way the crawl really does: a BARE collector number
+    plus the set's printedTotal. The two are paired into "4/102" by
+    _display_number — testing with a pre-joined number hid a bug where the comp
+    filter rejected every "4/102" title."""
     db = TestingSessionLocal()
     card = make_card(card_id, name, price=50.0)
     card["number"] = number
-    card["set"] = {"id": "base1", "name": set_name, "releaseDate": release}
+    card["set"] = {"id": "base1", "name": set_name, "releaseDate": release,
+                   "printedTotal": printed_total}
     card_catalog.upsert_cards(db, [card])
     db.close()
+
+
+class TestDisplayNumber:
+    """The catalog stores "4"; sellers write "4/102". Pairing the two is what
+    lets the comp filter recognise a real listing."""
+
+    def test_pairs_a_bare_number_with_the_set_total(self):
+        assert snapshot_all._display_number("4", 102) == "4/102"
+
+    def test_leaves_a_lettered_number_alone(self):
+        assert snapshot_all._display_number("SWSH066", 307) == "SWSH066"
+        assert snapshot_all._display_number("TG12", 30) == "TG12"
+
+    def test_falls_back_to_the_bare_number_without_a_set_total(self):
+        assert snapshot_all._display_number("4", None) == "4"
+
+    def test_passes_through_nothing(self):
+        assert snapshot_all._display_number(None, 102) is None
 
 
 class TestGradedFill:

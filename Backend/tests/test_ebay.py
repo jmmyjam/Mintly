@@ -284,22 +284,33 @@ class TestRealSoldTitles:
     """The graded filters run against titles captured from a live eBay sold
     search (tests/fixtures/ebay_graded_titles.py), not invented ones."""
 
-    def _kept(self, title):
+    def _kept(self, title, number=None):
         w = real_titles.WANTED
         html = page(card_html(title.replace('"', "'"), "Jul 14, 2026", "$500.00"))
         return bool(ebay_prices.parse_sold(
             html,
             want=(w["grading"], w["grade"]),
-            identity=(w["number"], w["year"]),
+            identity=(number or w["number"], w["year"]),
         ))
 
     @pytest.mark.parametrize("title", real_titles.KEEP)
     def test_real_comps_survive(self, title):
         assert self._kept(title), f"dropped a genuine comp: {title}"
 
+    @pytest.mark.parametrize("title", real_titles.KEEP)
+    def test_real_comps_survive_with_the_bare_catalog_number(self, title):
+        # card_catalog stores "4", not "4/102" — the form the filter sees when a
+        # set carries no printedTotal. Accepting only "#4" here silently threw
+        # away every "4/102" title, which is most of them.
+        assert self._kept(title, real_titles.BARE_NUMBER), f"dropped a genuine comp: {title}"
+
     @pytest.mark.parametrize("title,why", real_titles.DROP)
     def test_wrong_listings_dropped(self, title, why):
         assert not self._kept(title), f"kept a {why}: {title}"
+
+    @pytest.mark.parametrize("title,why", real_titles.DROP)
+    def test_wrong_listings_dropped_with_the_bare_catalog_number(self, title, why):
+        assert not self._kept(title, real_titles.BARE_NUMBER), f"kept a {why}: {title}"
 
 
 class TestCardIdentity:
@@ -307,6 +318,27 @@ class TestCardIdentity:
         # A bare "4" appears in prices, years, and other numbers; only "4/102"
         # or "#4" count as the collector number
         assert not ebay_prices.title_matches_card("Charizard 4 PSA 10", "4/102", None)
+
+    def test_the_slash_form_matches_a_bare_catalog_number(self):
+        # The regression: "4" is what the catalog stores, "4/102" is what
+        # sellers write
+        assert ebay_prices.title_matches_card("Charizard 4/102 Celebrations", "4", 2021)
+        assert ebay_prices.title_matches_card("Charizard #4/102 Celebrations", "4", 2021)
+
+    def test_a_card_number_never_matches_the_grade_itself(self):
+        # Card #10 must not read the "10" in "PSA 10" as its own number — the
+        # reason a bare number is never accepted
+        assert not ebay_prices.title_matches_card("Pikachu Base Set PSA 10", "10", None)
+        assert ebay_prices.title_matches_card("Pikachu 10/102 PSA 10", "10", None)
+
+    def test_a_longer_number_containing_ours_is_rejected(self):
+        assert not ebay_prices.title_matches_card("Charizard 104/102 PSA 10", "4", None)
+        assert not ebay_prices.title_matches_card("Charmander 46/102 PSA 10", "4", None)
+
+    def test_exact_set_total_rejects_another_sets_same_number(self):
+        # With printedTotal known we pin the denominator, so a Team Rocket
+        # #4/82 can't pass even in a title that states no year
+        assert not ebay_prices.title_matches_card("Dark Charizard #4/82 Holo", "4/102", None)
 
     def test_hash_number_without_denominator_counts(self):
         assert ebay_prices.title_matches_card("Charizard Holo #4 PSA 10", "4/102", None)
