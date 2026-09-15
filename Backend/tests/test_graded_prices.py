@@ -307,6 +307,39 @@ class TestGradedFill:
         assert result.attempted == 0 and fake.calls == []
 
 
+class TestGradedOnlyRun:
+    """`--graded-only` exists because the graded pass sits after the crawl in
+    main(), so a flaky pokemontcg.io (page 1 retries over ~75 minutes) otherwise
+    blocks a fill that never needed upstream at all."""
+
+    def test_never_touches_the_upstream_crawl(self, monkeypatch, client,
+                                              auth_headers, upstream):
+        upstream.add(make_card("base1-4", price=50.0))
+        seed_catalog()
+        seed_lot(client, auth_headers, grading="PSA", grade="10")
+
+        def boom(*a, **kw):
+            raise AssertionError("--graded-only must not crawl upstream")
+
+        monkeypatch.setattr(snapshot_all, "fetch_all_prices", boom)
+        monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+        monkeypatch.setattr(snapshot_all.time, "sleep", lambda s: None)
+        monkeypatch.setattr(snapshot_all, "_estimate_graded_one",
+                            lambda card, g, gr: {"count": 5, "median": 900.0})
+        monkeypatch.setattr(sys, "argv", ["snapshot_all.py", "--graded-only"])
+
+        assert snapshot_all.main() == 0
+
+        db = TestingSessionLocal()
+        assert latest_graded_prices(db, [CHARIZARD])[CHARIZARD][0] == 900.0
+        db.close()
+
+    def test_no_holdings_is_a_clean_exit(self, monkeypatch):
+        monkeypatch.setattr(snapshot_all, "SessionLocal", TestingSessionLocal)
+        monkeypatch.setattr(sys, "argv", ["snapshot_all.py", "--graded-only"])
+        assert snapshot_all.main() == 0
+
+
 class TestPortfolioUsesGradedPrice:
     def test_graded_lot_priced_from_its_slab_series(self, client, auth_headers, upstream):
         upstream.add(make_card("base1-4", price=50.0))  # raw market stays low

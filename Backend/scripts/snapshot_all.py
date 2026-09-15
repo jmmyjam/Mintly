@@ -1009,9 +1009,38 @@ def main() -> int:
     parser.add_argument("--no-alerts", action="store_true",
                         help="skip evaluating watchlist price alerts / sending "
                              "their emails (for smoke tests)")
+    parser.add_argument("--graded-only", action="store_true",
+                        help="run ONLY the graded slab fill and exit — no crawl, "
+                             "no other fills. Its work list comes from what users "
+                             "hold, not from upstream, so it needs none of them")
     args = parser.parse_args()
 
     started = time.time()
+
+    # The graded pass depends on the portfolio table and the catalog, never on
+    # the crawl — but it is sequenced after it, so a flaky pokemontcg.io (page 1
+    # retries on a 5/10/20/40-minute schedule) blocks it for over an hour. This
+    # runs it on its own, which is what you want when testing or re-trying the
+    # graded fill specifically.
+    if args.graded_only:
+        db = SessionLocal()
+        try:
+            combos = held_graded_combos(db)
+            log.info("---- graded fill (only): %d held (card, grader, grade) combo(s) ----",
+                     len(combos))
+            gfill = graded_fill(db, args.max_graded, args.ebay_pause) if combos else GradedFill()
+        finally:
+            db.close()
+        log.info("=" * 52)
+        log.info("  duration          %s", _fmt_duration(time.time() - started))
+        log.info("  graded fill       %d slab(s) priced of %d tried  (%d held, "
+                 "%d without recent comps, %d unpriceable, %d failed fetches)%s",
+                 len(gfill.prices), gfill.attempted, gfill.eligible,
+                 gfill.no_sales, gfill.unpriceable, gfill.failures,
+                 "  — stopped early" if gfill.gave_up else "")
+        log.info("=" * 52)
+        return 0
+
     # --max-pages is the smoke-test flag (it already refuses to stamp the sync
     # marker); a truncated run must not page anyone either.
     alerting = not args.max_pages
