@@ -63,6 +63,10 @@ function lot(over: Partial<PortfolioCard> & { id: number; card_id: string; card_
     gain_loss_pct: 0,
     price_change: null,
     image_url: null,
+    // The API always sends these; only a graded lot priced from slab comps
+    // carries non-null values (see PortfolioCard in api.ts).
+    price_source: null,
+    price_sample: null,
     grading: null,
     grade: null,
     ...over,
@@ -181,6 +185,43 @@ describe('Holding page — loaded position', () => {
     expect(screen.getByText('$150.00')).toBeInTheDocument()
     // Source label comes from getCardPrice(card) (real) — TCGplayer market present
     expect(screen.getByText('TCGplayer market')).toBeInTheDocument()
+  })
+
+  it('labels a graded position as an eBay estimate with its comp count', async () => {
+    // The raw card's TCGplayer price never describes a slab, so neither should
+    // its source label (roadmap #11a)
+    mockGetPortfolio.mockResolvedValue([
+      lot({
+        id: 20, card_id: 'base1-4', card_name: 'Charizard', purchase_price: 500,
+        current_price: 900, gain_loss: 400, gain_loss_pct: 80,
+        grading: 'PSA', grade: '10', price_source: 'ebay_graded', price_sample: 12,
+      }),
+    ])
+    renderHolding('/portfolio/base1-4?g=PSA%7C10')
+
+    await screen.findByRole('heading', { level: 1, name: 'Charizard' })
+    expect(screen.getByText('Market now')).toBeInTheDocument()
+    // $900 is also the position's total value at qty 1
+    expect(screen.getAllByText('$900.00').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/eBay est\. · 12 recent sales/)).toBeInTheDocument()
+    expect(screen.queryByText('TCGplayer market')).not.toBeInTheDocument()
+  })
+
+  it('shows an unpriced slab as valued at cost, not as a market price', async () => {
+    mockGetPortfolio.mockResolvedValue([
+      lot({
+        id: 21, card_id: 'base1-4', card_name: 'Charizard', purchase_price: 500,
+        current_price: null, gain_loss: null, gain_loss_pct: null,
+        grading: 'BGS', grade: '9.5',
+      }),
+    ])
+    renderHolding('/portfolio/base1-4?g=BGS%7C9.5')
+
+    await screen.findByRole('heading', { level: 1, name: 'Charizard' })
+    // "Market now" would be a lie — the figure is what was paid
+    expect(screen.queryByText('Market now')).not.toBeInTheDocument()
+    expect(screen.getByText('Valued at')).toBeInTheDocument()
+    expect(screen.getByText('Valued at cost')).toBeInTheDocument()
   })
 
   it('lists one purchases row per lot plus a totals row', async () => {

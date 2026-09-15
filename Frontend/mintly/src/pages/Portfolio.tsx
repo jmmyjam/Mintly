@@ -6,6 +6,7 @@ import SlabbedCardImage from '../components/SlabbedCardImage'
 import DayChange from '../components/DayChange'
 import GainLoss from '../components/GainLoss'
 import PageMessage from '../components/PageMessage'
+import PriceBasisLabel from '../components/PriceBasisLabel'
 import PortfolioCsv from '../components/PortfolioCsv'
 import PortfolioSelector from '../components/PortfolioSelector'
 import SetCompletionMeter from '../components/SetCompletionMeter'
@@ -13,7 +14,7 @@ import SignedOutHero from '../components/SignedOutHero'
 import { useSessionRedirect } from '../hooks'
 import { usePortfolios } from '../portfolios'
 import { money, signedMoney } from '../format'
-import { groupByCard, groupMetrics, localISODate, formatChartDate } from '../portfolio'
+import { groupByCard, groupMetrics, priceBasis, localISODate, formatChartDate } from '../portfolio'
 import { conditionKey, conditionLabel } from '../grading'
 import styles from './Portfolio.module.css'
 
@@ -379,7 +380,12 @@ function PortfolioView({ portfolioId }: { portfolioId: number }) {
                   <p className={`${styles.tileMeta} num`}>Qty {m.qty}{label ? ` · ${label}` : ''}</p>
                 </div>
                 <div>
-                  <div className={`${styles.tilePrice} num`}>{money(group.current_price)}</div>
+                  <div className={`${styles.tilePrice} num`}>
+                    {/* A graded lot with no comps shows what it's valued at (cost),
+                        not an em dash — the tile would otherwise read as priceless */}
+                    {money(group.current_price ?? m.avg)}
+                    <PriceBasisLabel basis={priceBasis(group)} />
+                  </div>
                   {group.price_change && (
                     <DayChange change={group.price_change} today />
                   )}

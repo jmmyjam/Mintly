@@ -134,9 +134,15 @@ export interface PortfolioCard {
   image_url: string | null
   // Condition/grade of this lot (roadmap #7). grading null = unset; "Raw" carries
   // a condition ("Near Mint"…) in grade, the graders a slab grade ("10", "9.5").
-  // A graded lot comes back with current_price=null (valued at cost) until phase 2.
   grading: string | null
   grade: string | null
+  // Where current_price came from, set only for a GRADED lot priced from the
+  // slab series: "ebay_graded" + the number of sold comps behind that median.
+  // A graded lot with no recent comps comes back current_price=null and is
+  // valued at cost. A raw lot leaves both null — its price is the normal
+  // TCGplayer pipeline, already labelled everywhere as such.
+  price_source: string | null
+  price_sample: number | null
 }
 
 // The condition a lot carries, threaded through the add/edit calls (roadmap #7).

@@ -1,0 +1,19 @@
+/* Matches the muted "eBay est." label the Search grid already puts on
+   TCGplayer-priceless cards (Search.module.css .est-label), so an estimate
+   reads the same wherever it appears. --text, not --text-dim: this qualifies
+   what a number means, so it's real content and must clear 4.5:1. */
+.est {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  margin-left: 5px;
+}
+
+/* Same weight as .est — "at cost" is a statement about the figure, not a
+   warning, so it doesn't take the negative/warn colors. */
+.at-cost {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  margin-left: 5px;
+}

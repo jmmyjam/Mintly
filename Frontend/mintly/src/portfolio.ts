@@ -19,7 +19,25 @@ export interface CardGroup {
   current_price: number | null
   price_change: PriceChange | null
   image_url: string | null
+  // Every lot in a holding is the same card at the same grade, so they all
+  // price from the same source — the group carries the first lot's.
+  price_source: string | null
+  price_sample: number | null
   lots: PortfolioCard[]
+}
+
+// How a holding's `current_price` was arrived at, for labelling it honestly.
+// "ebay" is a scraped median over `sales` recent sold comps, not a market quote;
+// "cost" means nothing could price it, so the value shown IS what was paid.
+export type PriceBasis =
+  | { kind: 'market' }
+  | { kind: 'ebay'; sales: number }
+  | { kind: 'cost' }
+
+export function priceBasis(g: Pick<CardGroup, 'current_price' | 'price_source' | 'price_sample'>): PriceBasis {
+  if (g.current_price == null) return { kind: 'cost' }
+  if (g.price_source === 'ebay_graded') return { kind: 'ebay', sales: g.price_sample ?? 0 }
+  return { kind: 'market' }
 }
 
 // ----- Date helpers ----------------------------------------------------------
@@ -70,6 +88,8 @@ export function groupByCard(cards: PortfolioCard[]): CardGroup[] {
         current_price: c.current_price,
         price_change: c.price_change,
         image_url: c.image_url,
+        price_source: c.price_source ?? null,
+        price_sample: c.price_sample ?? null,
         lots: [c],
       })
     }

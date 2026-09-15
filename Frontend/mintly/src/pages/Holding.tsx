@@ -16,7 +16,7 @@ import StatusMessage from '../components/StatusMessage'
 import { useAddCard, useSessionRedirect } from '../hooks'
 import { usePortfolios } from '../portfolios'
 import { money, signedMoney } from '../format'
-import { groupByCard, groupMetrics, formatLotDate, lotISODate, parseUTCDate } from '../portfolio'
+import { groupByCard, groupMetrics, priceBasis, formatLotDate, lotISODate, parseUTCDate } from '../portfolio'
 import { conditionKey, conditionLabel, isGraded, DEFAULT_GRADING, DEFAULT_GRADE } from '../grading'
 import styles from './Holding.module.css'
 
@@ -216,7 +216,17 @@ function HoldingInner({ cardId, g, activeId }: { cardId: string; g: string; acti
   const market = group.current_price
   const priceChange = group.price_change
   const hasTcg = card ? getCardPrice(card) != null : false
-  const sourceLabel = hasTcg ? 'TCGplayer market' : card?.estimate ? 'eBay est.' : 'TCGplayer market'
+  const basis = priceBasis(group)
+  // Only a graded holding falls back to cost — a raw card with no price keeps
+  // the existing em-dash treatment rather than claiming a value.
+  const atCost = isGraded(group.grading) && basis.kind === 'cost'
+  // A graded holding is priced from its own slab comps (or not at all), so the
+  // raw card's TCGplayer/eBay source never describes it.
+  const sourceLabel = isGraded(group.grading)
+    ? basis.kind === 'ebay'
+      ? `eBay est.${basis.sales > 0 ? ` · ${basis.sales} recent sale${basis.sales === 1 ? '' : 's'}` : ''}`
+      : 'Valued at cost'
+    : hasTcg ? 'TCGplayer market' : card?.estimate ? 'eBay est.' : 'TCGplayer market'
 
   const idx = order.findIndex(h => h.cardId === cardId && h.g === g)
   const prev = idx > 0 ? order[idx - 1] : null
@@ -360,8 +370,10 @@ function HoldingInner({ cardId, g, activeId }: { cardId: string; g: string; acti
                 )}
               </div>
               <div className={styles.statCell}>
-                <span className="stat-label">Market now</span>
-                <div className={`${styles.statValue} num`}>{money(market)}</div>
+                {/* "Market now" would be a lie for a slab we couldn't price: the
+                    figure shown is what was paid, not what it's worth today */}
+                <span className="stat-label">{atCost ? 'Valued at' : 'Market now'}</span>
+                <div className={`${styles.statValue} num`}>{money(atCost ? m.avg : market)}</div>
                 <div className={styles.statSub}>{sourceLabel}</div>
               </div>
             </div>

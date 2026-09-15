@@ -53,6 +53,10 @@ function lot(over: Partial<PortfolioCard> & { id: number; card_id: string; card_
     gain_loss_pct: 0,
     price_change: null,
     image_url: null,
+    // The API always sends these; only a graded lot priced from slab comps
+    // carries non-null values (see PortfolioCard in api.ts).
+    price_source: null,
+    price_sample: null,
     grading: null,
     grade: null,
     ...over,
@@ -135,6 +139,48 @@ describe('Portfolio page — signed in with holdings', () => {
     expect(screen.getByText('Qty 2')).toBeInTheDocument()
     // The trailing dashed "Add a card" cell links to search
     expect(screen.getByRole('link', { name: /Add a card/i })).toHaveAttribute('href', '/search')
+  })
+
+  it('labels a graded tile as an eBay estimate, not a market price', async () => {
+    // Without this the scraped slab median renders identically to a TCGplayer
+    // market quote (roadmap #11a)
+    mockGetPortfolio.mockResolvedValue([
+      lot({
+        id: 9, card_id: 'base1-4', card_name: 'Charizard', purchase_price: 500,
+        current_price: 900, gain_loss: 400, gain_loss_pct: 80,
+        grading: 'PSA', grade: '10', price_source: 'ebay_graded', price_sample: 12,
+      }),
+    ])
+    renderWithRouter(<Portfolio />)
+
+    await screen.findByText('Charizard')
+    expect(screen.getByText('$900.00')).toBeInTheDocument()
+    expect(screen.getByText(/eBay est\./)).toBeInTheDocument()
+  })
+
+  it('shows an at-cost graded tile at what was paid, flagged as such', async () => {
+    // current_price is null when no comps priced the slab; the tile used to show
+    // an em dash, which reads as "priceless" rather than "valued at cost"
+    mockGetPortfolio.mockResolvedValue([
+      lot({
+        id: 10, card_id: 'base1-4', card_name: 'Charizard', purchase_price: 500,
+        current_price: null, gain_loss: null, gain_loss_pct: null,
+        grading: 'BGS', grade: '9.5',
+      }),
+    ])
+    renderWithRouter(<Portfolio />)
+
+    // $500 is also the hero total here, so scope to the tile itself
+    const tile = (await screen.findByText('Charizard')).closest('a')!
+    expect(within(tile).getByText('$500.00')).toBeInTheDocument()
+    expect(within(tile).getByText('at cost')).toBeInTheDocument()
+  })
+
+  it('leaves an ordinary raw holding unlabelled', async () => {
+    renderWithRouter(<Portfolio />)
+    await screen.findByText('Charizard')
+    expect(screen.queryByText(/eBay est\./)).not.toBeInTheDocument()
+    expect(screen.queryByText('at cost')).not.toBeInTheDocument()
   })
 
   it('shows the value-over-time chart panel', async () => {

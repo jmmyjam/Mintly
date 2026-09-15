@@ -15,6 +15,10 @@ function lot(over: Partial<PortfolioCard> = {}): PortfolioCard {
     gain_loss_pct: 42.86,
     price_change: null,
     image_url: null,
+    // The API always sends these; only a graded lot priced from slab comps
+    // carries non-null values (see PortfolioCard in api.ts).
+    price_source: null,
+    price_sample: null,
     grading: null,
     grade: null,
     ...over,

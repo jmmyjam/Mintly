@@ -7,6 +7,7 @@ import {
   lotISODate,
   formatLotDate,
   formatChartDate,
+  priceBasis,
   type CardGroup,
 } from './portfolio'
 import type { PortfolioCard } from './api'
@@ -28,6 +29,10 @@ function lot(overrides: Partial<PortfolioCard> = {}): PortfolioCard {
     gain_loss_pct: 50,
     price_change: null,
     image_url: null,
+    // The API always sends these; only a graded lot priced from slab comps
+    // carries non-null values (see PortfolioCard in api.ts).
+    price_source: null,
+    price_sample: null,
     grading: null,
     grade: null,
     ...overrides,
@@ -114,6 +119,40 @@ describe('groupMetrics', () => {
     const m = groupMetrics(group)
     expect(m.firstAdded).toBe(Date.parse('2026-07-10T00:00:00Z'))
     expect(m.added).toBe(Date.parse('2026-07-15T00:00:00Z'))
+  })
+})
+
+describe('priceBasis', () => {
+  const basisOf = (over: Partial<PortfolioCard>) =>
+    priceBasis({
+      current_price: over.current_price ?? null,
+      price_source: over.price_source ?? null,
+      price_sample: over.price_sample ?? null,
+    })
+
+  it('reads a plain price as market', () => {
+    expect(basisOf({ current_price: 50 })).toEqual({ kind: 'market' })
+  })
+
+  it('reads a graded slab price as an eBay estimate, carrying the comp count', () => {
+    expect(basisOf({ current_price: 900, price_source: 'ebay_graded', price_sample: 12 }))
+      .toEqual({ kind: 'ebay', sales: 12 })
+  })
+
+  it('treats a missing comp count as zero rather than undefined', () => {
+    expect(basisOf({ current_price: 900, price_source: 'ebay_graded' }))
+      .toEqual({ kind: 'ebay', sales: 0 })
+  })
+
+  it('reads no price as at-cost', () => {
+    // What the frontend already does with a null current_price — the label just
+    // makes it visible
+    expect(basisOf({ current_price: null })).toEqual({ kind: 'cost' })
+  })
+
+  it('never calls an unpriced lot an estimate, whatever the source says', () => {
+    expect(basisOf({ current_price: null, price_source: 'ebay_graded', price_sample: 9 }))
+      .toEqual({ kind: 'cost' })
   })
 })
 
