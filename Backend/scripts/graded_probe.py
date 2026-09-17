@@ -21,6 +21,61 @@ from app.services import ebay_prices  # noqa: E402
 import snapshot_all  # noqa: E402  (sibling script: held combos + catalog meta)
 
 
+def diagnose_fetch(query: str) -> None:
+    """Separate the three things `_fetch_sold_html` returning None can mean.
+
+    It collapses a network error, a non-200, and a bot challenge into one None,
+    which is right for the job (all three mean "no estimate") and useless when
+    you're trying to work out what to do about it.
+    """
+    import re
+
+    print("  --- diagnosing ---")
+    # 1. Can this box reach eBay at all?
+    try:
+        home = ebay_prices._session.get("https://www.ebay.com/",
+                                        timeout=ebay_prices._TIMEOUT)
+        print(f"  homepage: HTTP {home.status_code}, {len(home.text):,} bytes")
+    except Exception as exc:
+        print(f"  homepage: NETWORK ERROR — {type(exc).__name__}: {exc}")
+        print("  => the container can't reach eBay. Not a bot block; check "
+              "outbound DNS/egress from the api container.")
+        return
+
+    # 2. What does the search itself actually return?
+    params = {"_nkw": query, **ebay_prices._SEARCH_PARAMS}
+    try:
+        resp = ebay_prices._session.get(
+            ebay_prices._SEARCH_URL, params=params,
+            timeout=ebay_prices._TIMEOUT,
+            headers={"Referer": "https://www.ebay.com/"},
+        )
+    except Exception as exc:
+        print(f"  search:   NETWORK ERROR — {type(exc).__name__}: {exc}")
+        return
+
+    body = resp.text
+    title = re.search(r"<title>(.*?)</title>", body, re.S)
+    title = title.group(1).strip()[:90] if title else "(none)"
+    print(f"  search:   HTTP {resp.status_code}, {len(body):,} bytes")
+    print(f"  title:    {title!r}")
+
+    if resp.status_code != 200:
+        print(f"  => eBay refused with HTTP {resp.status_code}.")
+        return
+    known = [t for t in ebay_prices._BLOCK_TITLES if t in body[:2000]]
+    if known:
+        print(f"  => BOT CHALLENGE ({known[0]!r}). eBay does not trust this IP.")
+    elif len(body) < ebay_prices._MIN_REAL_PAGE_BYTES:
+        print(f"  => page is under the {ebay_prices._MIN_REAL_PAGE_BYTES:,}-byte floor "
+              f"for a real results page, so it's treated as a challenge. If the "
+              f"title above looks like genuine results, the floor is what's wrong, "
+              f"not eBay.")
+    else:
+        print("  => looks like a real page; the block detector disagreed. "
+              "Worth re-checking _looks_blocked against this response.")
+
+
 def probe(db, card_id: str, grader: str, grade: str) -> None:
     meta = snapshot_all._graded_card_meta(db, {card_id})
     card = meta.get(card_id)
@@ -42,8 +97,8 @@ def probe(db, card_id: str, grader: str, grade: str) -> None:
 
     html = ebay_prices._fetch_sold_html(query)
     if html is None:
-        print("  FETCH FAILED — eBay served a bot challenge, or the network is down.")
-        print("  This is a `failed fetch` in the summary; 5 in a row stop the pass.")
+        print("  FETCH FAILED — a `failed fetch` in the summary; 5 in a row stop the pass.")
+        diagnose_fetch(query)
         return
     print(f"  fetched {len(html):,} bytes")
 
