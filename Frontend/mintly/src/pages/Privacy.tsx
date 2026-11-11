@@ -2,7 +2,7 @@ export default function Privacy() {
   return (
     <div className="page legal-page">
       <h1>Privacy Policy</h1>
-      <p className="legal-updated">Last updated: September 14, 2026</p>
+      <p className="legal-updated">Last updated: November 11, 2026</p>
 
       <h2>1. What we collect</h2>
       <p>
@@ -27,7 +27,11 @@ export default function Privacy() {
         recognize you on your next sign-in), along with the email address and
         name it shares; a provider account is linked to a matching Mintly account
         by email rather than creating a duplicate. We never receive or store
-        your provider password.
+        your provider password. If you send us a message through the feedback
+        form, we store the message, the email address you give us (only if you
+        choose to give one), the Mintly page you sent it from, and the time it
+        was sent. Feedback is not linked to your account, and you can send it
+        without one.
       </p>
 
       <h2>2. How it's used</h2>
@@ -37,7 +41,8 @@ export default function Privacy() {
         is used only for signing in, for confirming your address with a
         verification link, for sending a password-reset link when you request
         one, and for sending the price alerts you set up on your watchlist; we
-        don&apos;t send marketing email. We do not sell your data or share it
+        don&apos;t send marketing email. An email address left on the feedback
+        form is used only to reply to that message. We do not sell your data or share it
         with advertisers.
       </p>
 
@@ -91,7 +96,8 @@ export default function Privacy() {
         option, and your provider password is never shared with us. Account
         emails (the password-reset link and the email-verification link) are
         delivered through an email provider, which processes your email address
-        solely to deliver those messages. The site itself is served through
+        solely to deliver those messages. Feedback you send is forwarded to
+        our own inbox through the same provider. The site itself is served through
         Cloudflare, which sits
         between your browser and our server to route traffic securely and
         protect against attacks; to do this it processes connection metadata
@@ -115,6 +121,9 @@ export default function Privacy() {
         that are searched or viewed; these snapshots are aggregate per-card
         figures, are not tied to your account, and contain nothing personal, so
         they remain after an account is deleted.
+        Because feedback messages aren&apos;t linked to an account, deleting
+        your account does not remove them; email us and we&apos;ll delete any
+        feedback you sent.
       </p>
 
       <h2>7. Contact</h2>

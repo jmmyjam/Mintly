@@ -29,6 +29,8 @@ os.environ.setdefault("ADMIN_EMAILS", "")
 # .env's live Resend settings into the suite; pinned empty so a crawl test can
 # never mail the real operator mailbox.
 os.environ.setdefault("ALERT_EMAIL", "")
+# same for the feedback form's notification address
+os.environ.setdefault("FEEDBACK_EMAIL", "")
 # app startup would otherwise launch the scanner keep-warm thread (importing
 # torch + loading CLIP) under any `with TestClient(app)`; the suite fakes it.
 os.environ.setdefault("SCAN_WARMUP", "0")

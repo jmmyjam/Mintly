@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, LargeBinary, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, LargeBinary, Text, UniqueConstraint
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 
@@ -216,6 +216,20 @@ class ScanFeedback(Base):
     top_card_id = Column(String, nullable=True)    # rank-0 card id (for confusion analysis)
     picked_card_id = Column(String, nullable=True) # chosen card id (NULL for a miss)
     created_at = Column(DateTime, default=utcnow, nullable=False)
+
+
+class Feedback(Base):
+    # Messages from the public /feedback form. Deliberately NOT linked to a user
+    # (same reasoning as ScanFeedback): the form works identically signed in or
+    # out, and account deletion has nothing to clear. `email` is only present
+    # when the sender typed one in to get a reply.
+    __tablename__ = "feedback"
+    id = Column(Integer, primary_key=True)
+    message = Column(Text, nullable=False)
+    email = Column(String, nullable=True)
+    page = Column(String, nullable=True)  # route the sender came from, for context
+    # Indexed: every submission counts the last 24h for the global cap + dedupe
+    created_at = Column(DateTime, default=utcnow, nullable=False, index=True)
 
 
 class CardPriceSnapshot(Base):

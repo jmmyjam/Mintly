@@ -1,0 +1,97 @@
+/* Feedback form: a single centered card matching the reset-password card */
+
+.feedback-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: clamp(28px, 3vw, 40px);
+  width: 100%;
+  max-width: 560px;
+  text-align: left;
+}
+
+.feedback-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+  margin: 0 0 6px;
+}
+
+.feedback-subtitle {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 24px;
+}
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.form-input {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-h);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s;
+}
+
+textarea.form-input {
+  resize: vertical;
+  min-height: 140px;
+  line-height: 1.5;
+}
+
+.form-input:focus { border-color: var(--text-h); }
+
+.count {
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* Off-screen rather than display:none: some bots skip fields that are
+   display:none, but fill anything that is still in the layout */
+.honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.feedback-form :global(.btn-primary) {
+  justify-content: center;
+  padding: 10px;
+}
+
+.sent-note {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 150%;
+  margin: 0 0 8px;
+}
+
+.back-row {
+  margin: 20px 0 0;
+  font-size: 13px;
+}

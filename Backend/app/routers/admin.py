@@ -1,9 +1,11 @@
-"""Admin-only site stats — the numbers that are annoying to dig out with psql.
+"""Admin-only site stats — the numbers that are annoying to dig out with psql —
+plus the inbox of messages from the public feedback form.
 
 Access is gated by app/services/admin_access.py (the ADMIN_EMAILS env var).
 Non-admins get the same 404 an unknown path would, so probing the URL reveals
 nothing. Everything here is read-only aggregate queries over the app's own
-tables — no upstream calls, nothing mutated.
+tables — no upstream calls. The one write is deleting a feedback message
+(clearing spam that got past the form's filters).
 """
 
 from datetime import timedelta
@@ -17,6 +19,7 @@ from app.models import (
     CardPriceSnapshot,
     CatalogCard,
     CatalogMeta,
+    Feedback,
     Portfolio,
     PortfolioCard,
     User,
@@ -34,6 +37,7 @@ router = APIRouter(
 
 SIGNUP_CHART_DAYS = 30
 RECENT_USERS = 10
+RECENT_FEEDBACK = 100
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
@@ -171,3 +175,30 @@ def admin_stats(admin: User = Depends(get_admin_user),
         },
         "db_size_bytes": db_size_bytes,
     }
+
+
+@router.get("/feedback")
+def admin_feedback(admin: User = Depends(get_admin_user),
+                   db: Session = Depends(get_db)):
+    rows = (
+        db.query(Feedback)
+        .order_by(Feedback.created_at.desc(), Feedback.id.desc())
+        .limit(RECENT_FEEDBACK)
+        .all()
+    )
+    return [
+        {"id": f.id, "message": f.message, "email": f.email, "page": f.page,
+         "created_at": f.created_at}
+        for f in rows
+    ]
+
+
+@router.delete("/feedback/{feedback_id}")
+def admin_delete_feedback(feedback_id: int, admin: User = Depends(get_admin_user),
+                          db: Session = Depends(get_db)):
+    row = db.get(Feedback, feedback_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    db.delete(row)
+    db.commit()
+    return {"message": "Feedback deleted"}

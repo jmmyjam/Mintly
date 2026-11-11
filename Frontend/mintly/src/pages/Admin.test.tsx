@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Admin from './Admin'
-import { getAdminStats, getToken, NotAdminError, SessionExpiredError, type AdminStats } from '../api'
+import {
+  deleteAdminFeedback, getAdminFeedback, getAdminStats, getToken, NotAdminError, SessionExpiredError,
+  type AdminStats,
+} from '../api'
 import { axe, renderWithRouter } from '../test/utils'
 
 // Keep NotAdminError / SessionExpiredError real (Admin keys its denied states on
@@ -12,12 +15,16 @@ vi.mock('../api', async (importActual) => {
   return {
     ...actual,
     getAdminStats: vi.fn(),
+    getAdminFeedback: vi.fn(),
+    deleteAdminFeedback: vi.fn(),
     getToken: vi.fn(),
   }
 })
 
 const mockGetAdminStats = vi.mocked(getAdminStats)
 const mockGetToken = vi.mocked(getToken)
+const mockGetFeedback = vi.mocked(getAdminFeedback)
+const mockDeleteFeedback = vi.mocked(deleteAdminFeedback)
 
 function makeStats(overrides: Partial<AdminStats> = {}): AdminStats {
   return {
@@ -43,6 +50,12 @@ function makeStats(overrides: Partial<AdminStats> = {}): AdminStats {
 beforeEach(() => {
   mockGetToken.mockReturnValue('test-token')
   mockGetAdminStats.mockResolvedValue(makeStats())
+  mockGetFeedback.mockResolvedValue([
+    { id: 7, message: 'The Charizard price looks wrong', email: 'brock@example.com', page: '/card/base1-4', created_at: '2026-11-10T12:00:00' },
+    { id: 6, message: 'Love the scanner!', email: null, page: null, created_at: '2026-11-09T12:00:00' },
+  ])
+  mockDeleteFeedback.mockReset()
+  mockDeleteFeedback.mockResolvedValue()
 })
 
 describe('Admin', () => {
@@ -98,6 +111,34 @@ describe('Admin', () => {
     renderWithRouter(<Admin />)
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
     expect(mockGetAdminStats).not.toHaveBeenCalled()
+  })
+
+  it('lists feedback messages with their page and reply email', async () => {
+    renderWithRouter(<Admin />)
+    expect(await screen.findByText('The Charizard price looks wrong')).toBeInTheDocument()
+    expect(screen.getByText('on /card/base1-4')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'brock@example.com' })).toHaveAttribute('href', 'mailto:brock@example.com')
+    expect(screen.getByText('Love the scanner!')).toBeInTheDocument()
+  })
+
+  it('deletes a feedback message after a two-step confirm', async () => {
+    const user = userEvent.setup()
+    renderWithRouter(<Admin />)
+    await screen.findByText('The Charizard price looks wrong')
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[0])
+    expect(mockDeleteFeedback).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }))
+    expect(mockDeleteFeedback).toHaveBeenCalledWith(7)
+    await waitFor(() =>
+      expect(screen.queryByText('The Charizard price looks wrong')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('Love the scanner!')).toBeInTheDocument()
+  })
+
+  it('shows an empty state when there is no feedback', async () => {
+    mockGetFeedback.mockResolvedValue([])
+    renderWithRouter(<Admin />)
+    expect(await screen.findByText('No feedback yet.')).toBeInTheDocument()
   })
 
   it('has no accessibility violations on the loaded dashboard', async () => {

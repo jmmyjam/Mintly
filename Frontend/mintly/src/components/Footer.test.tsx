@@ -13,6 +13,8 @@ describe('Footer', () => {
     expect(screen.getByRole('link', { name: 'Terms' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Privacy' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Accessibility' })).toHaveAttribute('href', '/accessibility')
+    // renderWithRouter starts at "/", so the feedback link carries that page
+    expect(screen.getByRole('link', { name: 'Feedback' })).toHaveAttribute('href', '/feedback?from=%2F')
   })
 
   it('opens the external Buy Me a Coffee link safely in a new tab', () => {

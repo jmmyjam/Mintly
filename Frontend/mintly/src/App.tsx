@@ -23,6 +23,7 @@ import VerifyEmail from './pages/VerifyEmail'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import Accessibility from './pages/Accessibility'
+import Feedback from './pages/Feedback'
 import NotFound from './pages/NotFound'
 import './App.css'
 
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/accessibility" element={<Accessibility />} />
+          <Route path="/feedback" element={<Feedback />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

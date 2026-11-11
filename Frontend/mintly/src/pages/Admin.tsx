@@ -3,9 +3,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
-  getAdminStats, getToken, CONNECTION_ERROR, NotAdminError, SessionExpiredError,
-  type AdminStats,
+  deleteAdminFeedback, getAdminFeedback, getAdminStats, getToken, CONNECTION_ERROR,
+  NotAdminError, SessionExpiredError, type AdminFeedback, type AdminStats,
 } from '../api'
+import StatusMessage from '../components/StatusMessage'
 import NotFoundMessage from '../components/NotFoundMessage'
 import PageMessage from '../components/PageMessage'
 import styles from './Admin.module.css'
@@ -43,6 +44,76 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
       <span className={styles.tileValue}>{value}</span>
       {sub && <span className={styles.tileSub}>{sub}</span>}
     </div>
+  )
+}
+
+// Messages from the public /feedback form, newest first. Loaded on its own so
+// a feedback hiccup can't take down the stats above it. Delete is a two-step
+// inline confirm (no native dialogs), for clearing spam that got through.
+function FeedbackInbox() {
+  const [items, setItems] = useState<AdminFeedback[] | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [confirmId, setConfirmId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+
+  useEffect(() => {
+    getAdminFeedback()
+      .then(setItems)
+      .catch(() => setLoadError("We couldn't load feedback."))
+  }, [])
+
+  async function remove(id: number) {
+    try {
+      await deleteAdminFeedback(id)
+      setItems(prev => (prev ?? []).filter(f => f.id !== id))
+      setConfirmId(null)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed.')
+      setTimeout(() => setDeleteError(''), 4000)
+    }
+  }
+
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Feedback</h2>
+      {deleteError && <StatusMessage ok={false}>{deleteError}</StatusMessage>}
+      {loadError ? (
+        <p className="error">{loadError}</p>
+      ) : items === null ? (
+        <p className="prices-note">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="prices-note">No feedback yet.</p>
+      ) : (
+        <ul className={styles.feedbackList}>
+          {items.map(f => (
+            <li key={f.id} className={styles.feedbackItem}>
+              <div className={styles.feedbackMeta}>
+                <span>{formatDateTime(f.created_at)}</span>
+                {f.page && <span>on {f.page}</span>}
+                {f.email && <a href={`mailto:${f.email}`}>{f.email}</a>}
+                <span className={styles.feedbackActions}>
+                  {confirmId === f.id ? (
+                    <>
+                      <button className="btn-outline btn-sm" onClick={() => remove(f.id)}>
+                        Confirm delete
+                      </button>
+                      <button className="btn-outline btn-sm" onClick={() => setConfirmId(null)}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn-outline btn-sm" onClick={() => setConfirmId(f.id)}>
+                      Delete
+                    </button>
+                  )}
+                </span>
+              </div>
+              <p className={styles.feedbackMessage}>{f.message}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -233,6 +304,8 @@ export default function Admin() {
           </div>
         )}
       </section>
+
+      <FeedbackInbox />
     </div>
   )
 }

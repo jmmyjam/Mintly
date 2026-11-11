@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
 from app.routers.cards import router as cards_router
+from app.routers.feedback import router as feedback_router
 from app.routers.health import router as health_router
 from app.routers.portfolio import router as portfolio_router
 from app.routers.scan import router as scan_router
@@ -57,3 +58,4 @@ app.include_router(sitemap_router)
 app.include_router(admin_router)
 app.include_router(scan_router)
 app.include_router(watchlist_router)
+app.include_router(feedback_router)

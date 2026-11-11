@@ -229,6 +229,26 @@ export interface AdminStats {
   db_size_bytes: number | null
 }
 
+// One message from the public feedback form (GET /admin/feedback, admins only)
+export interface AdminFeedback {
+  id: number
+  message: string
+  email: string | null
+  page: string | null
+  created_at: string
+}
+
+// What the /feedback page posts. `website` is the hidden honeypot and
+// `elapsed_ms` the time spent on the form; both are anti-spam signals the
+// backend checks, not anything a person fills in.
+export interface FeedbackSubmission {
+  message: string
+  email: string | null
+  page: string | null
+  website: string
+  elapsed_ms: number
+}
+
 // Thrown on 401 so pages can redirect to /login instead of showing a generic error
 export class SessionExpiredError extends Error {
   constructor() {
@@ -469,6 +489,38 @@ export async function getAdminStats(): Promise<AdminStats> {
   if (res.status === 404) throw new NotAdminError()
   if (!res.ok) throw new Error('Failed to load site stats')
   return res.json()
+}
+
+// Recent feedback-form messages, newest first. 404 = not an admin.
+export async function getAdminFeedback(): Promise<AdminFeedback[]> {
+  const res = await authedFetch('/admin/feedback')
+  if (res.status === 404) throw new NotAdminError()
+  if (!res.ok) throw new Error('Failed to load feedback')
+  return res.json()
+}
+
+export async function deleteAdminFeedback(id: number): Promise<void> {
+  const res = await authedFetch(`/admin/feedback/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error("We couldn't delete that message. Please try again.")
+}
+
+// ----- Feedback (public) ---------------------------------------------------------
+
+// Unauthed: anyone can send feedback. Errors carry the backend's detail (the
+// 429 rate-limit/busy messages and the 422 content checks read as user copy).
+export async function submitFeedback(body: FeedbackSubmission): Promise<string> {
+  const res = await fetch(`${BASE}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    // Pydantic's own 422s carry a list, not a sentence
+    const detail = typeof data.detail === 'string' ? data.detail : ''
+    throw new Error(detail || "We couldn't send your feedback. Please try again.")
+  }
+  return data.message
 }
 
 // ----- Card calls ----------------------------------------------------------------

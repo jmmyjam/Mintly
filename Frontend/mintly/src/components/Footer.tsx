@@ -1,7 +1,14 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import styles from "./Footer.module.css";
 
 export default function Footer() {
+  const { pathname } = useLocation();
+  // Tell the feedback form which page the visitor was on, so a report like
+  // "this price is wrong" arrives with the page it's about
+  const feedbackHref =
+    pathname === "/feedback"
+      ? "/feedback"
+      : `/feedback?from=${encodeURIComponent(pathname)}`;
   return (
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
@@ -16,6 +23,7 @@ export default function Footer() {
             <Link to="/terms">Terms</Link>
             <Link to="/privacy">Privacy</Link>
             <Link to="/accessibility">Accessibility</Link>
+            <Link to={feedbackHref}>Feedback</Link>
             <a
               href="https://buymeacoffee.com/mintlytcg"
               target="_blank"
